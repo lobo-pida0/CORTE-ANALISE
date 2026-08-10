@@ -650,6 +650,16 @@
             </div>
             <div id="resultadoSequenciamentoPedido"></div>
         </div>
+
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-sugestao);"><span><i class="fas fa-arrow-right-arrow-left"></i> QUAIS PEDIDOS ESSA OP FECHA</span></div>
+            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
+                <input type="text" id="inputSequenciamentoOP" placeholder="Número da OP...">
+                <button id="btnSequenciamentoOP" class="btn btn-sugestao"><i class="fas fa-search"></i> BUSCAR</button>
+                <span style="font-size:11px; color:var(--texto-secundario);">O caminho contrário: parte de uma OP e mostra quais pedidos ainda em aberto ela ajuda a fechar.</span>
+            </div>
+            <div id="resultadoSequenciamentoOP"></div>
+        </div>
     </div>
 
     <div id="aba-fluxo-consolidado" class="aba-conteudo">

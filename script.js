@@ -950,6 +950,21 @@ function mostrarTooltipOP(e, id) {
         }
     } catch (err) { /* se a leitura falhar, só não mostra a grade — não trava o tooltip */ }
 
+    // Pedidos que essa OP ajuda a fechar (referência em comum, ainda com falta)
+    let pedidosHtml = '';
+    try {
+        const matches = pedidosQueEssaOPFecha(op);
+        if (matches.length) {
+            const MOSTRAR = 3;
+            const linhas = matches.slice(0, MOSTRAR).map(m => {
+                const selo = m.cobre === true ? '<i class="fas fa-check" style="color:var(--cor-despacho);"></i>' : m.cobre === false ? '<i class="fas fa-triangle-exclamation" style="color:var(--cor-alerta);" title="Grade dessa OP não tem esse tamanho"></i>' : '';
+                return `<div style="font-size:11px;">${selo} <strong>${m.pedido}</strong> — ${m.tam}: falta ${m.faltaProduzir} <span style="color:var(--texto-secundario);">(${m.cliente})</span></div>`;
+            }).join('');
+            const sobrando = matches.length - MOSTRAR;
+            pedidosHtml = `<div style="margin-top:8px;"><span class="lbl">Fecha pedido(s):</span><div style="margin-top:4px; display:flex; flex-direction:column; gap:2px;">${linhas}${sobrando > 0 ? `<div style="font-size:10px; color:var(--texto-secundario);">+${sobrando} outro(s)</div>` : ''}</div></div>`;
+        }
+    } catch (err) { /* se a leitura falhar, só não mostra essa seção */ }
+
     tt.innerHTML = `
         <div class="tt-header">
             <div style="display:flex; align-items:center; gap:8px;">
@@ -969,6 +984,7 @@ function mostrarTooltipOP(e, id) {
             <div><span class="lbl">Dias Parada:</span> <strong style="color:var(--cor-alerta);">${op.diasLocal || 0} dias</strong></div>
             ${op.dataCorteSuposta && formatarDataBR(op.dataCorteSuposta) ? `<div><span class="lbl">Corte Suposto:</span> <strong style="color:var(--cor-roxo);" title="Calculado de trás pra frente a partir da data de finalização no estoque (${formatarDataBR(op.dataFinalizacao)}), descontando ~22 dias de etiquetação+distribuição+estoque. É uma estimativa, não um compromisso.">${formatarDataBR(op.dataCorteSuposta)} <i class="fas fa-circle-question" style="font-size:10px;"></i></strong></div>` : ''}
             ${gradeHtml}
+            ${pedidosHtml}
             ${alertaAtraso}
             <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--borda-cor); color:var(--texto-secundario); font-style:italic;">${op.desc}</div>
         </div>
@@ -1599,6 +1615,27 @@ function obterSequenciaCompletaOPs() {
     try { return JSON.parse(localStorage.getItem('sequenciaCompletaOPs') || '[]'); } catch (e) { return []; }
 }
 
+// Dado o ID de uma OP, acha os pedidos AINDA PENDENTES (ainda falta produzir
+// alguma coisa) da mesma referência — o "inverso" do Sequenciamento, que
+// parte do pedido pra achar a OP. Cruza com a grade da OP (se importada) pra
+// saber se ela realmente tem o tamanho que falta, ou se isso ainda não dá
+// pra confirmar.
+function pedidosQueEssaOPFecha(op) {
+    if (!op || !op.referencia) return [];
+    const pendentesRef = obterPendentesPorReferencia().get(op.referencia);
+    if (!pendentesRef || !pendentesRef.length) return [];
+
+    const grades = obterGradesPorOP();
+    const gradeOP = grades[op.id];
+    const temGrade = !!(gradeOP && gradeOP.tamanhos && Object.keys(gradeOP.tamanhos).length);
+
+    return [...pendentesRef].sort(compararUrgenciaPedidos).map(p => ({
+        pedido: p.pedido, cliente: p.cliente, tam: p.tam, faltaProduzir: p.faltaProduzir,
+        chegada: p.chegada, prior: p.prior,
+        cobre: temGrade ? (gradeOP.tamanhos[p.tam] || 0) > 0 : null // null = grade não conferida
+    }));
+}
+
 function opsNaJornadaCompleta(referencia) {
     const grades = obterGradesPorOP();
     const vistas = new Set();
@@ -1632,6 +1669,60 @@ function opsNaJornadaCompleta(referencia) {
     // por último — melhor um alerta visível do que fingir que sabe onde está.
     itens.sort((a, b) => (b.posicao ?? -1) - (a.posicao ?? -1));
     return itens;
+}
+
+// Caminho contrário do de cima: parte de uma OP e mostra quais pedidos ela
+// ajuda a fechar. Busca em bancoDadosOPs primeiro (cobre até o Corte); se não
+// achar lá, tenta na jornada completa (pós-corte) só pra pegar a referência —
+// nesse caso não dá pra cruzar grade (ela é indexada por OP da Planilha A).
+function pesquisarSequenciamentoOP() {
+    const termo = $('inputSequenciamentoOP').value.trim();
+    const resultadoDiv = $('resultadoSequenciamentoOP');
+    if (!termo) { resultadoDiv.innerHTML = ''; return; }
+
+    let op = bancoDadosOPs.find(o => o.id === termo);
+    if (!op) {
+        const naJornada = obterSequenciaCompletaOPs().find(i => String(i.op) === termo);
+        if (naJornada) op = { id: naJornada.op, referencia: naJornada.ref, localExcel: naJornada.local };
+    }
+
+    if (!op) {
+        resultadoDiv.innerHTML = `<div style="padding:20px; text-align:center; color:var(--texto-secundario); border-top:1px solid var(--borda-cor);">
+            <i class="fas fa-info-circle"></i> OP "${termo}" não encontrada.
+        </div>`;
+        return;
+    }
+
+    const matches = pedidosQueEssaOPFecha(op);
+    const linhas = matches.map(m => {
+        const selo = m.cobre === true
+            ? '<span class="pill" style="background:var(--cor-despacho);"><i class="fas fa-check"></i> grade confere</span>'
+            : m.cobre === false
+                ? '<span class="pill" style="background:var(--cor-alerta);"><i class="fas fa-triangle-exclamation"></i> sem esse tamanho na grade</span>'
+                : '<span class="pill" style="background:var(--cor-historico);">grade não conferida</span>';
+        return `<tr>
+            <td><strong>${m.pedido}</strong></td>
+            <td>${m.cliente}</td>
+            <td>${m.tam}</td>
+            <td style="text-align:right;">${m.faltaProduzir}</td>
+            <td>${formatarDataBR(m.chegada) || 'S/ DATA'}</td>
+            <td>${selo}</td>
+        </tr>`;
+    }).join('');
+
+    resultadoDiv.innerHTML = `
+        <div style="padding:16px 20px; border-top:1px solid var(--borda-cor); background:var(--bg-painel);">
+            <div style="margin-bottom:12px; font-size:14px;">
+                <strong>OP ${op.id}</strong> — referência <strong>${op.referencia || 'sem referência'}</strong>${op.localExcel ? ` — em <strong>${op.localExcel}</strong>` : ''}
+            </div>
+            ${matches.length === 0
+                ? `<div style="color:var(--texto-secundario); font-style:italic;">Nenhum pedido em aberto usa essa referência hoje.</div>`
+                : `<table class="tabela-dados">
+                    <thead><tr><th>PEDIDO</th><th>CLIENTE</th><th>TAM</th><th style="text-align:right;">FALTA</th><th>CHEGADA</th><th>SITUAÇÃO DA GRADE</th></tr></thead>
+                    <tbody>${linhas}</tbody>
+                </table>`}
+        </div>
+    `;
 }
 
 function pesquisarSequenciamentoPedido() {
@@ -3914,6 +4005,8 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-sequenciamento', 'click', (event) => { abrirAba(event, 'aba-sequenciamento'); });
         wireEvento('btnSequenciamentoPedido', 'click', () => { pesquisarSequenciamentoPedido(); });
         wireEvento('inputSequenciamentoPedido', 'keyup', (e) => { if (e.key === 'Enter') pesquisarSequenciamentoPedido(); });
+        wireEvento('btnSequenciamentoOP', 'click', () => { pesquisarSequenciamentoOP(); });
+        wireEvento('inputSequenciamentoOP', 'keyup', (e) => { if (e.key === 'Enter') pesquisarSequenciamentoOP(); });
         ['capMaquinas', 'capHoras', 'capEficiencia'].forEach(id => {
             wireEvento(id, 'input', () => { salvarParametrosCapacidade(); renderizarCapacidade(); });
         });
