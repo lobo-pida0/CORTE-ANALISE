@@ -522,11 +522,12 @@ function pedidoParaLinhaSupabase(p) {
         chegada: p.chegada ? new Date(p.chegada).toISOString().slice(0, 10) : null,
         prior: p.prior === undefined || p.prior === null ? 99 : p.prior,
         falta_produzir: parseFloat(p.faltaProduzir) || 0,
+        falta_estoque: parseFloat(p.faltaEstoque) || 0,
         atualizado_em: new Date().toISOString()
     };
 }
 function linhaSupabaseParaPedido(l) {
-    return { cliente: l.cliente || '', pedido: l.pedido, situacao: l.situacao || '', chegada: l.chegada, prior: l.prior === null ? 99 : l.prior, referencia: l.referencia || '', tam: l.tam || '', faltaProduzir: l.falta_produzir || 0 };
+    return { cliente: l.cliente || '', pedido: l.pedido, situacao: l.situacao || '', chegada: l.chegada, prior: l.prior === null ? 99 : l.prior, referencia: l.referencia || '', tam: l.tam || '', faltaProduzir: l.falta_produzir || 0, faltaEstoque: l.falta_estoque || 0 };
 }
 
 // A grade fica guardada agrupada por OP (objeto), mas a tabela do Supabase é
