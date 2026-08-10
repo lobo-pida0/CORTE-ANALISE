@@ -415,6 +415,28 @@ function atualizarIndicadorLogin() {
         txt.innerText = 'VISITANTE';
         $('btnLoginAdmin').title = 'Entrar como admin';
     }
+    aplicarRestricaoDeAbaVisitante();
+}
+
+// Sem login, só a aba Sequenciamento fica disponível — as outras somem do
+// menu. Não é só estética: como as ações de edição já ficam bloqueadas de
+// qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
+// o visitante perdido clicando em telas que não fazem sentido pro papel dele.
+const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-sequenciamento'];
+function abaLiberadaAgora(idAba) {
+    return !!sessaoAdminAtual || ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba);
+}
+function aplicarRestricaoDeAbaVisitante() {
+    $$('.tab-btn').forEach(btn => {
+        const idAba = btn.id.replace('abrirAba-', '');
+        btn.style.display = abaLiberadaAgora(idAba) ? '' : 'none';
+    });
+    // Se a aba aberta agora não é mais permitida (ex: era admin e deslogou),
+    // joga pra Sequenciamento em vez de deixar a tela numa aba escondida.
+    const abaAtivaEl = document.querySelector('.aba-conteudo.ativa');
+    if (abaAtivaEl && !abaLiberadaAgora(abaAtivaEl.id)) {
+        abrirAba(null, 'aba-sequenciamento');
+    }
 }
 
 async function fazerLoginAdmin(email, senha) {
@@ -847,7 +869,7 @@ document.addEventListener('keydown', e => {
     }
     if (e.altKey && !isInput) {
         const abas = { '1': 'aba-programacao', '2': 'aba-fila', '3': 'aba-fluxo-consolidado' };
-        if (abas[e.key]) { e.preventDefault(); abrirAba(null, abas[e.key]); }
+        if (abas[e.key] && abaLiberadaAgora(abas[e.key])) { e.preventDefault(); abrirAba(null, abas[e.key]); }
         if (e.key.toLowerCase() === 's') { e.preventDefault(); processarExcel(); }
         if (e.key.toLowerCase() === 'c') { e.preventDefault(); $('filtroOP').focus(); }
     }
@@ -3730,7 +3752,7 @@ function importarBackup(e) {
     if (input) input.value = '';
 }
 
-function abrirAba(ev, id) { $$('.aba-conteudo').forEach(a => a.classList.remove('ativa')); $$('.tab-btn').forEach(b => b.classList.remove('ativo')); $(id).classList.add('ativa'); if (ev) ev.currentTarget.classList.add('ativo'); else $('abrirAba-' + id)?.classList.add('ativo'); if (id === 'aba-fluxo-consolidado') renderizarFluxoConsolidado(); }
+function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-sequenciamento'; ev = null; } $$('.aba-conteudo').forEach(a => a.classList.remove('ativa')); $$('.tab-btn').forEach(b => b.classList.remove('ativo')); $(id).classList.add('ativa'); if (ev) ev.currentTarget.classList.add('ativo'); else $('abrirAba-' + id)?.classList.add('ativo'); if (id === 'aba-fluxo-consolidado') renderizarFluxoConsolidado(); }
 function toggleMultiSelect() { const e = $('listaFiltroLocal'); e.style.display = e.style.display === 'block' ? 'none' : 'block'; }
 
 function inicializarFiltros() {
@@ -3993,6 +4015,11 @@ window.onload = function () {
     inicializarEventosUI();
 
     if (localStorage.getItem('temaEscuro') === 'true') document.body.classList.add('dark-mode');
+
+    // Restringe as abas já de cara (trata como visitante até confirmar login,
+    // que é assíncrono) — evita mostrar todas as abas por um instante antes
+    // de esconder de novo.
+    aplicarRestricaoDeAbaVisitante();
 
     // 1. Inicia o sistema normalmente
     inicializarFiltroEtapa();
