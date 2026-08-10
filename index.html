@@ -647,7 +647,8 @@
             <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
                 <input type="text" id="buscaNecessidade" placeholder="Filtrar por referência...">
                 <button id="btnAtualizarNecessidade" class="btn btn-sugestao"><i class="fas fa-rotate"></i> ATUALIZAR</button>
-                <span style="font-size:11px; color:var(--texto-secundario);">Soma a "Falta Estoque" de todos os pedidos com a mesma referência+tamanho — quanto falta no total, descontado só o estoque (sem descontar OP já em produção).</span>
+                <button id="btnModoNecessidade" class="btn" style="background:var(--cor-roxo); color:white;"><i class="fas fa-arrows-rotate"></i> VER POR FALTA OP</button>
+                <span id="explicacaoNecessidade" style="font-size:11px; color:var(--texto-secundario);"></span>
             </div>
             <div class="secao-corpo">
                 <table class="tabela-dados">
@@ -655,7 +656,7 @@
                         <tr>
                             <th>REFERÊNCIA</th>
                             <th>TAM</th>
-                            <th style="text-align:right;">FALTA ESTOQUE (TOTAL)</th>
+                            <th id="cabecalhoColunaNecessidade" style="text-align:right;">FALTA ESTOQUE (TOTAL)</th>
                             <th style="text-align:right;">Nº PEDIDOS</th>
                             <th>PEDIDOS</th>
                         </tr>

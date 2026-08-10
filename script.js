@@ -1563,26 +1563,27 @@ function obterTodosPedidos() {
     try { return JSON.parse(salvo); } catch (e) { return obterPedidosPendentes(); }
 }
 
-// Agrupa TODOS os itens de pedido por referência+tamanho, somando a coluna
-// "Falta Estoque" (X da planilha) — quanto falta depois de descontar só o
-// que já tem em estoque, SEM descontar o que já está em produção (diferente
-// da "Falta OP", que já desconta isso). Ex: pedido 123 (ref ABC tam 1, falta
-// estoque 10) + pedido 1234 (mesma ref/tam, falta estoque 20) -> vira uma
-// linha só, "ABC tam 1: 30 no total, de 2 pedidos".
-function obterNecessidadePorReferenciaETamanho() {
+// Agrupa TODOS os itens de pedido por referência+tamanho, somando o campo
+// escolhido — "faltaEstoque" (coluna X: quanto falta descontando só o
+// estoque, sem descontar o que já está em produção) ou "faltaProduzir"
+// (coluna AB "Falta OP": quanto falta depois de descontar TAMBÉM as OPs já
+// em produção). Ex: pedido 123 (ref ABC tam 1, falta 10) + pedido 1234
+// (mesma ref/tam, falta 20) -> vira uma linha só, "ABC tam 1: 30 no total".
+function obterNecessidadePorReferenciaETamanho(campo) {
+    campo = campo === 'faltaProduzir' ? 'faltaProduzir' : 'faltaEstoque';
     const mapa = new Map();
     obterTodosPedidos().forEach(p => {
-        const falta = parseFloat(p.faltaEstoque) || 0;
+        const falta = parseFloat(p[campo]) || 0;
         if (falta <= 0 || !p.referencia) return;
         const chave = `${p.referencia}|${p.tam}`;
-        if (!mapa.has(chave)) mapa.set(chave, { referencia: p.referencia, tam: p.tam, totalFaltaEstoque: 0, pedidos: new Set() });
+        if (!mapa.has(chave)) mapa.set(chave, { referencia: p.referencia, tam: p.tam, total: 0, pedidos: new Set() });
         const item = mapa.get(chave);
-        item.totalFaltaEstoque += falta;
+        item.total += falta;
         item.pedidos.add(p.pedido);
     });
     return [...mapa.values()]
-        .map(i => ({ referencia: i.referencia, tam: i.tam, totalFaltaEstoque: i.totalFaltaEstoque, qtdPedidos: i.pedidos.size, pedidos: [...i.pedidos] }))
-        .sort((a, b) => b.totalFaltaEstoque - a.totalFaltaEstoque);
+        .map(i => ({ referencia: i.referencia, tam: i.tam, total: i.total, qtdPedidos: i.pedidos.size, pedidos: [...i.pedidos] }))
+        .sort((a, b) => b.total - a.total);
 }
 
 // Compara a urgência de 2 itens de pedido pendente: sinalização manual do
@@ -1699,17 +1700,29 @@ function opsNaJornadaCompleta(referencia) {
 // ajuda a fechar. Busca em bancoDadosOPs primeiro (cobre até o Corte); se não
 // achar lá, tenta na jornada completa (pós-corte) só pra pegar a referência —
 // nesse caso não dá pra cruzar grade (ela é indexada por OP da Planilha A).
-// Desenha a tabela do Levantamento de Referências (aba só de admin).
+// Desenha a tabela do Levantamento de Referências (aba só de admin). Alterna
+// entre "Falta Estoque" (X) e "Falta OP" (AB) com um botão só, sem duas
+// telas separadas.
+let modoLevantamentoNecessidade = 'faltaEstoque'; // fica lembrado enquanto o sistema está aberto
+
 function renderizarNecessidadePorReferencia() {
     if (!$('listaNecessidade')) return;
     const termo = $('buscaNecessidade') ? $('buscaNecessidade').value.trim().toLowerCase() : '';
-    let linhas = obterNecessidadePorReferenciaETamanho();
+    let linhas = obterNecessidadePorReferenciaETamanho(modoLevantamentoNecessidade);
     if (termo) linhas = linhas.filter(l => l.referencia.toLowerCase().includes(termo));
+
+    const rotulo = modoLevantamentoNecessidade === 'faltaProduzir' ? 'FALTA OP (AB)' : 'FALTA ESTOQUE (X)';
+    const explicacao = modoLevantamentoNecessidade === 'faltaProduzir'
+        ? 'Soma a "Falta OP" — quanto falta depois de descontar o estoque E o que já está em produção (OPs abertas).'
+        : 'Soma a "Falta Estoque" — quanto falta descontando só o estoque, sem descontar o que já está em produção.';
+    if ($('explicacaoNecessidade')) $('explicacaoNecessidade').innerText = explicacao;
+    if ($('btnModoNecessidade')) $('btnModoNecessidade').innerText = modoLevantamentoNecessidade === 'faltaProduzir' ? 'VER POR FALTA ESTOQUE' : 'VER POR FALTA OP';
+    if ($('cabecalhoColunaNecessidade')) $('cabecalhoColunaNecessidade').innerText = rotulo + ' (TOTAL)';
 
     if ($('contNecessidade')) $('contNecessidade').innerText = `${linhas.length} referência(s)/tamanho(s)`;
 
     if (!linhas.length) {
-        $('listaNecessidade').innerHTML = `<tr><td colspan="5" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-inbox" style="font-size:20px; display:block; margin-bottom:8px;"></i>${termo ? 'Nada encontrado com esse filtro.' : 'Nenhuma referência com falta de estoque — sincronize os pedidos, ou a coluna "Falta Estoque" não veio na planilha.'}</td></tr>`;
+        $('listaNecessidade').innerHTML = `<tr><td colspan="5" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-inbox" style="font-size:20px; display:block; margin-bottom:8px;"></i>${termo ? 'Nada encontrado com esse filtro.' : `Nenhuma referência com ${rotulo.toLowerCase()} — sincronize os pedidos, ou essa coluna não veio na planilha.`}</td></tr>`;
         return;
     }
 
@@ -1717,12 +1730,18 @@ function renderizarNecessidadePorReferencia() {
         <tr>
             <td><strong>${l.referencia}</strong></td>
             <td>${l.tam || '-'}</td>
-            <td style="text-align:right; font-weight:900; color:var(--cor-alerta); font-size:14px;">${l.totalFaltaEstoque.toLocaleString('pt-BR')}</td>
+            <td style="text-align:right; font-weight:900; color:var(--cor-alerta); font-size:14px;">${l.total.toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${l.qtdPedidos}</td>
             <td style="font-size:11px; color:var(--texto-secundario);">${l.pedidos.slice(0, 5).join(', ')}${l.pedidos.length > 5 ? ` +${l.pedidos.length - 5}` : ''}</td>
         </tr>
     `).join('');
 }
+
+function alternarModoLevantamentoNecessidade() {
+    modoLevantamentoNecessidade = modoLevantamentoNecessidade === 'faltaProduzir' ? 'faltaEstoque' : 'faltaProduzir';
+    renderizarNecessidadePorReferencia();
+}
+
 
 function pesquisarSequenciamentoOP() {
     const termo = $('inputSequenciamentoOP').value.trim();
@@ -4111,6 +4130,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-fluxo-consolidado', 'click', (event) => { abrirAba(event, 'aba-fluxo-consolidado'); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('btnAtualizarNecessidade', 'click', () => { renderizarNecessidadePorReferencia(); });
+        wireEvento('btnModoNecessidade', 'click', () => { alternarModoLevantamentoNecessidade(); });
         wireEvento('buscaNecessidade', 'input', () => { renderizarNecessidadePorReferencia(); });
         wireEvento('toggleMultiSelectEtapa', 'click', () => { toggleMultiSelectEtapa(); });
         wireEvento('toggleMultiSelectDataCorte', 'click', () => { const e2 = $('listaFiltroDataCorte'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
