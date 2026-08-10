@@ -248,6 +248,7 @@
         <button id="abrirAba-aba-capacidade" class="tab-btn">MONTAR PRODUÇÃO</button>
         <button id="abrirAba-aba-sequenciamento" class="tab-btn">SEQUENCIAMENTO</button>
         <button id="abrirAba-aba-fluxo-consolidado" class="tab-btn">FLUXO GERAL</button>
+        <button id="abrirAba-aba-necessidade" class="tab-btn">LEVANTAMENTO</button>
     </div>
 
     <div id="aba-programacao" class="aba-conteudo integra ativa">
@@ -635,6 +636,31 @@
                         </tr>
                     </thead>
                     <tbody id="capListaOPs"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="aba-necessidade" class="aba-conteudo">
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-alerta);"><span><i class="fas fa-layer-group"></i> LEVANTAMENTO DE REFERÊNCIAS — QUANTO FALTA NO TOTAL</span><span id="contNecessidade">0 referências</span></div>
+            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
+                <input type="text" id="buscaNecessidade" placeholder="Filtrar por referência...">
+                <button id="btnAtualizarNecessidade" class="btn btn-sugestao"><i class="fas fa-rotate"></i> ATUALIZAR</button>
+                <span style="font-size:11px; color:var(--texto-secundario);">Soma a "Falta Estoque" de todos os pedidos com a mesma referência+tamanho — quanto falta no total, descontado só o estoque (sem descontar OP já em produção).</span>
+            </div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>REFERÊNCIA</th>
+                            <th>TAM</th>
+                            <th style="text-align:right;">FALTA ESTOQUE (TOTAL)</th>
+                            <th style="text-align:right;">Nº PEDIDOS</th>
+                            <th>PEDIDOS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaNecessidade"></tbody>
                 </table>
             </div>
         </div>
