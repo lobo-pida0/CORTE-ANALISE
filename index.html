@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>Corte Pro - Sistema Integrado Master</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src='https://unpkg.com/tesseract.js@v4.0.1/dist/tesseract.min.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="overlay-sidebar"></div>
+    <div id="sidebar-prioridades">
+        <div class="sidebar-header"><span><i class="fas fa-radar"></i> RADAR</span> <button id="toggleSidebarPrioridades" title="Fechar"
+               
+                style="background:transparent; border:none; color:white; cursor:pointer;"><i
+                    class="fas fa-times"></i></button></div>
+        <div id="lista-prioridades" class="sidebar-content"></div>
+    </div>
+
+    <div id="tooltip-op"></div>
+
+    <div id="painelConsoleDebug" class="console-debug">
+        <div id="alcaConsoleDebug" class="console-debug-alca" title="Console de depuração — passe o mouse ou toque pra abrir">
+            <i class="fas fa-terminal"></i>
+            <span id="badgeConsoleDebug" class="console-debug-badge" style="display:none;">0</span>
+        </div>
+        <div class="console-debug-conteudo">
+            <div class="console-debug-header">
+                <span><i class="fas fa-terminal"></i> CONSOLE DE DEPURAÇÃO</span>
+                <div style="display:flex; gap:6px;">
+                    <button id="btnCopiarConsoleDebug" class="console-debug-btn"><i class="fas fa-copy"></i> COPIAR</button>
+                    <button id="btnLimparConsoleDebug" class="console-debug-btn"><i class="fas fa-trash"></i> LIMPAR</button>
+                </div>
+            </div>
+            <div id="corpoConsoleDebug" class="console-debug-corpo"></div>
+        </div>
+    </div>
+
+    <div id="modalFracionarOverlay">
+        <div
+            style="background:var(--bg-card); padding:25px; border-radius:10px; width:450px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+            <h3
+                style="margin-top:0; border-bottom:2px solid var(--cor-sugestao); padding-bottom:10px; display:flex; justify-content:space-between;">
+                <span><i class="fas fa-cut"></i> FRACIONAR LOTE</span> <span id="fracOpId"
+                    style="background:var(--bg-painel); padding:4px 10px; border-radius:6px; font-size:14px;"></span>
+            </h3>
+            <div
+                style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:15px; background:rgba(0,0,0,0.02); padding:10px; border-radius:6px;">
+                <span>ORIGINAL: <strong id="fracTotalPcs" style="font-size:14px;">0</strong> pçs</span> <span>TEMPO:
+                    <strong id="fracTotalTempo" style="font-size:14px;">0</strong> min</span>
+            </div>
+            <input type="range" id="fracSlider" min="1" max="100" value="50"
+                style="width:100%; height:8px; outline:none; cursor:pointer; margin:20px 0;"
+               >
+            <div style="display:flex; gap:15px; margin-bottom:25px;">
+                <div
+                    style="flex:1; background:rgba(76, 154, 106, 0.1); padding:15px; border-radius:8px; border:1px solid var(--cor-despacho); text-align:center;">
+                    <div style="font-size:11px; font-weight:900; color:var(--cor-despacho);">KIT 1 (Move agora)</div>
+                    <div id="fracPcs1" style="font-size:22px; font-weight:900;">0 pçs</div>
+                    <div id="fracTempo1" style="font-size:13px; font-weight:bold;">0 min</div>
+                </div>
+                <div
+                    style="flex:1; background:var(--bg-painel); padding:15px; border-radius:8px; border:1px solid var(--borda-cor); text-align:center;">
+                    <div style="font-size:11px; font-weight:900; color:var(--texto-secundario);">KIT 2 (Nova OP p/ Fila)
+                    </div>
+                    <div id="fracPcs2" style="font-size:22px; font-weight:900;">0 pçs</div>
+                    <div id="fracTempo2" style="font-size:13px; font-weight:bold;">0 min</div>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button id="fecharModais" class="btn" style="background:var(--cor-historico); color:white;">CANCELAR</button>
+                <button id="confirmarFracionamento" class="btn btn-sugestao"><i class="fas fa-check-double"></i>
+                    CONFIRMAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="omniSearchOverlay">
+        <div id="omniSearchBox"
+            style="background:var(--bg-card); width:600px; padding:20px; border-radius:12px; margin-top:100px;">
+            <div style="display:flex; gap:10px; align-items:center; margin-bottom:15px;">
+                <i class="fas fa-search" style="font-size:20px; color:var(--cor-sugestao);"></i>
+                <input type="text" id="omniInput" placeholder="Buscar por OP, ciclo ou referência..."
+                    style="width:100%; font-size:18px; padding:12px; border:none; border-bottom:2px solid var(--cor-sugestao); background:transparent; color:var(--texto-cor);"
+                   >
+            </div>
+            <div id="omniResults" style="max-height:350px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <div id="modalGargalo"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="modalPrioridadeClientes"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="modalSequenciaPedidos"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="modalSequenciamentoFifo"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="modalGuiaSequenciamento"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="modalAgrupamentoReferencia"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="modalBalancoSincronizacao"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="modalGuiaSistema"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="modalLoginAdmin"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
+    <div id="ctxMenu">
+        <div id="ctxAcao-copiar" class="ctx-item"><i class="fas fa-copy"></i> Copiar Nº OP</div>
+        <div id="ctxAcao-prioridade" class="ctx-item"><i class="fas fa-star"></i> Alternar Prioridade</div>
+        <div id="ctxAcao-fracionar" class="ctx-item" style="border-top:1px solid var(--borda-cor);"><i
+                class="fas fa-cut" style="color:var(--cor-sugestao);"></i> Fracionar OP</div>
+        <div id="ctxAcao-avancar" class="ctx-item"
+            style="border-top:1px solid var(--borda-cor); color:var(--cor-despacho);"><i class="fas fa-arrow-right"></i>
+            Avançar Etapa</div>
+    </div>
+
+    <div class="header-main">
+        <button id="toggleSidebarPrioridades-2" class="btn" title="Ver OPs prioritárias"
+            style="background:rgba(184, 134, 42,0.2); color:#B8862A; position:relative;"><i class="fas fa-star"></i><span
+                id="badge-prioridades"
+                style="position:absolute; top:-6px; right:-6px; background:var(--cor-alerta); color:white; border-radius:50%; width:18px; height:18px; font-size:10px; display:none; align-items:center; justify-content:center; font-weight:bold;">0</span></button>
+        <h2 style="margin:0; border-left:4px solid var(--cor-selecao); padding-left:15px;">CORTE PRO <span
+                style="font-weight:300; font-size:14px; margin-left:8px;">| Controle Integrado</span></h2>
+        <div style="display:flex; gap:var(--espaco-sm); align-items:center;">
+            <button id="toggleTema" class="btn" title="Alternar tema claro/escuro" style="background:rgba(255,255,255,0.2); color:white;"><i
+                    class="fas fa-moon"></i></button>
+            <button id="abrirBuscaGlobal" class="btn" title="Busca global (Ctrl+K)" style="background:rgba(255,255,255,0.2); color:white;"><i
+                    class="fas fa-search"></i></button>
+            <button id="abrirGuiaSistema" class="btn" title="Guia — o que esse sistema faz" style="background:rgba(255,255,255,0.2); color:white;"><i
+                    class="fas fa-circle-question"></i></button>
+            <button id="btnLoginAdmin" class="btn" title="Entrar como admin" style="background:rgba(255,255,255,0.2); color:white;"><i
+                    class="fas fa-user-lock"></i> <span id="txtLoginAdmin">VISITANTE</span></button>
+            <span class="divisor-header"></span>
+
+            <!-- ANÁLISE: ferramentas de diagnóstico/sugestão -->
+            <div class="dropdown-container">
+                <button id="btnMenuAnalise" class="btn" style="background:var(--cor-alerta); color:white; font-weight:bold;"><i
+                        class="fas fa-chart-line"></i> ANÁLISE <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
+                <div id="menuAnalise" class="dropdown-menu">
+                    <button id="analisarGargalo" class="btn" style="background:var(--cor-alerta); color:white;"><i
+                            class="fas fa-search-location"></i> GARGALO</button>
+                    <button id="abrirSequenciamentoFifo" class="btn" title="Sugerir sequência por dias parado (FIFO + matéria-prima)"
+                        style="background:var(--cor-sugestao); color:white;"><i
+                            class="fas fa-sort-numeric-down"></i> SEQUENCIAMENTO FIFO</button>
+                    <button id="abrirAgrupamentoReferencia" class="btn" title="Agrupa OPs da mesma referência em Programação + Análise de Medidas"
+                        style="background:var(--cor-fila); color:white;"><i
+                            class="fas fa-layer-group"></i> AGRUPAR POR REFERÊNCIA</button>
+                    <div class="dropdown-separador"></div>
+                    <button id="abrirGuiaSequenciamento-menu" class="btn" style="background:var(--bg-painel); color:var(--texto-cor);"><i
+                            class="fas fa-question-circle"></i> QUAL SEQUÊNCIA USAR?</button>
+                </div>
+            </div>
+
+            <!-- IMPORTAR: planilhas complementares (a principal, Sincronizar, fica fora do menu) -->
+            <input type="file" id="inputExcel" accept=".xlsx, .xls"
+                style="font-size:11px; color:white; width:150px; background:transparent; border:none;">
+            <button id="processarExcel" class="btn btn-primario"><i class="fas fa-sync-alt"></i>
+                SINCRONIZAR</button>
+            <span id="atualizacao-sincronizar" title="Última vez que a planilha de OPs foi sincronizada" style="font-size:10px; color:rgba(255,255,255,0.75); white-space:nowrap;"></span>
+            <div class="dropdown-container">
+                <button id="btnMenuImportar" class="btn" style="background:#2F8577; color:white;"><i
+                        class="fas fa-file-import"></i> IMPORTAR <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
+                <div id="menuImportar" class="dropdown-menu">
+                    <label class="btn" style="background:#2F8577; color:white; cursor:pointer; margin:0;"
+                        title="Importar planilha de grades por tamanho (OP + Referência + Tamanho + Qtd)"><i
+                            class="fas fa-ruler-combined"></i> GRADE <input id="inputGrades" type="file" accept=".xlsx, .xls"
+                            style="display:none;"><span id="atualizacao-grade" style="margin-left:auto; font-size:10px; opacity:0.85;"></span></label>
+                    <label class="btn" style="background:#A83A42; color:white; cursor:pointer; margin:0;"
+                        title="Importar planilha de pedidos (Resumo Geral dos Pedidos)"><i
+                            class="fas fa-clipboard-list"></i> PEDIDOS <input id="inputPedidos" type="file" accept=".xlsx, .xls"
+                            style="display:none;"><span id="atualizacao-pedidos" style="margin-left:auto; font-size:10px; opacity:0.85;"></span></label>
+                </div>
+            </div>
+
+            <!-- SISTEMA: configurações e utilitários usados com menos frequência -->
+            <div class="dropdown-container">
+                <button id="btnMenuSistema" class="btn" style="background:var(--cor-roxo); color:white;"><i
+                        class="fas fa-cog"></i> SISTEMA <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
+                <div id="menuSistema" class="dropdown-menu">
+                    <button id="ativarModoTV" class="btn" style="background:var(--cor-roxo); color:white;"><i
+                            class="fas fa-tv"></i> MODO TV</button>
+                    <button id="abrirPrioridadeClientes" class="btn" title="Prioridade de clientes" style="background:#B8862A; color:white;"><i
+                            class="fas fa-crown"></i> PRIORIDADE DE CLIENTES</button>
+                    <button id="exportarBackup" class="btn" style="background:#35505C; color:white;"><i
+                            class="fas fa-download"></i> BAIXAR BACKUP</button>
+                    <button id="imprimirTela" class="btn" title="Imprime a lista de Programar Lote, do jeito que está filtrada agora" style="background:#2F8577; color:white;"><i
+                            class="fas fa-print"></i> IMPRIMIR LOTE</button>
+                    <label class="btn" style="background:var(--cor-historico); color:white; cursor:pointer; margin:0;"><i
+                            class="fas fa-upload"></i> RESTAURAR BACKUP <input id="importarBackup" type="file" accept=".json" style="display:none;"
+                           ></label>
+                    <div class="dropdown-separador"></div>
+                    <button id="publicarSupabase" class="btn" title="Envia as OPs e os pedidos pendentes de agora pra nuvem, pra quem só visualiza enxergar" style="background:#2E7D5B; color:white;"><i
+                            class="fas fa-cloud-upload-alt"></i> PUBLICAR NA NUVEM</button>
+                    <span id="statusPublicacaoSupabase" style="font-size:10px; padding:4px 12px; color:var(--texto-secundario); display:block;"></span>
+                    <div class="dropdown-separador"></div>
+                    <button id="zerarTudo" class="btn btn-perigo" title="Apaga todos os dados salvos neste navegador"><i
+                            class="fas fa-trash"></i> LIMPAR DADOS</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs-container">
+        <button id="abrirAba-aba-programacao" class="tab-btn ativo">PROGRAMAÇÃO</button>
+        <button id="abrirAba-aba-fila" class="tab-btn">FILA GERAL</button>
+        <button id="abrirAba-aba-pedidos" class="tab-btn">PEDIDOS PENDENTES</button>
+        <button id="abrirAba-aba-filacorte" class="tab-btn">FILA DE CORTE</button>
+        <button id="abrirAba-aba-capacidade" class="tab-btn">MONTAR PRODUÇÃO</button>
+        <button id="abrirAba-aba-sequenciamento" class="tab-btn">SEQUENCIAMENTO</button>
+        <button id="abrirAba-aba-fluxo-consolidado" class="tab-btn">FLUXO GERAL</button>
+    </div>
+
+    <div id="aba-programacao" class="aba-conteudo integra ativa">
+        <div class="painel-montador">
+            <div class="grupo-montador">
+                <div class="campo-meta" style="width:160px;"><label>ETAPA(S)</label>
+                    <div id="toggleMultiSelectEtapa" class="multi-select-container">
+                        <div class="multi-select-trigger" id="textoFiltroEtapa">Selecionar...</div>
+                        <div class="multi-select-options" id="listaFiltroEtapa"></div>
+                    </div>
+                </div>
+                <div class="campo-meta"><label>FILTRAR LOCAIS</label>
+                    <div id="toggleMultiSelect" class="multi-select-container">
+                        <div class="multi-select-trigger" id="textoFiltroLocal">FILTRAR...</div>
+                        <div class="multi-select-options" id="listaFiltroLocal"></div>
+                    </div>
+                </div>
+                <div class="campo-meta" style="width:60px;"><label>CICLO</label><input type="text" id="filtroCiclo"
+                       ></div>
+                <div class="campo-meta" style="width:120px;"><label>BUSCAR OP</label><input type="text" id="filtroOP"
+                       ></div>
+                <div class="campo-meta" style="width:110px;"><label>MATÉRIA-PRIMA</label><input type="text" id="filtroMP"
+                       ></div>
+                <div class="campo-meta" style="width:180px;"><label>DATA DE CORTE</label>
+                    <div id="toggleMultiSelectDataCorte" class="multi-select-container">
+                        <div class="multi-select-trigger" id="textoFiltroDataCorte">Todas</div>
+                        <div class="multi-select-options" id="listaFiltroDataCorte"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grupo-montador" style="flex-grow:1; min-width:260px;">
+                <div class="display-soma" style="min-width:110px;">
+                    <span style="font-size:9px; font-weight:bold; color:var(--texto-secundario);">SELECIONADO</span>
+                    <div id="somaOpsTxt" style="font-size:14px; font-weight:900; color:var(--cor-sugestao);">0 OPs</div>
+                    <div id="somaPecasTxt" style="font-size:18px; font-weight:900;">0 pçs</div>
+                    <div id="somaTempoTxt" style="font-size:13px; font-weight:bold; color:var(--cor-alerta);">0 min</div>
+                    <button id="limparSelecaoLote" class="btn" title="Desmarcar todas as OPs selecionadas" style="margin-top:4px; padding:2px 8px; font-size:9px; background:transparent; color:var(--texto-secundario); border:1px dashed var(--borda-cor);"><i class="fas fa-eraser"></i> LIMPAR</button>
+                </div>
+                <div
+                    style="flex-grow:1; background:var(--borda-cor); height:28px; border-radius:14px; overflow:hidden; position:relative; min-width:150px;">
+                    <div id="barraProgresso"
+                        style="background:var(--cor-selecao); height:100%; width:0%; transition:width 0.6s;"></div>
+                    <div id="textoProgresso"
+                        style="position:absolute; top:0; left:0; width:100%; text-align:center; font-size:12px; font-weight:700; line-height:28px; color:var(--texto-cor);">
+                        0%</div>
+                </div>
+            </div>
+
+            <div class="grupo-montador coluna">
+                <div class="linha-campo">
+                    <label style="width:55px;">DIAS:</label><input type="number" id="qtdDiasProg"
+                        style="width:40px; padding:3px; font-size:11px;"> x <input type="number" id="mediaDiaProg"
+                        value="2500" style="width:50px; padding:3px; font-size:11px;"><button id="sugerirPorDias"
+                        class="btn" style="padding:4px 8px; background:var(--cor-roxo); color:white;"><i
+                            class="fas fa-calendar-alt"></i></button>
+                </div>
+                <div class="linha-campo"><label
+                        style="width:55px;">META PÇS:</label><input type="number" id="metaLote"
+                        style="width:50px; padding:3px; font-size:11px;"><button id="autoSelecionarPorMeta-pecas"
+                        class="btn btn-sugestao"
+                        style="padding:4px 8px;">SUGERIR</button></div>
+                <div class="linha-campo"><label
+                        style="width:55px; color:var(--cor-alerta);">META MIN:</label><input type="number"
+                        id="metaTempo" style="width:50px; padding:3px; font-size:11px;"
+                       ><button id="autoSelecionarPorMeta-tempo"
+                        class="btn btn-sugestao" style="padding:4px 8px; background:var(--cor-alerta);">SUGERIR</button>
+                </div>
+                <div style="text-align:right;"><button id="abrirGuiaSequenciamento-montador" class="btn"
+                        style="padding:2px 8px; font-size:10px; background:transparent; color:var(--texto-secundario); border:1px dashed var(--borda-cor);"
+                        title="Qual gerador de sequência usar em cada situação?"><i class="fas fa-question-circle"></i> QUAL USAR?</button>
+                </div>
+            </div>
+
+            <div class="grupo-montador coluna">
+                <button id="copiarListaOps" class="btn btn-acao" style="padding:4px 8px; height:24px;"><i
+                        class="fas fa-copy"></i> COPIAR</button><button id="exportarRelatorioMontador"
+                    class="btn btn-excel" style="padding:4px 8px; height:24px;"><i class="fas fa-file-excel"></i>
+                    RELATÓRIO</button>
+            </div>
+        </div>
+
+        <div class="secao" id="secaoProgramarLote">
+            <div class="secao-header"><span>PROGRAMAR LOTE</span><span id="contDespacho">0 OPs</span></div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>MOV.</th>
+                            <th>SEL.</th>
+                            <th>ORDEM</th>
+                            <th>CICLO</th>
+                            <th>OP</th>
+                            <th>ETAPA</th>
+                            <th>MP</th>
+                            <th>LOCAL</th>
+                            <th>DESCRIÇÃO</th>
+                            <th>DUB?</th>
+                            <th>TEMPO</th>
+                            <th>PEÇAS</th>
+                            <th id="alternarOrdenacaoCorte" class="sortable">CORTE <span
+                                    id="setaOrdenacao">⇅</span></th>
+                            <th title="Estimativa calculada de trás pra frente a partir da data de finalização no estoque (quando ela existe na planilha)">PREV. CORTE</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaDespacho"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-roxo);"><span><i class="fas fa-user-clock"></i> OPs VINCULADAS A PEDIDOS PENDENTES</span><span
+                    id="contOPsVinculadas">0 OPs</span></div>
+            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:10px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
+                <label style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">Quero produzir</label>
+                <input type="number" id="metaPecasPedidos" placeholder="peças" style="width:100px;">
+                <button id="gerarSugestaoPedidos" class="btn btn-sugestao"><i class="fas fa-list-ol"></i> GERAR SEQUÊNCIA DE PRODUÇÃO</button>
+                <button id="abrirGuiaSequenciamento-pedidos" class="btn"
+                    style="padding:2px 8px; font-size:10px; background:transparent; color:var(--texto-secundario); border:1px dashed var(--borda-cor);"
+                    title="Qual gerador de sequência usar em cada situação?"><i class="fas fa-question-circle"></i> QUAL USAR?</button>
+                <span style="font-size:10px; color:var(--texto-secundario); margin-left:auto;"><i class="fas fa-clock"></i> OPs: <strong id="atualizacao-sincronizar-aba"></strong> · Pedidos: <strong id="atualizacao-pedidos-vinc"></strong></span>
+            </div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>URG.</th>
+                            <th>OP</th>
+                            <th>REFERÊNCIA</th>
+                            <th>ETAPA ATUAL</th>
+                            <th>CLIENTE</th>
+                            <th>PEDIDO</th>
+                            <th>TAM</th>
+                            <th>FALTA</th>
+                            <th id="ordenarOPsVinculadas-chegada" class="sortable">CHEGADA <span id="setaOPsVinculadas"></span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaOPsVinculadas"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-historico);"><span>ÚLTIMOS LOTES
+                    ENVIADOS</span><button id="limparHistorico" class="btn"
+                    style="background:rgba(255,255,255,0.2); color:white; padding:2px 8px;"><i
+                        class="fas fa-eraser"></i> LIMPAR</button></div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>DATA/HORA</th>
+                            <th>TOTAL PÇS</th>
+                            <th>ITENS ENVIADOS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaHistorico"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="aba-fila" class="aba-conteudo">
+        <div id="painel-visao-geral" style="display:flex; gap:var(--espaco-md); flex-wrap:wrap; margin-bottom:20px;">
+            <div class="card-resumo" id="cardResumoPedidos" style="border-top:4px solid var(--cor-alerta);">
+                <div class="cr-rotulo"><i class="fas fa-clipboard-list"></i> PEDIDOS PENDENTES</div>
+                <div class="cr-numero" id="resumo-pedidos-total">—</div>
+                <div class="cr-detalhe" id="resumo-pedidos-urgentes" style="color:var(--cor-alerta);"></div>
+            </div>
+            <div class="card-resumo" id="cardResumoVinculadas" style="border-top:4px solid var(--cor-roxo);">
+                <div class="cr-rotulo"><i class="fas fa-user-clock"></i> OPs VINCULADAS A PEDIDOS</div>
+                <div class="cr-numero" id="resumo-vinculadas-total">—</div>
+                <div class="cr-detalhe" id="resumo-vinculadas-urgentes" style="color:var(--cor-roxo);"></div>
+            </div>
+            <div class="card-resumo" id="cardResumoFilaCorte" style="border-top:4px solid var(--cor-fila);">
+                <div class="cr-rotulo"><i class="fas fa-scissors"></i> FILA DE CORTE</div>
+                <div class="cr-numero" id="resumo-diasfilacorte">—</div>
+                <div class="cr-detalhe" id="resumo-diasfilacorte-detalhe" style="color:var(--texto-secundario);"></div>
+            </div>
+            <div class="card-resumo" id="cardResumoGargalo" style="border-top:4px solid var(--cor-selecao);">
+                <div class="cr-rotulo"><i class="fas fa-search-location"></i> MAIOR GARGALO</div>
+                <div class="cr-numero" id="resumo-gargalo-setor" style="font-size:16px;">—</div>
+                <div class="cr-detalhe" id="resumo-gargalo-detalhe" style="color:var(--cor-selecao);"></div>
+            </div>
+            <div class="card-resumo" id="cardResumoFilaGeral" style="border-top:4px solid var(--cor-despacho); cursor:default;">
+                <div class="cr-rotulo"><i class="fas fa-list"></i> FILA GERAL (AQUI EMBAIXO)</div>
+                <div class="cr-numero" id="resumo-fila-total">—</div>
+                <div class="cr-detalhe" id="resumo-fila-atraso" style="color:var(--cor-alerta);"></div>
+            </div>
+        </div>
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-fila);"><span>FILA GERAL DE PRODUÇÃO</span><span
+                    id="contTotal">0 OPs</span></div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>MOV.</th>
+                            <th id="ordenarFilaGeral-ciclo" class="sortable">CICLO <span id="seta-ciclo"></span>
+                            </th>
+                            <th id="ordenarFilaGeral-id" class="sortable">OP <span id="seta-id"></span></th>
+                            <th id="ordenarFilaGeral-localDestino" class="sortable">LOCAL DESTINO <span
+                                    id="seta-localDestino"></span></th>
+                            <th id="ordenarFilaGeral-localExcel" class="sortable">SETOR ATUAL <span
+                                    id="seta-localExcel"></span></th>
+                            <th id="ordenarFilaGeral-temDublado" class="sortable">DUB? <span
+                                    id="seta-temDublado"></span></th>
+                            <th id="ordenarFilaGeral-tempoCorte" class="sortable">TEMPO <span
+                                    id="seta-tempoCorte"></span></th>
+                            <th id="ordenarFilaGeral-dMeta" class="sortable">PRÓXIMA META <span
+                                    id="seta-dMeta"></span></th>
+                            <th id="ordenarFilaGeral-sTxt" class="sortable">STATUS <span id="seta-sTxt"></span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaFilaGeral"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="aba-pedidos" class="aba-conteudo">
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:var(--cor-roxo);"><span><i class="fas fa-search"></i> BUSCAR PEDIDO ESPECÍFICO</span></div>
+            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
+                <input type="text" id="inputPesquisaPedido" placeholder="Número do pedido..." style="width:180px;">
+                <button id="btnPesquisarPedido" class="btn btn-sugestao"><i class="fas fa-search"></i> BUSCAR</button>
+                <span style="font-size:11px; color:var(--texto-secundario);">Busca só entre os pedidos que ainda têm algo faltando (os da tabela abaixo) — mostra as referências pendentes e quais OPs já existem hoje pra cada uma.</span>
+            </div>
+            <div id="resultadoPesquisaPedido"></div>
+        </div>
+        <div class="secao">
+            <div class="secao-header" style="background:#A83A42;"><span>PEDIDOS SEM PRODUÇÃO SUFICIENTE</span><span
+                    id="contPedidosPendentes">0 itens</span></div>
+            <div style="padding:12px 20px; font-size:11px; color:var(--texto-secundario); background:var(--bg-painel); border-bottom:1px solid var(--borda-cor);">
+                Referências/tamanhos que o pedido pede e que nem estoque nem OP em produção cobrem ainda. Ordenado por
+                urgência: sinalização manual do pedido primeiro, depois data de chegada (com desempate por prioridade
+                de cliente dentro de uma semana).
+                <div style="margin-top:6px;"><i class="fas fa-clock"></i> Planilha de pedidos atualizada: <strong id="atualizacao-pedidos-aba"></strong></div>
+            </div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>URG.</th>
+                            <th>CLIENTE</th>
+                            <th>PEDIDO</th>
+                            <th>REFERÊNCIA</th>
+                            <th>TAM</th>
+                            <th>FALTA PRODUZIR</th>
+                            <th id="ordenarPedidosPendentes-chegada" class="sortable">CHEGADA <span id="setaPedidosPendentes"></span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaPedidosPendentes"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="aba-filacorte" class="aba-conteudo">
+        <div class="secao" id="painel-fila-corte">
+            <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-scissors"></i> FILA DE CORTE</span><span
+                    id="mediaCorteInfo">Sem dados de produção do Corte lançados ainda</span></div>
+            <div id="botoes-acao-filacorte" style="display:flex; align-items:center; gap:var(--espaco-sm); padding:10px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
+                <label class="btn" style="background:var(--cor-fila); color:white; cursor:pointer; margin:0;"
+                    title="Importar planilha geral (todos os setores, POR_OP) pra atualizar a fila"><i
+                        class="fas fa-file-import"></i> IMPORTAR PLANILHA GERAL <input id="inputFilaCorte" type="file"
+                        accept=".xlsx, .xls" style="display:none;"></label>
+                <button id="baixarImagemFilaCorte" class="btn btn-acao" title="Baixar como imagem pra anexar/colar em e-mail"><i
+                        class="fas fa-camera"></i> BAIXAR IMAGEM</button>
+                <span style="font-size:11px; color:var(--texto-secundario);">
+                    "Dias Fila" = peças paradas no setor ÷ média diária cortada pelo Corte. "Dias Fila Corte" soma só
+                    Enfesto + Corte — os dois mais perto da mesa de corte de verdade.
+                    <br><i class="fas fa-clock"></i> Planilha geral atualizada: <strong id="atualizacao-filacorte-aba"></strong>
+                </span>
+            </div>
+            <div id="barra-filtro-local-producao" style="display:flex; align-items:center; gap:var(--espaco-md); padding:10px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <label style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;"
+                        title="Coluna &quot;Local Obs.&quot; da planilha geral">Local de produção:</label>
+                    <div id="toggleMultiSelectLocalProd" class="multi-select-container" style="width:190px;">
+                        <div class="multi-select-trigger" id="textoFiltroLocalProd">Todos</div>
+                        <div class="multi-select-options" id="listaFiltroLocalProd"></div>
+                    </div>
+                    <button id="marcarTodosLocalProd" class="btn" style="padding:3px 8px; font-size:10px; background:transparent; color:var(--texto-secundario); border:1px dashed var(--borda-cor);">MARCAR TODOS</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <label style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;"
+                        title="Coluna &quot;Tipo Produto&quot; da planilha geral (ex: BONE)">Tipo de produto:</label>
+                    <div id="toggleMultiSelectTipoProd" class="multi-select-container" style="width:170px;">
+                        <div class="multi-select-trigger" id="textoFiltroTipoProd">Todos</div>
+                        <div class="multi-select-options" id="listaFiltroTipoProd"></div>
+                    </div>
+                    <button id="marcarTodosTipoProd" class="btn" style="padding:3px 8px; font-size:10px; background:transparent; color:var(--texto-secundario); border:1px dashed var(--borda-cor);">MARCAR TODOS</button>
+                </div>
+            </div>
+            <div class="secao-corpo" style="max-height:none;">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>LOCAL</th>
+                            <th style="text-align:right;">QT PEÇAS LOCAL</th>
+                            <th style="text-align:right;">QT OP ABERTO</th>
+                            <th style="text-align:right;">DIAS FILA</th>
+                            <th style="text-align:right;">DIAS FILA CORTE</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaFilaCorte"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="secao" id="secaoOPsFilaCorte">
+            <div class="secao-header" style="background:var(--cor-sugestao);"><span><i class="fas fa-list"></i> OPs DENTRO DESSES SETORES</span><span
+                    id="contOPsFilaCorte">0 OPs</span></div>
+            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:10px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
+                <label style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">Setor:</label>
+                <select id="filtroSetorOPsFilaCorte" style="font-size:11px; padding:4px;"></select>
+                <input type="text" id="buscaOPsFilaCorte" placeholder="Buscar OP, referência ou local..." style="width:230px; font-size:11px; padding:4px;">
+                <span style="font-size:11px; color:var(--texto-secundario);">Segue o mesmo filtro de local de produção lá de cima.</span>
+            </div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>OP</th>
+                            <th>REFERÊNCIA</th>
+                            <th>SETOR</th>
+                            <th>LOCAL DE PRODUÇÃO</th>
+                            <th style="text-align:right;">PEÇAS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaOPsFilaCorte"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="aba-capacidade" class="aba-conteudo">
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-gauge-high"></i> CAPACIDADE DO DIA</span><span id="capacidadeResumoTopo"></span></div>
+            <div style="display:flex; align-items:flex-end; gap:var(--espaco-md); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
+                <div class="campo-meta" style="width:110px;"><label>Nº DE MÁQUINAS</label><input type="number" id="capMaquinas" min="1" step="1" value="2"></div>
+                <div class="campo-meta" style="width:110px;"><label>HORAS POR DIA</label><input type="number" id="capHoras" min="0.5" step="0.5" value="8"></div>
+                <div class="campo-meta" style="width:110px;"><label>EFICIÊNCIA (%)</label><input type="number" id="capEficiencia" min="1" max="100" step="1" value="85"></div>
+                <div style="flex:1; min-width:260px; background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:8px; padding:12px 16px;">
+                    <div style="font-size:11px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">Minutos disponíveis no dia</div>
+                    <div id="capDisponivel" style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">—</div>
+                    <div id="capDisponivelDetalhe" style="font-size:10px; color:var(--texto-secundario);"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div id="capBarraResultado" style="padding:16px 20px; background:var(--bg-card); border-left:6px solid var(--borda-cor);">
+                <div id="capVeredito" style="font-size:15px; font-weight:700;">Marque as OPs abaixo pra montar a produção do dia.</div>
+                <div id="capDetalhe" style="font-size:12px; color:var(--texto-secundario); margin-top:6px;"></div>
+                <div style="margin-top:10px; height:14px; background:var(--bg-painel); border-radius:7px; overflow:hidden; border:1px solid var(--borda-cor);">
+                    <div id="capBarra" style="height:100%; width:0%; background:var(--cor-despacho); transition:width 0.4s ease;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-list-check"></i> OPs DISPONÍVEIS</span><span id="capContOPs">0 OPs</span></div>
+            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:10px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
+                <label style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">Etapa:</label>
+                <select id="capFiltroEtapa" style="font-size:11px; padding:4px;"></select>
+                <input type="text" id="capBusca" placeholder="Buscar OP, ciclo ou descrição..." style="width:220px; font-size:11px; padding:4px;">
+                <label style="font-size:11px; display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="checkbox" id="capSoSemTempo"> só as sem tempo
+                </label>
+                <button id="capLimparSelecao" class="btn" style="padding:3px 10px; font-size:10px; background:transparent; color:var(--texto-secundario); border:1px dashed var(--borda-cor);">LIMPAR SELEÇÃO</button>
+                <span style="font-size:11px; color:var(--texto-secundario);">OPs sem tempo aparecem com o campo editável — o valor digitado fica salvo.</span>
+            </div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>SEL.</th>
+                            <th>OP</th>
+                            <th>CICLO</th>
+                            <th>ETAPA</th>
+                            <th>DESCRIÇÃO</th>
+                            <th style="text-align:right;">PEÇAS</th>
+                            <th style="text-align:right;">TEMPO (MIN)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="capListaOPs"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="aba-sequenciamento" class="aba-conteudo">
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:var(--cor-roxo);"><span><i class="fas fa-route"></i> QUAL OP USAR PRA ATENDER O PEDIDO</span></div>
+            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
+                <input type="text" id="inputSequenciamentoPedido" placeholder="Número do pedido..." style="width:180px;">
+                <button id="btnSequenciamentoPedido" class="btn btn-sugestao"><i class="fas fa-search"></i> BUSCAR</button>
+                <span style="font-size:11px; color:var(--texto-secundario);">Pra cada tamanho que falta, mostra todas as OPs da referência — da fila de corte até o estoque — e destaca a mais perto de ficar pronta.</span>
+            </div>
+            <div id="resultadoSequenciamentoPedido"></div>
+        </div>
+    </div>
+
+    <div id="aba-fluxo-consolidado" class="aba-conteudo">
+        <div class="kpi-card" style="border-top:4px solid #35505C; padding:25px; margin-bottom:20px;">
+            <div
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px; flex-wrap:wrap; gap:10px;">
+                <h2 style="font-size:16px; margin:0; font-weight:900;"><i class="fas fa-chart-network"></i> BALANÇO DE
+                    LINHA (MÊS ATUAL)</h2>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <div
+                        style="display:flex; gap:5px; background:var(--bg-input); padding:4px; border-radius:6px; border:1px solid var(--borda-cor);">
+                        <label id="btn-fluxo-acumulado"
+                            style="cursor:pointer; font-size:11px; font-weight:bold; padding:4px 10px; border-radius:4px; background:var(--cor-selecao); color:#333;"><input id="mudarModoFluxo-acumulado-acumulado"
+                                type="radio" name="modo_fluxo" value="acumulado" checked style="display:none;"
+                               > ACUMULADO</label>
+                        <label id="btn-fluxo-diario"
+                            style="cursor:pointer; font-size:11px; font-weight:bold; padding:4px 10px; border-radius:4px; color:var(--texto-cor);"><input id="mudarModoFluxo-diario-diario"
+                                type="radio" name="modo_fluxo" value="diario" style="display:none;"
+                               > DIA A DIA</label>
+                    </div>
+                    <button id="renderizarFluxoConsolidado" class="btn btn-primario"><i
+                            class="fas fa-sync-alt"></i> RECALCULAR</button>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:20px; margin-bottom:25px; flex-wrap:wrap;">
+                <div style="flex:2; height:350px; min-width:400px;">
+                    <canvas id="graficoFluxoConsolidado"></canvas>
+                </div>
+                <div
+                    style="flex:1; height:350px; min-width:250px; background:var(--bg-painel); border-radius:8px; border:1px solid var(--borda-cor); padding:15px; display:flex; flex-direction:column; box-shadow:inset var(--sombra-leve);">
+                    <h3 style="margin-top:0; font-size:12px; text-align:center; color:var(--texto-secundario);">FUNIL DE
+                        RETENÇÃO (%)</h3>
+                    <div style="flex:1; position:relative;">
+                        <canvas id="graficoFunil"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="cardsSectoresResumo"
+                style="display:flex; gap:10px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:10px; align-items:center;">
+            </div>
+        </div>
+    </div>
+
+        <script src="script.js"></script>
+</body>
+
+</html>
