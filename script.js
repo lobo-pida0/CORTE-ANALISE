@@ -1441,19 +1441,19 @@ function processarPedidos() {
             if (faltando.length) throw new Error("Não encontrei as colunas: " + faltando.join(', ') + ". Cabeçalho real da planilha (primeira linha): [" + cab.filter(c => c).join(' | ') + "]");
 
             const pendentes = [];
+            const todos = []; // TODOS os itens, mesmo já cobertos — só pra consulta/busca, não entra na aba Pedidos Pendentes nem nas contagens de urgência
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxPedido]) continue;
                 const situacao = String(row[idxSituacao] || '').trim().toUpperCase();
                 if (situacao === 'BLOQUEADO') continue;
                 const faltaOP = parseFloat(row[idxFaltaOP]) || 0;
-                if (faltaOP <= 0) continue;
 
                 const chegadaRaw = row[idxChegada];
                 const chegada = chegadaRaw instanceof Date ? chegadaRaw : extrairDataExcel(chegadaRaw);
                 const prior = idxPrior !== -1 && row[idxPrior] !== undefined && row[idxPrior] !== null && row[idxPrior] !== ''
                     ? parseFloat(row[idxPrior]) : 99;
 
-                pendentes.push({
+                const item = {
                     cliente: String(row[idxNome] || '').trim(),
                     pedido: String(row[idxPedido]).trim(),
                     situacao,
@@ -1462,10 +1462,14 @@ function processarPedidos() {
                     referencia: String(row[idxRef] || '').trim().toUpperCase(),
                     tam: String(row[idxTam] || '').trim().toUpperCase(),
                     faltaProduzir: faltaOP
-                });
+                };
+                todos.push(item);
+                if (faltaOP > 0) pendentes.push(item);
             }
 
             localStorage.setItem('pedidosPendentes', JSON.stringify(pendentes));
+            try { localStorage.setItem('todosPedidos', JSON.stringify(todos)); }
+            catch (err) { console.warn('Não coube a lista completa de pedidos (só busca fica afetada):', err.message); localStorage.removeItem('todosPedidos'); }
             input.value = '';
             renderizarPedidosPendentes();
             renderizarTudoImediato();
@@ -1484,6 +1488,18 @@ function obterPedidosPendentes() {
     const salvo = localStorage.getItem('pedidosPendentes');
     if (!salvo) return [];
     try { return JSON.parse(salvo); } catch (e) { return []; }
+}
+
+// TODOS os itens da última importação de pedidos, mesmo os já cobertos (falta
+// = 0) — usado só pra busca/consulta (Busca de Pedido, Sequenciamento), nunca
+// pra contagem de pendentes/urgência, que continuam só com quem falta de
+// verdade. Se não tiver essa lista (planilha antiga, importada antes dessa
+// funcionalidade existir), cai pros pendentes — melhor achar menos do que
+// travar a busca.
+function obterTodosPedidos() {
+    const salvo = localStorage.getItem('todosPedidos');
+    if (!salvo) return obterPedidosPendentes();
+    try { return JSON.parse(salvo); } catch (e) { return obterPedidosPendentes(); }
 }
 
 // Compara a urgência de 2 itens de pedido pendente: sinalização manual do
@@ -1580,10 +1596,10 @@ function pesquisarSequenciamentoPedido() {
     const resultadoDiv = $('resultadoSequenciamentoPedido');
     if (!termo) { resultadoDiv.innerHTML = ''; return; }
 
-    const itens = obterPedidosPendentes().filter(p => p.pedido === termo);
+    const itens = obterTodosPedidos().filter(p => p.pedido === termo);
     if (itens.length === 0) {
         resultadoDiv.innerHTML = `<div style="padding:20px; text-align:center; color:var(--texto-secundario); border-top:1px solid var(--borda-cor);">
-            <i class="fas fa-info-circle"></i> Pedido "${termo}" não encontrado entre os pendentes.
+            <i class="fas fa-info-circle"></i> Pedido "${termo}" não encontrado.
         </div>`;
         return;
     }
@@ -1618,7 +1634,9 @@ function pesquisarSequenciamentoPedido() {
                     : `<span class="pill" style="background:var(--cor-selecao); color:#2d3436; font-size:9px;">OP ${melhor.op} num local ainda não mapeado (${melhor.local})</span>`;
             }
             return `<div style="display:inline-flex; flex-direction:column; align-items:flex-start; gap:4px; background:var(--bg-painel); border:1px solid var(--borda-cor); border-radius:6px; padding:6px 10px; margin:0 8px 8px 0;">
-                <span class="pill" style="background:var(--cor-alerta);">${l.tam}: falta ${l.faltaProduzir}</span>
+                ${l.faltaProduzir > 0
+                    ? `<span class="pill" style="background:var(--cor-alerta);">${l.tam}: falta ${l.faltaProduzir}</span>`
+                    : `<span class="pill" style="background:var(--cor-despacho);"><i class="fas fa-check"></i> ${l.tam}: já coberto</span>`}
                 ${indicador}
             </div>`;
         }).join('');
@@ -1666,11 +1684,11 @@ function pesquisarPedido() {
     const resultadoDiv = $('resultadoPesquisaPedido');
     if (!termo) { resultadoDiv.innerHTML = ''; return; }
 
-    const itens = obterPedidosPendentes().filter(p => p.pedido === termo);
+    const itens = obterTodosPedidos().filter(p => p.pedido === termo);
 
     if (itens.length === 0) {
         resultadoDiv.innerHTML = `<div style="padding:20px; text-align:center; color:var(--texto-secundario); border-top:1px solid var(--borda-cor);">
-            <i class="fas fa-info-circle"></i> Pedido "${termo}" não encontrado entre os pendentes — ou já está totalmente coberto (estoque + OP), ou o número está diferente do que veio na planilha.
+            <i class="fas fa-info-circle"></i> Pedido "${termo}" não encontrado — o número deve estar diferente do que veio na planilha.
         </div>`;
         return;
     }
@@ -1727,7 +1745,9 @@ function pesquisarPedido() {
                     }).join('')}
                 </div>`;
             return `<div style="display:inline-flex; flex-direction:column; align-items:flex-start; gap:4px; background:var(--bg-painel); border:1px solid var(--borda-cor); border-radius:6px; padding:6px 10px; margin:0 8px 8px 0; max-width:280px;">
-                <span class="pill" style="background:var(--cor-alerta);">${l.tam}: falta ${l.faltaProduzir}</span>
+                ${l.faltaProduzir > 0
+                    ? `<span class="pill" style="background:var(--cor-alerta);">${l.tam}: falta ${l.faltaProduzir}</span>`
+                    : `<span class="pill" style="background:var(--cor-despacho);"><i class="fas fa-check"></i> ${l.tam}: já coberto</span>`}
                 ${avisoGrade}
                 ${detalheContribuicoes}
             </div>`;
