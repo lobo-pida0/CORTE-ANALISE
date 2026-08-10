@@ -570,7 +570,8 @@ async function publicarTudoNoSupabase() {
     const linhasGrade = gradesParaLinhasSupabase(obterGradesPorOP());
     const listaPrioridade = obterListaPrioridadeClientes();
     const linhasLocalizacao = sequenciaCompletaParaLinhasSupabase(obterSequenciaCompletaOPs());
-    if (!bancoDadosOPs.length && !pedidosAtuais.length && !linhasGrade.length && !linhasLocalizacao.length) { showToast('Nada pra publicar — sincronize primeiro.', true); return; }
+    const todosOsPedidos = obterTodosPedidos().map(pedidoParaLinhaSupabase);
+    if (!bancoDadosOPs.length && !pedidosAtuais.length && !linhasGrade.length && !linhasLocalizacao.length && !todosOsPedidos.length) { showToast('Nada pra publicar — sincronize primeiro.', true); return; }
 
     try {
         let resumo = [];
@@ -598,6 +599,11 @@ async function publicarTudoNoSupabase() {
             if (status) status.innerText = `Publicando ${linhasLocalizacao.length} localizações...`;
             const r = await sincronizarTabelaSupabase('localizacao_completa', linhasLocalizacao);
             resumo.push(`${r.publicados} localizações`);
+        }
+        if (todosOsPedidos.length) {
+            if (status) status.innerText = `Publicando ${todosOsPedidos.length} pedidos (todos)...`;
+            const r = await sincronizarTabelaSupabase('pedidos_todos', todosOsPedidos);
+            resumo.push(`${r.publicados} pedidos (busca)`);
         }
         if (status) status.innerText = `Publicado às ${new Date().toLocaleTimeString('pt-BR')}`;
         showToast(`<i class="fas fa-cloud-upload-alt"></i> Publicado: ${resumo.join(' + ')}!`);
@@ -698,6 +704,21 @@ async function carregarLocalizacaoCompletaDaNuvemParaVisitante() {
         }
     } catch (e) {
         registrarLogDebug('error', ['Falha ao carregar localização completa da nuvem: ' + e.message]);
+    }
+}
+
+// Mesma ideia, pra "todos os pedidos" (inclusive já cobertos) — usada só
+// pela Busca de Pedido e Sequenciamento, nunca pelas contagens/urgência.
+async function carregarTodosPedidosDaNuvemParaVisitante() {
+    if (!supabaseClient || sessaoAdminAtual) return;
+    try {
+        const data = await buscarTodasLinhasSupabase('pedidos_todos');
+        registrarLogDebug('log', [`[NUVEM] Busca de todos os pedidos concluída: ${data ? data.length : 0} itens encontrados.`]);
+        if (data && data.length) {
+            localStorage.setItem('todosPedidos', JSON.stringify(data.map(linhaSupabaseParaPedido)));
+        }
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao carregar todos os pedidos da nuvem: ' + e.message]);
     }
 }
 
@@ -3995,6 +4016,7 @@ window.onload = function () {
         carregarGradeDaNuvemParaVisitante();
         carregarPrioridadeClientesDaNuvemParaVisitante();
         carregarLocalizacaoCompletaDaNuvemParaVisitante();
+        carregarTodosPedidosDaNuvemParaVisitante();
     });
     atualizarBadgeConsoleDebug();
 };
