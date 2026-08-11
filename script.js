@@ -962,10 +962,22 @@ function mostrarTooltipOP(e, id) {
                 .map(([tam, qtd]) => `<span style="background:var(--bg-painel); border:1px solid var(--borda-cor); border-radius:4px; padding:2px 7px; margin:2px 3px 0 0; display:inline-block; font-size:11px;"><strong>${tam}</strong>: ${qtd}</span>`)
                 .join('');
             gradeHtml = `<div style="margin-top:8px;"><span class="lbl">Grade:</span><div style="margin-top:4px;">${selosTamanho}</div></div>`;
+
+            // Uniformidade — o quão "redonda" a grade é pro enfesto (ver
+            // calcularUniformidadeGrade). Só mostra quando dá pra calcular.
+            const uniformidade = calcularUniformidadeGrade(gradeOP.tamanhos);
+            if (uniformidade !== null) {
+                let corUnif, textoUnif;
+                if (uniformidade >= 0.5) { corUnif = 'var(--cor-despacho)'; textoUnif = 'grade uniforme'; }
+                else if (uniformidade >= 0.15) { corUnif = 'var(--cor-selecao)'; textoUnif = 'grade moderada'; }
+                else { corUnif = 'var(--cor-alerta)'; textoUnif = 'grade complexa — enfesto tende a ser mais lento'; }
+                gradeHtml += `<div style="margin-top:4px;"><span class="pill" style="background:${corUnif}; font-size:9px; color:${uniformidade >= 0.15 && uniformidade < 0.5 ? '#2d3436' : 'white'};" title="Quanto mais próximo de 100%, mais a grade se repete num padrão único — menos esquemas de enfesto.">${textoUnif} (${Math.round(uniformidade * 100)}%)</span></div>`;
+            }
         }
     } catch (err) { /* se a leitura falhar, só não mostra a grade — não trava o tooltip */ }
 
-    // Pedidos que essa OP ajuda a fechar (referência em comum, ainda com falta)
+    // Pedidos que essa OP ajuda a fechar (referência em comum) — inclui os já
+    // cobertos, não só os que ainda faltam
     let pedidosHtml = '';
     try {
         const matches = pedidosQueEssaOPFecha(op);
@@ -973,7 +985,8 @@ function mostrarTooltipOP(e, id) {
             const MOSTRAR = 3;
             const linhas = matches.slice(0, MOSTRAR).map(m => {
                 const selo = m.cobre === true ? '<i class="fas fa-check" style="color:var(--cor-despacho);"></i>' : m.cobre === false ? '<i class="fas fa-triangle-exclamation" style="color:var(--cor-alerta);" title="Grade dessa OP não tem esse tamanho"></i>' : '';
-                return `<div style="font-size:11px;">${selo} <strong>${m.pedido}</strong> — ${m.tam}: falta ${m.faltaProduzir} <span style="color:var(--texto-secundario);">(${m.cliente})</span></div>`;
+                const situacao = m.faltaProduzir > 0 ? `falta ${m.faltaProduzir}` : `<span style="color:var(--cor-despacho);">já coberto</span>`;
+                return `<div style="font-size:11px;">${selo} <strong>${m.pedido}</strong> — ${m.tam}: ${situacao} <span style="color:var(--texto-secundario);">(${m.cliente})</span></div>`;
             }).join('');
             const sobrando = matches.length - MOSTRAR;
             pedidosHtml = `<div style="margin-top:8px;"><span class="lbl">Fecha pedido(s):</span><div style="margin-top:4px; display:flex; flex-direction:column; gap:2px;">${linhas}${sobrando > 0 ? `<div style="font-size:10px; color:var(--texto-secundario);">+${sobrando} outro(s)</div>` : ''}</div></div>`;
@@ -1662,9 +1675,25 @@ function obterSequenciaCompletaOPs() {
 // parte do pedido pra achar a OP. Cruza com a grade da OP (se importada) pra
 // saber se ela realmente tem o tamanho que falta, ou se isso ainda não dá
 // pra confirmar.
+// Mesma ideia de obterPendentesPorReferencia(), mas com TODOS os pedidos
+// (inclusive já cobertos) — usada só pela busca "quais pedidos essa OP
+// fecha", que precisa achar até os pedidos que já estão resolvidos (pra
+// mostrar "já coberto" corretamente). Não reaproveitar essa em lugar de
+// obterPendentesPorReferencia() nos contadores/urgência — lá o certo
+// continua sendo só o que falta de verdade.
+function obterTodosPedidosPorReferencia() {
+    const mapa = new Map();
+    obterTodosPedidos().forEach(p => {
+        if (!p.referencia) return;
+        if (!mapa.has(p.referencia)) mapa.set(p.referencia, []);
+        mapa.get(p.referencia).push(p);
+    });
+    return mapa;
+}
+
 function pedidosQueEssaOPFecha(op) {
     if (!op || !op.referencia) return [];
-    const pendentesRef = obterPendentesPorReferencia().get(op.referencia);
+    const pendentesRef = obterTodosPedidosPorReferencia().get(op.referencia);
     if (!pendentesRef || !pendentesRef.length) return [];
 
     const grades = obterGradesPorOP();
@@ -2792,6 +2821,35 @@ function renderizarTabelaFilaGeral() {
 //PAINEL MONTADOR/PROGRAMAÇÃO//
 // Lê a grade por tamanho de todas as OPs (planilha de Grade já importada) —
 // usada tanto no tooltip da OP quanto na checagem de cobertura de pedido.
+// =========================================================================
+// 📐 UNIFORMIDADE DE GRADE — o quão "redonda" é a grade de uma OP, pensando
+// no enfesto. Ideia explicada pelo usuário: uma grade uniforme (ex: 100 de
+// cada tamanho) fecha num esquema só, repetido; uma grade "torta" (ex:
+// 3/27/17/37/10) obriga a fatiar em vários esquemas menores — o que demora
+// mais mesmo tendo menos peças no total. A base matemática disso é o MDC
+// (máximo divisor comum) das quantidades: se ele for alto (perto do maior
+// tamanho), existe um padrão que se repete; se for baixo (perto de 1), não
+// tem padrão nenhum pra repetir.
+// =========================================================================
+function mdc(a, b) { while (b) { [a, b] = [b, a % b]; } return a; }
+function mdcLista(numeros) {
+    const validos = numeros.filter(n => n > 0);
+    if (!validos.length) return 0;
+    return validos.reduce((a, b) => mdc(a, b));
+}
+
+// Retorna um número de 0 (grade bem torta, muitos esquemas) a 1 (grade
+// uniforme, um esquema só) — ou null se não tiver tamanho suficiente pra
+// calcular (grade vazia ou só 1 tamanho, onde MDC = a própria quantidade).
+function calcularUniformidadeGrade(tamanhos) {
+    if (!tamanhos) return null;
+    const qtds = Object.values(tamanhos).map(q => parseInt(q) || 0).filter(q => q > 0);
+    if (qtds.length < 2) return null;
+    const maior = Math.max(...qtds);
+    const divisorComum = mdcLista(qtds);
+    return maior > 0 ? divisorComum / maior : null;
+}
+
 function obterGradesPorOP() {
     try { return JSON.parse(localStorage.getItem('gradesPorOP') || '{}'); } catch (e) { return {}; }
 }
