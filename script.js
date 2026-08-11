@@ -536,11 +536,12 @@ function pedidoParaLinhaSupabase(p) {
         prior: p.prior === undefined || p.prior === null ? 99 : p.prior,
         falta_produzir: parseFloat(p.faltaProduzir) || 0,
         falta_estoque: parseFloat(p.faltaEstoque) || 0,
+        descricao: p.descricao || '',
         atualizado_em: new Date().toISOString()
     };
 }
 function linhaSupabaseParaPedido(l) {
-    return { cliente: l.cliente || '', pedido: l.pedido, situacao: l.situacao || '', chegada: l.chegada, prior: l.prior === null ? 99 : l.prior, referencia: l.referencia || '', tam: l.tam || '', faltaProduzir: l.falta_produzir || 0, faltaEstoque: l.falta_estoque || 0 };
+    return { cliente: l.cliente || '', pedido: l.pedido, situacao: l.situacao || '', chegada: l.chegada, prior: l.prior === null ? 99 : l.prior, referencia: l.referencia || '', tam: l.tam || '', faltaProduzir: l.falta_produzir || 0, faltaEstoque: l.falta_estoque || 0, descricao: l.descricao || '' };
 }
 
 // A grade fica guardada agrupada por OP (objeto), mas a tabela do Supabase é
@@ -1503,6 +1504,7 @@ function processarPedidos() {
             const idxTam = cab.findIndex(c => c === 'TAM');
             const idxFaltaOP = cab.findIndex(c => c === 'FALTA OP');
             const idxFaltaEstoque = cab.findIndex(c => c === 'FALTA ESTOQUE'); // opcional, usada só no Levantamento de Referências
+            const idxDescricao = cab.findIndex(c => c === 'DESCRIÇÃO' || c === 'DESCRICAO'); // opcional — algumas referências são só um código numérico (ex: "015"), a descrição diz o que é de verdade
 
             const faltando = [];
             if (idxNome === -1) faltando.push('Nome');
@@ -1536,7 +1538,8 @@ function processarPedidos() {
                     referencia: String(row[idxRef] || '').trim().toUpperCase(),
                     tam: String(row[idxTam] || '').trim().toUpperCase(),
                     faltaProduzir: faltaOP,
-                    faltaEstoque: idxFaltaEstoque !== -1 ? (parseFloat(row[idxFaltaEstoque]) || 0) : 0
+                    faltaEstoque: idxFaltaEstoque !== -1 ? (parseFloat(row[idxFaltaEstoque]) || 0) : 0,
+                    descricao: idxDescricao !== -1 && row[idxDescricao] ? String(row[idxDescricao]).trim() : ''
                 };
                 todos.push(item);
                 if (faltaOP > 0) pendentes.push(item);
@@ -1831,6 +1834,7 @@ function pesquisarSequenciamentoPedido() {
 
     const gruposHtml = [...porReferencia.entries()].map(([referencia, linhasTamanho]) => {
         const jornada = opsNaJornadaCompleta(referencia);
+        const descricaoRef = linhasTamanho.find(l => l.descricao)?.descricao || '';
 
         const linhasTamanhoHtml = linhasTamanho.map(l => {
             // Entre as OPs que têm o tamanho que falta, pega a mais avançada
@@ -1872,7 +1876,7 @@ function pesquisarSequenciamentoPedido() {
         return `
             <div style="border-left:4px solid var(--cor-roxo); background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:8px; padding:12px; margin-bottom:14px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${referencia}</strong>
+                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${referencia}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${descricaoRef}</span>` : ''}</strong>
                     <span style="font-size:11px; color:var(--texto-secundario);">${jornada.length} OP(s) encontrada(s) na jornada completa</span>
                 </div>
                 <div style="margin-top:8px;">${linhasTamanhoHtml}</div>
@@ -1923,6 +1927,7 @@ function pesquisarPedido() {
     const gruposHtml = [...porReferencia.entries()].map(([referencia, linhasTamanho]) => {
         const opsExistentes = bancoDadosOPs.filter(op => op.referencia === referencia);
         const totalOPs = opsExistentes.reduce((s, op) => s + (parseInt(op.qtd) || 0), 0);
+        const descricaoRef = linhasTamanho.find(l => l.descricao)?.descricao || '';
         const grades = obterGradesPorOP();
 
         // Pra cada tamanho que falta, confere se alguma OP existente REALMENTE
@@ -1987,7 +1992,7 @@ function pesquisarPedido() {
         return `
             <div style="border-left:4px solid var(--cor-roxo); background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:8px; padding:12px; margin-bottom:12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${referencia}</strong>
+                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${referencia}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${descricaoRef}</span>` : ''}</strong>
                     <span style="font-size:11px; color:var(--texto-secundario);">${opsExistentes.length} OP(s) já existente(s) · ${totalOPs} peças já em produção hoje</span>
                 </div>
                 <div style="margin-top:8px;">${linhasTamanhoHtml}</div>
@@ -3470,6 +3475,7 @@ function abrirAgrupamentoReferencia() {
 function renderizarAgrupamentoReferencia(grupos) {
     const gruposHtml = grupos.map(([ref, ops]) => {
         const totalPecas = ops.reduce((s, o) => s + (parseInt(o.qtd) || 0), 0);
+        const descricaoRef = ops.find(o => o.desc)?.desc || '';
         const linhas = ops.map(op => `
             <tr>
                 <td><strong>${op.id}</strong></td>
@@ -3483,7 +3489,7 @@ function renderizarAgrupamentoReferencia(grupos) {
         return `
             <div style="border-left:4px solid var(--cor-fila); background:var(--bg-painel); border-radius:8px; padding:12px; margin-bottom:14px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${ref}</strong>
+                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${ref}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${descricaoRef}</span>` : ''}</strong>
                     <span style="font-size:11px; color:var(--texto-secundario);">${ops.length} OPs · ${totalPecas} peças no total</span>
                 </div>
                 <table class="tabela-dados">
