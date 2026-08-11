@@ -497,6 +497,19 @@ async function buscarTodasLinhasSupabase(nomeTabela, colunas) {
 }
 
 async function sincronizarTabelaSupabase(nomeTabela, linhas) {
+    // Se duas linhas tiverem o mesmo id no mesmo lote, o Postgres recusa o
+    // upsert inteiro ("cannot affect row a second time") — normalmente
+    // acontece quando a planilha de origem tem uma linha repetida. Deduplica
+    // aqui (mantendo a última ocorrência de cada id) pra proteger qualquer
+    // tabela que passe por essa função, não só a que der o problema hoje.
+    const porId = new Map();
+    linhas.forEach(l => porId.set(l.id, l));
+    const duplicatasRemovidas = linhas.length - porId.size;
+    linhas = [...porId.values()];
+    if (duplicatasRemovidas > 0) {
+        registrarLogDebug('log', [`[NUVEM] "${nomeTabela}": ${duplicatasRemovidas} linha(s) duplicada(s) (mesmo id) ignorada(s) antes de publicar.`]);
+    }
+
     const TAMANHO_LOTE = 500;
     for (let i = 0; i < linhas.length; i += TAMANHO_LOTE) {
         const lote = linhas.slice(i, i + TAMANHO_LOTE);
