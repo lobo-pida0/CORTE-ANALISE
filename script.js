@@ -1300,7 +1300,13 @@ function processarExcel() {
         let mapA = {}; bancoDadosOPs.forEach(o => mapA[o.id] = o); bancoDadosOPs = [];
         const sincronizacaoInicial = Object.keys(mapA).length === 0; // primeira vez que sincroniza nesse navegador
         let movimentacoes = []; // OPs que trocaram de etapa nessa sincronização
-
+        // OPs em "Aguardando Matéria Prima" — fica ANTES da Programação no
+        // processo real, sem lugar natural na escala 0-7 de etapa (que é
+        // usada em muita coisa sensível: cores, filtros, avançar etapa,
+        // Gargalo...). Por segurança, guardada numa lista PRÓPRIA, sem
+        // misturar com bancoDadosOPs — usada hoje só pelo Agrupador por
+        // Referência.
+        const opsAguardandoMP = [];
 
         for (let i = 1; i < rows.length; i++) {
             const r = rows[i]; if (!r) continue;
@@ -1308,6 +1314,18 @@ function processarExcel() {
             // LÓGICA DE CRIAÇÃO DO BANCO DE DADOS (Mantida igual a sua original)
             if (r[5] && !['OP', 'ORDEM'].includes(String(r[5]).trim().toUpperCase())) {
                 const loc = (r[21] ? String(r[21]).toUpperCase() : "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+                if (loc.includes("AGUARD") && loc.includes("MATERIA") && loc.includes("PRIMA")) {
+                    opsAguardandoMP.push({
+                        id: String(r[5]), ciclo: String(r[4] || ""), desc: String(r[3] || ""),
+                        qtd: parseInt(r[6]) || 0, diasLocal: parseInt(r[25]) || 0,
+                        codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
+                        referencia: r[40] ? String(r[40]).trim().toUpperCase() : "",
+                        sobMedida: mapaSBM.has(String(r[5]))
+                    });
+                    continue; // não passa pela lógica de etapa 0-7 abaixo
+                }
+
                 let idxE = -1;
                 if (loc.includes("CORTE") && !loc.includes("PROG") && !loc.includes("ENFESTO")) idxE = 7; else if (loc.includes("ENFESTO")) idxE = 6; else if (loc.includes("DUBLA")) idxE = 5; else if (loc.includes("ALMOX") && loc.includes("TECIDO")) idxE = 4; else if (loc.includes("PROG") && loc.includes("CORTE")) idxE = 3; else if (loc.includes("CAD")) idxE = 2; else if (loc.includes("ANALISE") || loc.includes("MEDIDA")) idxE = 1; else if (loc.includes("PROGRAMACAO")) idxE = 0;
 
@@ -1339,6 +1357,7 @@ function processarExcel() {
 
         // Grava as OPs e finaliza a importação
         localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
+        localStorage.setItem('opsAguardandoMP', JSON.stringify(opsAguardandoMP));
         inicializarFiltros();
         renderizarFiltroDataCorte();
         renderizarTudoImediato();
@@ -2880,6 +2899,10 @@ function buscarGrade(grades, opId, ciclo) {
     return null;
 }
 
+function obterOPsAguardandoMateriaPrima() {
+    try { return JSON.parse(localStorage.getItem('opsAguardandoMP') || '[]'); } catch (e) { return []; }
+}
+
 function obterGradesPorOP() {
     try { return JSON.parse(localStorage.getItem('gradesPorOP') || '{}'); } catch (e) { return {}; }
 }
@@ -3545,7 +3568,15 @@ function abrirGuiaSistema() {
 // mostra referências com 2+ OPs — uma OP sozinha não é "agrupamento".
 // =========================================================================
 function abrirAgrupamentoReferencia() {
-    const candidatas = bancoDadosOPs.filter(op => (op.etapa === 0 || op.etapa === 1) && op.referencia && !op.sobMedida);
+    const candidatasBanco = bancoDadosOPs.filter(op => (op.etapa === 0 || op.etapa === 1) && op.referencia && !op.sobMedida);
+    // Marca essas com uma etapa de exibição própria (nomesEtapas não tem
+    // índice pra "Aguardando Matéria Prima" — fica antes de tudo, fora da
+    // escala 0-7 normal)
+    const candidatasAguardMP = obterOPsAguardandoMateriaPrima()
+        .filter(op => op.referencia && !op.sobMedida)
+        .map(op => ({ ...op, etapaRotulo: 'AGUARD. MATÉRIA PRIMA', etapaCor: 'var(--cor-alerta)' }));
+    const candidatas = [...candidatasBanco, ...candidatasAguardMP];
+
     const porReferencia = new Map();
     candidatas.forEach(op => {
         if (!porReferencia.has(op.referencia)) porReferencia.set(op.referencia, []);
@@ -3568,7 +3599,7 @@ function renderizarAgrupamentoReferencia(grupos) {
             <tr>
                 <td><strong>${op.id}</strong></td>
                 <td>${op.ciclo}</td>
-                <td><span class="pill" style="background:${op.etapa === 0 ? 'var(--cor-fila)' : 'var(--cor-sugestao)'};">${nomesEtapas[op.etapa]}</span></td>
+                <td><span class="pill" style="background:${op.etapaRotulo ? op.etapaCor : (op.etapa === 0 ? 'var(--cor-fila)' : 'var(--cor-sugestao)')};">${op.etapaRotulo || nomesEtapas[op.etapa]}</span></td>
                 <td style="text-align:right;">${op.qtd}</td>
                 <td>${op.codigoMP || '-'}</td>
                 <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
@@ -3597,7 +3628,7 @@ function renderizarAgrupamentoReferencia(grupos) {
                 <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
             </div>
             <div style="font-size:11px; color:var(--texto-secundario); margin-bottom:12px;">
-                Só mostra referências com 2 ou mais OPs entre PCP-Programação e Almox. Análise de Medidas — referência com uma única OP não aparece aqui, e OPs sob medida (SBM) nunca entram, já que cada uma é única.
+                Só mostra referências com 2 ou mais OPs entre PCP-Programação, Almox. Análise de Medidas e Aguardando Matéria Prima — referência com uma única OP não aparece aqui, e OPs sob medida (SBM) nunca entram, já que cada uma é única.
             </div>
             <div style="overflow-y:auto; flex:1;">
                 ${grupos.length === 0 ? `<div style="text-align:center; padding:30px; color:var(--texto-secundario);">Nenhuma referência repetida entre esses dois setores no momento.</div>` : gruposHtml}
@@ -3610,7 +3641,7 @@ function renderizarAgrupamentoReferencia(grupos) {
 function copiarAgrupamentoReferencia() {
     if (!ultimoAgrupamentoReferenciaGerado || !ultimoAgrupamentoReferenciaGerado.length) return;
     const texto = ultimoAgrupamentoReferenciaGerado.map(([ref, ops]) =>
-        `${ref} (${ops.length} OPs):\n` + ops.map(op => `  - OP ${op.id} | Ciclo ${op.ciclo} | ${nomesEtapas[op.etapa]} | ${op.qtd} pçs | MP ${op.codigoMP || '-'} | ${op.diasLocal || 0}d parado`).join('\n')
+        `${ref} (${ops.length} OPs):\n` + ops.map(op => `  - OP ${op.id} | Ciclo ${op.ciclo} | ${op.etapaRotulo || nomesEtapas[op.etapa]} | ${op.qtd} pçs | MP ${op.codigoMP || '-'} | ${op.diasLocal || 0}d parado`).join('\n')
     ).join('\n\n');
     navigator.clipboard.writeText(texto).then(() => showToast("<i class='fas fa-check'></i> Agrupamento copiado!"));
 }
