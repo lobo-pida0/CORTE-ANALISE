@@ -549,11 +549,13 @@ function linhaSupabaseParaPedido(l) {
 // convertem de um formato pro outro, nos dois sentidos.
 function gradesParaLinhasSupabase(gradesPorOP) {
     const linhas = [];
-    for (const op in gradesPorOP) {
-        const g = gradesPorOP[op];
+    for (const chave in gradesPorOP) {
+        const g = gradesPorOP[chave];
+        const opId = g.op || chave.split('|')[0];
+        const ciclo = g.ciclo || '';
         for (const tam in (g.tamanhos || {})) {
             linhas.push({
-                id: `${op}|${tam}`, op, referencia: g.referencia || '', tam,
+                id: `${opId}|${ciclo}|${tam}`, op: opId, ciclo, referencia: g.referencia || '', tam,
                 qtd: g.tamanhos[tam] || 0,
                 locais: (g.locaisPorTamanho && g.locaisPorTamanho[tam]) || null,
                 atualizado_em: new Date().toISOString()
@@ -565,9 +567,10 @@ function gradesParaLinhasSupabase(gradesPorOP) {
 function linhasSupabaseParaGrades(linhas) {
     const grades = {};
     linhas.forEach(l => {
-        if (!grades[l.op]) grades[l.op] = { referencia: l.referencia || '', tamanhos: {}, locaisPorTamanho: {} };
-        grades[l.op].tamanhos[l.tam] = l.qtd || 0;
-        if (l.locais && l.locais.length) grades[l.op].locaisPorTamanho[l.tam] = l.locais;
+        const chave = chaveGrade(l.op, l.ciclo);
+        if (!grades[chave]) grades[chave] = { op: l.op, ciclo: l.ciclo || '', referencia: l.referencia || '', tamanhos: {}, locaisPorTamanho: {} };
+        grades[chave].tamanhos[l.tam] = l.qtd || 0;
+        if (l.locais && l.locais.length) grades[chave].locaisPorTamanho[l.tam] = l.locais;
     });
     return grades;
 }
@@ -949,7 +952,7 @@ function mostrarTooltipOP(e, id) {
     let gradeHtml = '';
     try {
         const grades = obterGradesPorOP();
-        const gradeOP = grades[op.id];
+        const gradeOP = buscarGrade(grades, op.id, op.ciclo);
         if (gradeOP && gradeOP.tamanhos && Object.keys(gradeOP.tamanhos).length) {
             const ordemTamanhosConhecidos = ['PP', 'P', 'PM', 'M', 'MG', 'G', 'GG', 'XG', 'EG', 'EGG', 'SG'];
             const compararTamanhos = (a, b) => {
@@ -1445,6 +1448,7 @@ function processarGrades() {
 
             const cab = rows[0].map(c => String(c || '').trim().toUpperCase());
             const idxOP = cab.findIndex(c => c === 'OP' || c.startsWith('OP '));
+            const idxCiclo = cab.findIndex(c => c === 'CICLO'); // usado JUNTO com a OP na chave — dois ciclos diferentes podem reutilizar o mesmo número de OP (confirmado: OP 3855 é avental no ciclo 211 e calçado no ciclo 111)
             const idxRef = cab.findIndex(c => c.includes('REFER') && !c.includes('DESCRI'));
             const idxTam = cab.findIndex(c => c === 'TAM' || c.startsWith('TAM'));
             const idxQtd = cab.findIndex(c => c.includes('QTD') || c.includes('QUANT') || c.includes('QT '));
@@ -1460,18 +1464,20 @@ function processarGrades() {
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxOP]) continue;
                 const opId = String(row[idxOP]).trim();
+                const ciclo = idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '';
+                const chave = chaveGrade(opId, ciclo);
                 const referencia = String(row[idxRef] || '').trim().toUpperCase();
                 const tamanho = String(row[idxTam] || '').trim().toUpperCase();
                 const qtd = parseInt(row[idxQtd]) || 0;
                 const local = idxLocalFallback !== -1 ? String(row[idxLocalFallback] || '').trim().toUpperCase() : '';
                 if (!opId || !tamanho) continue;
-                if (!grades[opId]) grades[opId] = { referencia, tamanhos: {}, locaisPorTamanho: {} };
-                grades[opId].tamanhos[tamanho] = (grades[opId].tamanhos[tamanho] || 0) + qtd;
+                if (!grades[chave]) grades[chave] = { op: opId, ciclo, referencia, tamanhos: {}, locaisPorTamanho: {} };
+                grades[chave].tamanhos[tamanho] = (grades[chave].tamanhos[tamanho] || 0) + qtd;
                 if (local) {
-                    if (!grades[opId].locaisPorTamanho[tamanho]) grades[opId].locaisPorTamanho[tamanho] = [];
-                    const entrada = grades[opId].locaisPorTamanho[tamanho].find(e => e.local === local);
+                    if (!grades[chave].locaisPorTamanho[tamanho]) grades[chave].locaisPorTamanho[tamanho] = [];
+                    const entrada = grades[chave].locaisPorTamanho[tamanho].find(e => e.local === local);
                     if (entrada) entrada.qtd += qtd;
-                    else grades[opId].locaisPorTamanho[tamanho].push({ local, qtd });
+                    else grades[chave].locaisPorTamanho[tamanho].push({ local, qtd });
                 }
                 linhasLidas++;
             }
@@ -1697,7 +1703,7 @@ function pedidosQueEssaOPFecha(op) {
     if (!pendentesRef || !pendentesRef.length) return [];
 
     const grades = obterGradesPorOP();
-    const gradeOP = grades[op.id];
+    const gradeOP = buscarGrade(grades, op.id, op.ciclo);
     const temGrade = !!(gradeOP && gradeOP.tamanhos && Object.keys(gradeOP.tamanhos).length);
 
     return [...pendentesRef].sort(compararUrgenciaPedidos).map(p => ({
@@ -1719,7 +1725,7 @@ function opsNaJornadaCompleta(referencia) {
             op: op.id, ciclo: op.ciclo, qtd: parseInt(op.qtd) || 0,
             local: op.localExcel || nomesEtapas[op.etapa] || '',
             posicao: posicaoNaSequencia(op.localExcel),
-            grade: (grades[op.id] && grades[op.id].tamanhos) || null,
+            grade: (buscarGrade(grades, op.id, op.ciclo) || {}).tamanhos || null,
             fonte: 'planilha-a'
         });
     });
@@ -1731,7 +1737,7 @@ function opsNaJornadaCompleta(referencia) {
             op: item.op, ciclo: '', qtd: item.qtd || 0,
             local: item.local,
             posicao: posicaoNaSequencia(item.local),
-            grade: (grades[item.op] && grades[item.op].tamanhos) || null,
+            grade: (buscarGrade(grades, item.op, '') || {}).tamanhos || null, // sem ciclo aqui (planilha geral não carrega essa info) — só acha se o número não for ambíguo
             fonte: 'planilha-geral'
         });
     });
@@ -1967,7 +1973,7 @@ function pesquisarPedido() {
             let qtdGrade = 0, algumaComGrade = false;
             const contribuicoes = [];
             opsExistentes.forEach(op => {
-                const g = grades[op.id];
+                const g = buscarGrade(grades, op.id, op.ciclo);
                 if (g && g.tamanhos) {
                     algumaComGrade = true;
                     const qtdOP = g.tamanhos[l.tam] || 0;
@@ -2850,6 +2856,30 @@ function calcularUniformidadeGrade(tamanhos) {
     return maior > 0 ? divisorComum / maior : null;
 }
 
+// Junta OP + Ciclo numa chave só. Comprovado que o mesmo número de OP pode
+// se repetir em ciclos diferentes representando produtos totalmente
+// diferentes (ex: OP 3855 é avental no ciclo 211 e calçado no ciclo 111) —
+// sem isso, as duas grades se misturavam na mesma "gaveta".
+function chaveGrade(opId, ciclo) {
+    return `${opId}|${ciclo || ''}`;
+}
+
+// Busca a grade de uma OP, usando o ciclo quando disponível. Quando o ciclo
+// não é conhecido (ex: OP que só existe na jornada pós-corte, que não
+// carrega ciclo), tenta achar só pelo número — mas SÓ devolve se existir
+// exatamente 1 correspondência; se o número bater em mais de um ciclo, não
+// dá pra saber qual é a certa, então não arrisca (retorna null em vez de
+// adivinhar errado).
+function buscarGrade(grades, opId, ciclo) {
+    if (ciclo) {
+        const exata = grades[chaveGrade(opId, ciclo)];
+        if (exata) return exata;
+    }
+    const candidatas = Object.keys(grades).filter(k => k.split('|')[0] === String(opId));
+    if (candidatas.length === 1) return grades[candidatas[0]];
+    return null;
+}
+
 function obterGradesPorOP() {
     try { return JSON.parse(localStorage.getItem('gradesPorOP') || '{}'); } catch (e) { return {}; }
 }
@@ -3076,7 +3106,7 @@ function renderizarOPsVinculadas(pendentesPorReferenciaParam) {
 
         // Confere se a grade DESSA OP realmente tem o tamanho que o pedido
         // pede — ter a referência não garante ter o tamanho certo.
-        const gradeOP = grades[v.op.id];
+        const gradeOP = buscarGrade(grades, v.op.id, v.op.ciclo);
         let avisoGrade = '';
         if (gradeOP && gradeOP.tamanhos) {
             const qtdTamanho = gradeOP.tamanhos[v.pedido.tam] || 0;
