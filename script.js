@@ -664,6 +664,7 @@ async function carregarOPsDaNuvemParaVisitante() {
         registrarLogDebug('log', [`[NUVEM] Busca concluída: ${data ? data.length : 0} OPs encontradas na tabela.`]);
         if (data && data.length) {
             bancoDadosOPs = data.map(linhaSupabaseParaOP);
+            cacheGruposPorReferencia = null;
             // Os filtros (locais, datas) foram montados na abertura da página,
             // quando ainda não existia OP nenhuma (a nuvem responde depois).
             // Sem reconstruir agora, "locaisSelecionados" fica vazio pra
@@ -711,6 +712,7 @@ async function carregarGradeDaNuvemParaVisitante() {
         registrarLogDebug('log', [`[NUVEM] Busca de grade concluída: ${data ? data.length : 0} linhas encontradas.`]);
         if (data && data.length) {
             localStorage.setItem('gradesPorOP', JSON.stringify(linhasSupabaseParaGrades(data)));
+            cacheGradesPorOP = null;
         }
     } catch (e) {
         registrarLogDebug('error', ['Falha ao carregar grade da nuvem: ' + e.message]);
@@ -756,6 +758,7 @@ async function carregarTodosPedidosDaNuvemParaVisitante() {
         registrarLogDebug('log', [`[NUVEM] Busca de todos os pedidos concluída: ${data ? data.length : 0} itens encontrados.`]);
         if (data && data.length) {
             localStorage.setItem('todosPedidos', JSON.stringify(data.map(linhaSupabaseParaPedido)));
+            cacheTodosPedidosPorReferencia = null;
         }
     } catch (e) {
         registrarLogDebug('error', ['Falha ao carregar todos os pedidos da nuvem: ' + e.message]);
@@ -867,8 +870,8 @@ const pluginFinaisDeSemana = {
 
 // SISTEMA DE UNDO/REDO E TOAST
 function registrarEstado() { const e = JSON.stringify(bancoDadosOPs); if (pilhaUndo[pilhaUndo.length - 1] !== e) { pilhaUndo.push(e); if (pilhaUndo.length > MAX_HISTORICO) pilhaUndo.shift(); pilhaRedo = []; } }
-function desfazerAcao() { if (pilhaUndo.length > 0) { pilhaRedo.push(JSON.stringify(bancoDadosOPs)); bancoDadosOPs = JSON.parse(pilhaUndo.pop()); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); renderizarTudoImediato(); showToast("<i class='fas fa-undo'></i> Ação Desfeita"); } }
-function refazerAcao() { if (pilhaRedo.length > 0) { pilhaUndo.push(JSON.stringify(bancoDadosOPs)); bancoDadosOPs = JSON.parse(pilhaRedo.pop()); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); renderizarTudoImediato(); showToast("<i class='fas fa-redo'></i> Ação Refeita"); } }
+function desfazerAcao() { if (pilhaUndo.length > 0) { pilhaRedo.push(JSON.stringify(bancoDadosOPs)); bancoDadosOPs = JSON.parse(pilhaUndo.pop()); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); cacheGruposPorReferencia = null; renderizarTudoImediato(); showToast("<i class='fas fa-undo'></i> Ação Desfeita"); } }
+function refazerAcao() { if (pilhaRedo.length > 0) { pilhaUndo.push(JSON.stringify(bancoDadosOPs)); bancoDadosOPs = JSON.parse(pilhaRedo.pop()); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); cacheGruposPorReferencia = null; renderizarTudoImediato(); showToast("<i class='fas fa-redo'></i> Ação Refeita"); } }
 
 function showToast(html, err = false) {
     let t = $('toast-atalhos'); if (!t) { t = document.createElement('div'); t.id = 'toast-atalhos'; t.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); color:white; padding:12px 25px; border-radius:30px; font-weight:800; font-size:14px; z-index:10000; transition:all 0.3s; opacity:0; pointer-events:none; display:flex; gap:10px; align-items:center;'; document.body.appendChild(t); }
@@ -943,8 +946,13 @@ document.addEventListener('click', function (e) {
 
 // TOOLTIP
 function mostrarTooltipOP(e, id) {
-    const op = bancoDadosOPs.find(o => o.id === id); if (!op) return;
     const tt = $('tooltip-op');
+    // mouseover dispara de novo a cada célula que o mouse passa dentro da
+    // MESMA linha (não é "entra na linha" uma vez só) — sem essa guarda, o
+    // sistema refazia todo o cálculo caro (grade, uniformidade, quais
+    // pedidos a OP fecha) várias vezes só pra mostrar a mesma OP de novo.
+    if (tt && tt.style.display === 'block' && tt.dataset.opAtual === id) return;
+    const op = bancoDadosOPs.find(o => o.id === id); if (!op) return;
     let alertaAtraso = '';
     if (op.dataCorte && new Date(op.dataCorte) < new Date(new Date().setHours(0, 0, 0, 0))) alertaAtraso = `<div style="margin-top:6px; background:rgba(193, 68, 78, 0.1); padding:4px 8px; border-radius:4px; color:var(--cor-alerta); font-size:11px; font-weight:900; display:inline-block;"><i class="fas fa-exclamation-triangle"></i> ATRASADO</div>`;
 
@@ -1020,7 +1028,7 @@ function mostrarTooltipOP(e, id) {
             <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--borda-cor); color:var(--texto-secundario); font-style:italic;">${op.desc}</div>
         </div>
     `;
-    tt.style.display = 'block'; setTimeout(() => tt.style.opacity = '1', 10);
+    tt.style.display = 'block'; tt.dataset.opAtual = id; setTimeout(() => tt.style.opacity = '1', 10);
 }
 function esconderTooltipOP() { const tt = $('tooltip-op'); if (!tt) return; tt.style.opacity = '0'; tt.style.display = 'none'; }
 
@@ -1166,7 +1174,7 @@ function ctxAcao(acao) {
     if (!opContextoId) return; let op = bancoDadosOPs.find(o => o.id === opContextoId); if (!op) return;
     if (acao === 'copiar') { navigator.clipboard.writeText(op.id); $('ctxMenu').style.display = 'none'; return; }
     if (!exigirAdmin('mexer nas OPs')) { $('ctxMenu').style.display = 'none'; return; }
-    if (acao === 'prioridade') { registrarEstado(); op.prioridade = !op.prioridade; localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); renderizarTudoImediato(); }
+    if (acao === 'prioridade') { registrarEstado(); op.prioridade = !op.prioridade; localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); cacheGruposPorReferencia = null; renderizarTudoImediato(); }
     else if (acao === 'avancar') avancarEtapaOP(op.id);
     else if (acao === 'fracionar') abrirModalFracionar(op.id);
     $('ctxMenu').style.display = 'none';
@@ -1191,7 +1199,7 @@ function confirmarFracionamento() {
     bancoDadosOPs.forEach(o => { if (o.id === base) mx = Math.max(mx, 1); const m = o.id.match(rx); if (m) mx = Math.max(mx, parseInt(m[1])); });
     let op2 = JSON.parse(JSON.stringify(opFracionarOrigem)); op2.id = `${base}-K${mx > 0 ? mx + 2 : 2}`; op2.qtd = q2; op2.tempoCorte = t2;
     opFracionarOrigem.id = `${base}-K${mx > 0 ? mx + 1 : 1}`; opFracionarOrigem.qtd = q1; opFracionarOrigem.tempoCorte = t1;
-    bancoDadosOPs.push(op2); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); fecharModais(); renderizarTudoImediato();
+    bancoDadosOPs.push(op2); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); cacheGruposPorReferencia = null; fecharModais(); renderizarTudoImediato();
 }
 
 // 🔀 Regra da etapa de DUBLAGEM (etapa 5): só se aplica a OPs marcadas com temDublado.
@@ -1205,7 +1213,7 @@ function proximaEtapa(etapaAtual, op) {
     if (!etapaEhAplicavel(prox, op)) prox++;
     return prox;
 }
-function avancarEtapaOP(id) { if (!exigirAdmin('avançar etapa')) return; let op = bancoDadosOPs.find(o => o.id === id); if (op && op.etapa < 7) { registrarEstado(); op.etapa = proximaEtapa(op.etapa, op); op.dataEntradaEtapa = new Date(); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); renderizarTudoImediato(); } }
+function avancarEtapaOP(id) { if (!exigirAdmin('avançar etapa')) return; let op = bancoDadosOPs.find(o => o.id === id); if (op && op.etapa < 7) { registrarEstado(); op.etapa = proximaEtapa(op.etapa, op); op.dataEntradaEtapa = new Date(); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); cacheGruposPorReferencia = null; renderizarTudoImediato(); } }
 
 // GESTÃO DE DADOS EXCEL E TEMPO
 function extrairDataExcel(valorData) {
@@ -1356,7 +1364,7 @@ function processarExcel() {
         }
 
         // Grava as OPs e finaliza a importação
-        localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
+        localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); cacheGruposPorReferencia = null;
         localStorage.setItem('opsAguardandoMP', JSON.stringify(opsAguardandoMP));
         inicializarFiltros();
         renderizarFiltroDataCorte();
@@ -1504,6 +1512,7 @@ function processarGrades() {
             if (linhasLidas === 0) throw new Error("Nenhuma linha válida encontrada (confira se OP e Tamanho estão preenchidos).");
 
             localStorage.setItem('gradesPorOP', JSON.stringify(grades));
+            cacheGradesPorOP = null;
             input.value = '';
             registrarAtualizacao('grades'); atualizarIndicadoresDeAtualizacao();
             showToast(`<i class='fas fa-check-double'></i> Grades importadas! ${Object.keys(grades).length} OPs com grade cadastrada.`);
@@ -1584,6 +1593,7 @@ function processarPedidos() {
             }
 
             localStorage.setItem('pedidosPendentes', JSON.stringify(pendentes));
+            cacheTodosPedidosPorReferencia = null;
             try { localStorage.setItem('todosPedidos', JSON.stringify(todos)); }
             catch (err) { console.warn('Não coube a lista completa de pedidos (só busca fica afetada):', err.message); localStorage.removeItem('todosPedidos'); }
             input.value = '';
@@ -1706,13 +1716,16 @@ function obterSequenciaCompletaOPs() {
 // mostrar "já coberto" corretamente). Não reaproveitar essa em lugar de
 // obterPendentesPorReferencia() nos contadores/urgência — lá o certo
 // continua sendo só o que falta de verdade.
+let cacheTodosPedidosPorReferencia = null; // limpo (= null) sempre que todosPedidos é escrito de novo
 function obterTodosPedidosPorReferencia() {
+    if (cacheTodosPedidosPorReferencia) return cacheTodosPedidosPorReferencia;
     const mapa = new Map();
     obterTodosPedidos().forEach(p => {
         if (!p.referencia) return;
         if (!mapa.has(p.referencia)) mapa.set(p.referencia, []);
         mapa.get(p.referencia).push(p);
     });
+    cacheTodosPedidosPorReferencia = mapa;
     return mapa;
 }
 
@@ -2903,8 +2916,12 @@ function obterOPsAguardandoMateriaPrima() {
     try { return JSON.parse(localStorage.getItem('opsAguardandoMP') || '[]'); } catch (e) { return []; }
 }
 
+let cacheGradesPorOP = null; // limpo (= null) sempre que gradesPorOP é escrito de novo
 function obterGradesPorOP() {
-    try { return JSON.parse(localStorage.getItem('gradesPorOP') || '{}'); } catch (e) { return {}; }
+    if (cacheGradesPorOP) return cacheGradesPorOP;
+    try { cacheGradesPorOP = JSON.parse(localStorage.getItem('gradesPorOP') || '{}'); }
+    catch (e) { cacheGradesPorOP = {}; }
+    return cacheGradesPorOP;
 }
 
 // Agrupa os pedidos pendentes por referência — usado tanto pra vincular OPs
@@ -2995,6 +3012,11 @@ function renderizarTudoImediato() {
 
     if ($('setaOrdenacao')) $('setaOrdenacao').innerText = ordemCorteAsc ? "▲" : "▼";
 
+    // Mapa referência -> quantidade de OPs no mesmo grupo do Agrupador (só
+    // pra mostrar o selo nas linhas — o cálculo pesado já vem cacheado)
+    const mapaTamanhoGrupoReferencia = new Map();
+    calcularGruposPorReferencia().forEach(([ref, ops]) => mapaTamanhoGrupoReferencia.set(ref, ops.length));
+
     // =========================================================================
     // 🎨 RENDERIZAÇÃO DA TABELA COM AGRUPAMENTO DE LOTE (MATÉRIA-PRIMA + DESCRIÇÃO)
     // =========================================================================
@@ -3029,13 +3051,17 @@ function renderizarTudoImediato() {
         const badgeMP = entrouPorMP
             ? `<br><span class="pill" style="background:var(--cor-sugestao); margin-top:4px; display:inline-block;" title="Não bateu com a busca — apareceu por ser da mesma matéria-prima (${mpOP}) de uma OP buscada"><i class="fas fa-layer-group"></i> MESMA MP</span>`
             : '';
+        const grupoRef = mapaTamanhoGrupoReferencia.get(o.referencia);
+        const badgeAgrupamento = grupoRef
+            ? `<br><span class="pill" style="background:var(--cor-alerta); margin-top:4px; display:inline-block; cursor:pointer;" title="Essa referência tem ${grupoRef} OPs entre Programação/Análise de Medidas/Aguard. Matéria Prima — clique pra ver o Agrupamento por Referência" onclick="event.stopPropagation(); abrirAgrupamentoReferencia();"><i class="fas fa-object-group"></i> AGRUPA (${grupoRef})</span>`
+            : '';
         htmlTabela += `
             <tr oncontextmenu="mostrarMenuContexto(event, '${o.id}')" style="${o.prioridade ? 'background:rgba(107, 76, 122,0.05);' : (tintaPedido || (emAtraso ? 'background:rgba(193, 68, 78,0.06);' : ''))}">
                 <td>${o.prioridade ? '<i class="fas fa-star" style="color:var(--cor-selecao);"></i>' : '●'}</td>
                 <td><input type="checkbox" class="check-lote" data-qtd="${o.qtd}" data-tempo="${o.tempoCorte}" data-id="${o.id}" data-mp="${mpOP}" ${selecaoLoteOPs.has(o.id) ? 'checked' : ''}></td>
                 <td>${i + 1}º</td>
                 <td>${o.ciclo}</td>
-                <td><strong>${o.id}</strong>${badgePedido}${badgeMP}</td>
+                <td><strong>${o.id}</strong>${badgePedido}${badgeMP}${badgeAgrupamento}</td>
                 <td><span class="pill" style="background:var(--cor-historico);">${nomesEtapas[o.etapa]}</span>${o.laser ? ' <span class="pill" style="background:var(--cor-roxo);" title="Vai pra máquina de corte a laser"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
                 
                 <td title="${o.descMP}"><span style="background: #eee; color: #333; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: help;">${mpOP}</span></td>
@@ -3567,7 +3593,14 @@ function abrirGuiaSistema() {
 // Análise de Medidas), pra facilitar planejar/produzir elas juntas. Só
 // mostra referências com 2+ OPs — uma OP sozinha não é "agrupamento".
 // =========================================================================
-function abrirAgrupamentoReferencia() {
+// Mesmo cálculo do Agrupador por Referência (2+ OPs entre Programação,
+// Análise de Medidas e Aguardando Matéria Prima, sem SBM), só que
+// reaproveitável — usado tanto pelo modal quanto pelo selo na tabela da
+// Programação. Cacheado (mesma lógica do cache de grade/pedidos de ontem):
+// só refaz quando a sincronização traz dado novo.
+let cacheGruposPorReferencia = null;
+function calcularGruposPorReferencia() {
+    if (cacheGruposPorReferencia) return cacheGruposPorReferencia;
     const candidatasBanco = bancoDadosOPs.filter(op => (op.etapa === 0 || op.etapa === 1) && op.referencia && !op.sobMedida);
     // Marca essas com uma etapa de exibição própria (nomesEtapas não tem
     // índice pra "Aguardando Matéria Prima" — fica antes de tudo, fora da
@@ -3586,6 +3619,12 @@ function abrirAgrupamentoReferencia() {
         .filter(([ref, ops]) => ops.length >= 2)
         .sort((a, b) => b[1].length - a[1].length);
 
+    cacheGruposPorReferencia = grupos;
+    return grupos;
+}
+
+function abrirAgrupamentoReferencia() {
+    const grupos = calcularGruposPorReferencia();
     ultimoAgrupamentoReferenciaGerado = grupos;
     renderizarAgrupamentoReferencia(grupos);
     $('modalAgrupamentoReferencia').style.display = 'flex';
