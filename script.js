@@ -411,9 +411,11 @@ function atualizarIndicadorLogin() {
     if (sessaoAdminAtual) {
         txt.innerText = sessaoAdminAtual.user.email.split('@')[0].toUpperCase();
         $('btnLoginAdmin').title = 'Logado como admin — clique pra sair';
+        if ($('indicadorUltimaPublicacao')) $('indicadorUltimaPublicacao').innerText = ''; // não faz sentido pro admin, ele usa o dado local ao vivo
     } else {
         txt.innerText = 'VISITANTE';
         $('btnLoginAdmin').title = 'Entrar como admin';
+        atualizarIndicadorUltimaPublicacao();
     }
     aplicarRestricaoDeAbaVisitante();
 }
@@ -645,6 +647,9 @@ async function publicarTudoNoSupabase() {
             const r = await sincronizarTabelaSupabase('pedidos_todos', todosOsPedidos);
             resumo.push(`${r.publicados} pedidos (busca)`);
         }
+        // Marca a hora dessa publicação — é isso que o visitante vê como
+        // "dados de: há X min"
+        await supabaseClient.from('metadados_sistema').upsert({ id: 'global', ultima_publicacao: new Date().toISOString() });
         if (status) status.innerText = `Publicado às ${new Date().toLocaleTimeString('pt-BR')}`;
         showToast(`<i class="fas fa-cloud-upload-alt"></i> Publicado: ${resumo.join(' + ')}!`);
     } catch (e) {
@@ -765,6 +770,49 @@ async function carregarTodosPedidosDaNuvemParaVisitante() {
     }
 }
 
+// Formata "há quanto tempo" de um jeito curto e legível — "agora mesmo",
+// "há 3 min", "há 2h", "há 5 dias"
+function formatarTempoRelativo(timestamp) {
+    if (!timestamp) return null;
+    const segundos = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+    if (segundos < 30) return 'agora mesmo';
+    if (segundos < 60) return 'há menos de 1 min';
+    const minutos = Math.floor(segundos / 60);
+    if (minutos < 60) return `há ${minutos} min`;
+    const horas = Math.floor(minutos / 60);
+    if (horas < 24) return `há ${horas}h`;
+    const dias = Math.floor(horas / 24);
+    return `há ${dias} dia(s)`;
+}
+
+// Busca a hora da última publicação e atualiza o indicador na tela — só faz
+// sentido mostrar pro visitante (o admin trabalha com o dado local, ao vivo)
+async function atualizarIndicadorUltimaPublicacao() {
+    if (!supabaseClient || sessaoAdminAtual || !$('indicadorUltimaPublicacao')) return;
+    try {
+        const { data, error } = await supabaseClient.from('metadados_sistema').select('ultima_publicacao').eq('id', 'global').maybeSingle();
+        if (error) throw error;
+        const rotulo = data && data.ultima_publicacao ? formatarTempoRelativo(data.ultima_publicacao) : 'nunca publicado';
+        $('indicadorUltimaPublicacao').innerText = `Dados de: ${rotulo}`;
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao buscar última publicação: ' + e.message]);
+    }
+}
+
+// Junta todo o carregamento de nuvem do visitante num lugar só — usado tanto
+// na abertura da página quanto na atualização automática periódica.
+async function carregarTudoDaNuvemParaVisitante() {
+    await Promise.all([
+        carregarOPsDaNuvemParaVisitante(),
+        carregarPedidosDaNuvemParaVisitante(),
+        carregarGradeDaNuvemParaVisitante(),
+        carregarPrioridadeClientesDaNuvemParaVisitante(),
+        carregarLocalizacaoCompletaDaNuvemParaVisitante(),
+        carregarTodosPedidosDaNuvemParaVisitante(),
+    ]);
+    atualizarIndicadorUltimaPublicacao();
+}
+
 // Bloqueia uma ação se a pessoa não estiver logada como admin — chamada no
 // COMEÇO de toda função que muda dado (sincronizar, importar, mover OP,
 // etc). Sincronizar/editar sempre mexeu só no navegador de quem faz —
@@ -776,6 +824,89 @@ function exigirAdmin(oQueIaFazer) {
     if (sessaoAdminAtual) return true;
     showToast(`<i class="fas fa-lock"></i> Modo visitante — entre como admin pra ${oQueIaFazer || 'fazer isso'}.`, true);
     return false;
+}
+
+// Monta uma lista enxuta de OPs pra mandar como contexto pra IA — só os
+// campos relevantes pra decisão de sequenciamento (não manda o objeto OP
+// inteiro, pra não gastar tokens à toa com coisa que não ajuda a resposta).
+function montarContextoParaIA(escopo) {
+    let lista;
+    if (escopo === 'aguard-mp') {
+        lista = obterOPsAguardandoMateriaPrima().map(op => ({
+            op: op.id, ciclo: op.ciclo, etapa: 'AGUARDANDO MATÉRIA PRIMA', referencia: op.referencia,
+            peças: op.qtd, diasParado: op.diasLocal, materiaPrima: op.codigoMP, descricao: op.desc
+        }));
+    } else {
+        const idxEtapa = parseInt(escopo);
+        lista = bancoDadosOPs.filter(op => op.etapa === idxEtapa).map(op => ({
+            op: op.id, ciclo: op.ciclo, etapa: nomesEtapas[op.etapa], referencia: op.referencia,
+            peças: op.qtd, dataCorte: op.dataCorte ? formatarDataBR(op.dataCorte) : null,
+            diasParado: op.diasLocal, materiaPrima: op.codigoMP, descricao: op.desc
+        }));
+    }
+    return lista;
+}
+
+function abrirModalPerguntarIA() {
+    if (!exigirAdmin('perguntar à IA')) return;
+    if (!supabaseClient) { showToast('Conexão com a nuvem não foi iniciada.', true); return; }
+
+    const opcoesEtapa = nomesEtapas.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+
+    $('modalPerguntarIA').innerHTML = `
+        <div class="modal-card" style="width:600px; max-width:92vw; max-height:85vh; overflow-y:auto; border-top:5px solid var(--cor-roxo);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <h2 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;"><i class="fas fa-robot" style="color:var(--cor-roxo);"></i> PERGUNTAR À IA</h2>
+                <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <div class="campo-meta">
+                    <label>SOBRE QUAIS OPs?</label>
+                    <select id="escopoPerguntarIA">
+                        ${opcoesEtapa}
+                        <option value="aguard-mp">AGUARDANDO MATÉRIA PRIMA</option>
+                    </select>
+                </div>
+                <div class="campo-meta">
+                    <label>SUA PERGUNTA</label>
+                    <textarea id="textoPerguntarIA" rows="3" placeholder="Ex: quais OPs seria melhor mandar pra Análise de Medidas primeiro, misturando OPs grandes e pequenas?" style="resize:vertical; padding:8px 12px; border:1px solid var(--borda-cor); background:var(--bg-input); color:var(--texto-cor); border-radius:6px; font-family:'Inter', sans-serif; font-size:13px;"></textarea>
+                </div>
+                <button id="btnEnviarPerguntaIA" class="btn btn-acao"><i class="fas fa-paper-plane"></i> PERGUNTAR</button>
+                <div id="respostaPerguntarIA"></div>
+            </div>
+        </div>
+    `;
+    $('modalPerguntarIA').style.display = 'flex';
+    $('btnEnviarPerguntaIA').onclick = perguntarIA;
+}
+
+async function perguntarIA() {
+    const pergunta = $('textoPerguntarIA').value.trim();
+    if (!pergunta) return;
+    const escopo = $('escopoPerguntarIA').value;
+    const contexto = montarContextoParaIA(escopo);
+    const respostaDiv = $('respostaPerguntarIA');
+
+    if (!contexto.length) {
+        respostaDiv.innerHTML = `<div style="padding:12px; color:var(--texto-secundario); font-style:italic;">Nenhuma OP encontrada nesse escopo — nada pra mandar pra IA analisar.</div>`;
+        return;
+    }
+
+    $('btnEnviarPerguntaIA').disabled = true;
+    respostaDiv.innerHTML = `<div style="padding:12px; color:var(--texto-secundario);"><i class="fas fa-spinner fa-spin"></i> Pensando (${contexto.length} OPs no contexto)...</div>`;
+
+    try {
+        const { data, error } = await supabaseClient.functions.invoke('perguntar-ia', { body: { pergunta, contexto } });
+        if (error) throw error;
+        if (data && data.erro) throw new Error(data.erro);
+        const textoResposta = (data && data.resposta) || '(sem resposta)';
+        respostaDiv.innerHTML = `<div style="padding:12px; background:var(--bg-painel); border:1px solid var(--borda-cor); border-radius:8px; white-space:pre-wrap; line-height:1.5;">${textoResposta}</div>`;
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao perguntar à IA: ' + e.message]);
+        respostaDiv.innerHTML = `<div style="padding:12px; color:var(--cor-alerta);"><i class="fas fa-triangle-exclamation"></i> Não consegui obter resposta. Veja o console de depuração.</div>`;
+    } finally {
+        $('btnEnviarPerguntaIA').disabled = false;
+    }
 }
 
 function abrirModalLoginAdmin() {
@@ -1033,7 +1164,7 @@ function mostrarTooltipOP(e, id) {
 function esconderTooltipOP() { const tt = $('tooltip-op'); if (!tt) return; tt.style.opacity = '0'; tt.style.display = 'none'; }
 
 // MODAIS E MENUS
-function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; }
+function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; }
 
 // =========================================================================
 // 👑 PRIORIDADE DE CLIENTES — lista editável, do mais pro menos prioritário.
@@ -4206,6 +4337,7 @@ function inicializarEventosUI() {
         wireEvento('abrirGuiaSequenciamento-pedidos', 'click', () => { abrirGuiaSequenciamento(); });
         wireEvento('abrirGuiaSequenciamento-menu', 'click', () => { abrirGuiaSequenciamento(); });
         wireEvento('abrirAgrupamentoReferencia', 'click', () => { abrirAgrupamentoReferencia(); });
+        wireEvento('abrirModalPerguntarIA', 'click', () => { abrirModalPerguntarIA(); });
         wireEvento('alcaConsoleDebug', 'click', () => { toggleConsoleDebug(); });
         wireEvento('btnCopiarConsoleDebug', 'click', () => { copiarLogsConsoleDebug(); });
         wireEvento('btnLimparConsoleDebug', 'click', () => { limparLogsConsoleDebug(); });
@@ -4381,12 +4513,11 @@ window.onload = function () {
     // entre visitas); se não tiver, carrega as OPs direto da nuvem pra quem
     // só visualiza — em vez de depender do que esse navegador já tinha salvo
     verificarSessaoSupabase().then(() => {
-        carregarOPsDaNuvemParaVisitante();
-        carregarPedidosDaNuvemParaVisitante();
-        carregarGradeDaNuvemParaVisitante();
-        carregarPrioridadeClientesDaNuvemParaVisitante();
-        carregarLocalizacaoCompletaDaNuvemParaVisitante();
-        carregarTodosPedidosDaNuvemParaVisitante();
+        carregarTudoDaNuvemParaVisitante();
+        // Visitante atualiza sozinho a cada 3 minutos — sem precisar recarregar
+        // a página na mão pra ver publicação nova. Admin não precisa disso (usa
+        // o dado local, ao vivo).
+        setInterval(() => { if (!sessaoAdminAtual) carregarTudoDaNuvemParaVisitante(); }, 3 * 60 * 1000);
     });
     atualizarBadgeConsoleDebug();
 };

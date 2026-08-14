@@ -144,6 +144,11 @@
        >
     </div>
 
+    <div id="modalPerguntarIA"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
     <div id="ctxMenu">
         <div id="ctxAcao-copiar" class="ctx-item"><i class="fas fa-copy"></i> Copiar Nº OP</div>
         <div id="ctxAcao-prioridade" class="ctx-item"><i class="fas fa-star"></i> Alternar Prioridade</div>
@@ -170,6 +175,7 @@
                     class="fas fa-circle-question"></i></button>
             <button id="btnLoginAdmin" class="btn" title="Entrar como admin" style="background:rgba(255,255,255,0.2); color:white;"><i
                     class="fas fa-user-lock"></i> <span id="txtLoginAdmin">VISITANTE</span></button>
+            <span id="indicadorUltimaPublicacao" style="font-size:10px; color:rgba(255,255,255,0.6); white-space:nowrap;"></span>
             <span class="divisor-header"></span>
 
             <!-- ANÁLISE: ferramentas de diagnóstico/sugestão -->
@@ -185,6 +191,10 @@
                     <button id="abrirAgrupamentoReferencia" class="btn" title="Agrupa OPs da mesma referência em Programação + Análise de Medidas"
                         style="background:var(--cor-fila); color:white;"><i
                             class="fas fa-layer-group"></i> AGRUPAR POR REFERÊNCIA</button>
+                    <div class="dropdown-separador"></div>
+                    <button id="abrirModalPerguntarIA" class="btn" title="Pergunte em português — só admin, usa a API do Claude"
+                        style="background:var(--cor-roxo); color:white;"><i
+                            class="fas fa-robot"></i> PERGUNTAR À IA</button>
                     <div class="dropdown-separador"></div>
                     <button id="abrirGuiaSequenciamento-menu" class="btn" style="background:var(--bg-painel); color:var(--texto-cor);"><i
                             class="fas fa-question-circle"></i> QUAL SEQUÊNCIA USAR?</button>
