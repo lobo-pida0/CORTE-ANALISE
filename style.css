@@ -357,6 +357,14 @@ h1, h2, h3 {
     overflow-x: auto;
 }
 
+/* Aplicada via JS (aplicarRestricaoDeAbaVisitante) em tudo que só admin
+   pode usar — sincronizar, importar, publicar, apagar, etc. A ação em si já
+   era bloqueada antes (exigirAdmin), isso só some com o botão de vez pra
+   quem não pode usar, em vez de deixar clicável sem fazer nada. */
+body.modo-visitante .somente-admin {
+    display: none !important;
+}
+
 .tab-btn {
     background: var(--bg-card);
     border: 1px solid var(--borda-cor);

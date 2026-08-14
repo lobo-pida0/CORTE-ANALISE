@@ -151,10 +151,10 @@
 
     <div id="ctxMenu">
         <div id="ctxAcao-copiar" class="ctx-item"><i class="fas fa-copy"></i> Copiar Nº OP</div>
-        <div id="ctxAcao-prioridade" class="ctx-item"><i class="fas fa-star"></i> Alternar Prioridade</div>
-        <div id="ctxAcao-fracionar" class="ctx-item" style="border-top:1px solid var(--borda-cor);"><i
+        <div id="ctxAcao-prioridade" class="ctx-item somente-admin"><i class="fas fa-star"></i> Alternar Prioridade</div>
+        <div id="ctxAcao-fracionar" class="ctx-item somente-admin" style="border-top:1px solid var(--borda-cor);"><i
                 class="fas fa-cut" style="color:var(--cor-sugestao);"></i> Fracionar OP</div>
-        <div id="ctxAcao-avancar" class="ctx-item"
+        <div id="ctxAcao-avancar" class="ctx-item somente-admin"
             style="border-top:1px solid var(--borda-cor); color:var(--cor-despacho);"><i class="fas fa-arrow-right"></i>
             Avançar Etapa</div>
     </div>
@@ -192,7 +192,7 @@
                         style="background:var(--cor-fila); color:white;"><i
                             class="fas fa-layer-group"></i> AGRUPAR POR REFERÊNCIA</button>
                     <div class="dropdown-separador"></div>
-                    <button id="abrirModalPerguntarIA" class="btn" title="Pergunte em português — só admin, usa a API do Claude"
+                    <button id="abrirModalPerguntarIA" class="btn somente-admin" title="Pergunte em português — só admin, usa a API do Claude"
                         style="background:var(--cor-roxo); color:white;"><i
                             class="fas fa-robot"></i> PERGUNTAR À IA</button>
                     <div class="dropdown-separador"></div>
@@ -202,12 +202,12 @@
             </div>
 
             <!-- IMPORTAR: planilhas complementares (a principal, Sincronizar, fica fora do menu) -->
-            <input type="file" id="inputExcel" accept=".xlsx, .xls"
+            <input type="file" id="inputExcel" accept=".xlsx, .xls" class="somente-admin"
                 style="font-size:11px; color:white; width:150px; background:transparent; border:none;">
-            <button id="processarExcel" class="btn btn-primario"><i class="fas fa-sync-alt"></i>
+            <button id="processarExcel" class="btn btn-primario somente-admin"><i class="fas fa-sync-alt"></i>
                 SINCRONIZAR</button>
-            <span id="atualizacao-sincronizar" title="Última vez que a planilha de OPs foi sincronizada" style="font-size:10px; color:rgba(255,255,255,0.75); white-space:nowrap;"></span>
-            <div class="dropdown-container">
+            <span id="atualizacao-sincronizar" class="somente-admin" title="Última vez que a planilha de OPs foi sincronizada" style="font-size:10px; color:rgba(255,255,255,0.75); white-space:nowrap;"></span>
+            <div class="dropdown-container somente-admin">
                 <button id="btnMenuImportar" class="btn" style="background:#2F8577; color:white;"><i
                         class="fas fa-file-import"></i> IMPORTAR <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
                 <div id="menuImportar" class="dropdown-menu">
@@ -235,15 +235,15 @@
                             class="fas fa-download"></i> BAIXAR BACKUP</button>
                     <button id="imprimirTela" class="btn" title="Imprime a lista de Programar Lote, do jeito que está filtrada agora" style="background:#2F8577; color:white;"><i
                             class="fas fa-print"></i> IMPRIMIR LOTE</button>
-                    <label class="btn" style="background:var(--cor-historico); color:white; cursor:pointer; margin:0;"><i
+                    <label class="btn somente-admin" style="background:var(--cor-historico); color:white; cursor:pointer; margin:0;"><i
                             class="fas fa-upload"></i> RESTAURAR BACKUP <input id="importarBackup" type="file" accept=".json" style="display:none;"
                            ></label>
-                    <div class="dropdown-separador"></div>
-                    <button id="publicarSupabase" class="btn" title="Envia as OPs e os pedidos pendentes de agora pra nuvem, pra quem só visualiza enxergar" style="background:#2E7D5B; color:white;"><i
+                    <div class="dropdown-separador somente-admin"></div>
+                    <button id="publicarSupabase" class="btn somente-admin" title="Envia as OPs e os pedidos pendentes de agora pra nuvem, pra quem só visualiza enxergar" style="background:#2E7D5B; color:white;"><i
                             class="fas fa-cloud-upload-alt"></i> PUBLICAR NA NUVEM</button>
-                    <span id="statusPublicacaoSupabase" style="font-size:10px; padding:4px 12px; color:var(--texto-secundario); display:block;"></span>
-                    <div class="dropdown-separador"></div>
-                    <button id="zerarTudo" class="btn btn-perigo" title="Apaga todos os dados salvos neste navegador"><i
+                    <span id="statusPublicacaoSupabase" class="somente-admin" style="font-size:10px; padding:4px 12px; color:var(--texto-secundario); display:block;"></span>
+                    <div class="dropdown-separador somente-admin"></div>
+                    <button id="zerarTudo" class="btn btn-perigo somente-admin" title="Apaga todos os dados salvos neste navegador"><i
                             class="fas fa-trash"></i> LIMPAR DADOS</button>
                 </div>
             </div>
@@ -521,7 +521,7 @@
             <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-scissors"></i> FILA DE CORTE</span><span
                     id="mediaCorteInfo">Sem dados de produção do Corte lançados ainda</span></div>
             <div id="botoes-acao-filacorte" style="display:flex; align-items:center; gap:var(--espaco-sm); padding:10px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
-                <label class="btn" style="background:var(--cor-fila); color:white; cursor:pointer; margin:0;"
+                <label class="btn somente-admin" style="background:var(--cor-fila); color:white; cursor:pointer; margin:0;"
                     title="Importar planilha geral (todos os setores, POR_OP) pra atualizar a fila"><i
                         class="fas fa-file-import"></i> IMPORTAR PLANILHA GERAL <input id="inputFilaCorte" type="file"
                         accept=".xlsx, .xls" style="display:none;"></label>

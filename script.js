@@ -429,6 +429,7 @@ function abaLiberadaAgora(idAba) {
     return !!sessaoAdminAtual || ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba);
 }
 function aplicarRestricaoDeAbaVisitante() {
+    document.body.classList.toggle('modo-visitante', !sessaoAdminAtual);
     $$('.tab-btn').forEach(btn => {
         const idAba = btn.id.replace('abrirAba-', '');
         btn.style.display = abaLiberadaAgora(idAba) ? '' : 'none';
@@ -1195,13 +1196,16 @@ function abrirModalPrioridadeClientes() {
 
 function renderizarModalPrioridadeClientes() {
     const lista = obterListaPrioridadeClientes();
+    const ehAdmin = !!sessaoAdminAtual;
     const linhas = lista.map((cliente, i) => `
         <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--borda-cor);">
             <span style="width:28px; text-align:center; font-weight:900; color:var(--texto-secundario);">${i + 1}º</span>
             <span style="flex:1; font-weight:600;">${cliente}</span>
+            ${ehAdmin ? `
             <button onclick="moverClientePrioridade(${i}, -1)" class="btn" style="padding:4px 8px; background:var(--bg-painel); color:var(--texto-cor);" ${i === 0 ? 'disabled' : ''}><i class="fas fa-arrow-up"></i></button>
             <button onclick="moverClientePrioridade(${i}, 1)" class="btn" style="padding:4px 8px; background:var(--bg-painel); color:var(--texto-cor);" ${i === lista.length - 1 ? 'disabled' : ''}><i class="fas fa-arrow-down"></i></button>
             <button onclick="removerClientePrioridade(${i})" class="btn btn-perigo" style="padding:4px 8px;"><i class="fas fa-trash"></i></button>
+            ` : ''}
         </div>
     `).join('');
 
@@ -1219,15 +1223,18 @@ function renderizarModalPrioridadeClientes() {
             <div style="overflow-y:auto; flex:1; margin-bottom:15px; border:1px solid var(--borda-cor); border-radius:8px;">
                 ${linhas || '<div style="padding:20px; text-align:center; color:var(--texto-secundario);">Nenhum cliente cadastrado.</div>'}
             </div>
+            ${ehAdmin ? `
             <div style="display:flex; gap:10px;">
                 <input type="text" id="inputNovoClientePrioridade" placeholder="Nome do cliente..." style="flex:1;">
                 <button onclick="adicionarClientePrioridade()" class="btn btn-sugestao"><i class="fas fa-plus"></i> ADICIONAR</button>
             </div>
+            ` : ''}
         </div>
     `;
 }
 
 function moverClientePrioridade(idx, direcao) {
+    if (!exigirAdmin('editar a prioridade de clientes')) return;
     const lista = obterListaPrioridadeClientes();
     const novoIdx = idx + direcao;
     if (novoIdx < 0 || novoIdx >= lista.length) return;
