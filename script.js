@@ -814,6 +814,71 @@ async function carregarTudoDaNuvemParaVisitante() {
     atualizarIndicadorUltimaPublicacao();
 }
 
+const TABELAS_NUVEM = ['ops', 'pedidos', 'grade', 'prioridade_clientes', 'localizacao_completa', 'pedidos_todos'];
+
+// Baixa uma cópia de TODOS os dados que estão hoje na nuvem, num arquivo só.
+// O plano gratuito do Supabase não tem backup automático nenhum (só nos
+// pagos) — esse é o "seguro" caseiro pros dados compartilhados. Não mexe no
+// backup local de sexta-feira, que continua existindo separado (esse aqui é
+// dos dados PUBLICADOS, que todo mundo vê — coisas diferentes).
+async function baixarBackupNuvem() {
+    if (!exigirAdmin('baixar o backup da nuvem')) return;
+    if (!supabaseClient) { showToast('Conexão com a nuvem não foi iniciada.', true); return; }
+    showToast('<i class="fas fa-cloud-download-alt"></i> Baixando backup da nuvem...');
+    try {
+        const dados = {};
+        for (const tabela of TABELAS_NUVEM) {
+            dados[tabela] = await buscarTodasLinhasSupabase(tabela);
+        }
+        const dataHoje = new Date().toISOString().split('T')[0];
+        const conteudoJSON = JSON.stringify(dados, null, 2);
+        const blob = new Blob([conteudoJSON], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const linkDownload = document.createElement('a');
+        linkDownload.href = url;
+        linkDownload.download = `Backup_Nuvem_${dataHoje}.json`;
+        linkDownload.click();
+        URL.revokeObjectURL(url);
+        showToast('<i class="fas fa-check"></i> Backup da nuvem baixado!');
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao baixar backup da nuvem: ' + e.message]);
+        showToast('<i class="fas fa-triangle-exclamation"></i> Falha ao baixar backup. Veja o console de depuração.', true);
+    }
+}
+
+// Restaura um arquivo baixado por baixarBackupNuvem() de volta pra nuvem —
+// publica tabela por tabela, usando o mesmo mecanismo de sempre (upsert +
+// remove o que não está no arquivo). Pede confirmação, porque SOBRESCREVE o
+// que está publicado agora — é pra usar só se algo tiver dado errado.
+async function restaurarBackupNuvem(e) {
+    if (!exigirAdmin('restaurar um backup da nuvem')) { if (e && e.target) e.target.value = ''; return; }
+    const input = e.target;
+    if (!input.files[0]) return;
+    if (!confirm('⚠️ Isso vai SUBSTITUIR os dados publicados na nuvem (que todo mundo vê) pelos desse arquivo de backup.\n\nTem certeza que deseja continuar?')) { input.value = ''; return; }
+
+    const leitor = new FileReader();
+    leitor.onload = async (ev) => {
+        try {
+            const dados = JSON.parse(ev.target.result);
+            let resumo = [];
+            for (const tabela of TABELAS_NUVEM) {
+                if (dados[tabela] && dados[tabela].length) {
+                    const r = await sincronizarTabelaSupabase(tabela, dados[tabela]);
+                    resumo.push(`${r.publicados} em ${tabela}`);
+                }
+            }
+            await supabaseClient.from('metadados_sistema').upsert({ id: 'global', ultima_publicacao: new Date().toISOString() });
+            showToast(`<i class="fas fa-check"></i> Backup restaurado: ${resumo.join(' + ')}!`);
+        } catch (err) {
+            registrarLogDebug('error', ['Falha ao restaurar backup da nuvem: ' + err.message]);
+            showToast('<i class="fas fa-triangle-exclamation"></i> Falha ao restaurar. Arquivo pode estar corrompido ou não ser um backup da nuvem. Veja o console.', true);
+        } finally {
+            input.value = '';
+        }
+    };
+    leitor.readAsText(input.files[0]);
+}
+
 // Bloqueia uma ação se a pessoa não estiver logada como admin — chamada no
 // COMEÇO de toda função que muda dado (sincronizar, importar, mover OP,
 // etc). Sincronizar/editar sempre mexeu só no navegador de quem faz —
@@ -4373,6 +4438,8 @@ function inicializarEventosUI() {
         wireEvento('abrirGuiaSistema', 'click', () => { abrirGuiaSistema(); });
         wireEvento('btnLoginAdmin', 'click', () => { abrirModalLoginAdmin(); });
         wireEvento('publicarSupabase', 'click', () => { publicarTudoNoSupabase(); });
+        wireEvento('baixarBackupNuvem', 'click', () => { baixarBackupNuvem(); });
+        wireEvento('restaurarBackupNuvem', 'change', (e) => { restaurarBackupNuvem(e); });
         wireEvento('processarExcel', 'click', () => { processarExcel(); });
         wireEvento('zerarTudo', 'click', () => { zerarTudo(); });
         wireEvento('exportarBackup', 'click', () => { exportarBackup(); });
@@ -4543,6 +4610,10 @@ function verificarBackupSexta() {
         // Se a data do último backup for diferente de hoje, ele faz o download
         if (ultimoBackup !== dataHoje) {
             executarDownloadBackup(dataHoje);
+            // Além do backup local de sempre, baixa também o da nuvem — só
+            // dá pra fazer isso se a pessoa estiver logada como admin nesse
+            // momento (senão não tem como ler os dados publicados)
+            if (sessaoAdminAtual) baixarBackupNuvem();
         }
     }
 }
