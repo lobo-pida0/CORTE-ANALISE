@@ -1448,8 +1448,20 @@ function diffDiasCorridos(d1, d2) {
     return Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
 }
 
+// Confere se a biblioteca de leitura de Excel carregou antes de tentar usar
+// — sem isso, o erro que aparecia era um "XLSX is not defined" cru, sem
+// explicação nenhuma. CDN às vezes falha por um instante; recarregar a
+// página (F5) quase sempre resolve.
+function exigirBibliotecaExcel() {
+    if (typeof XLSX !== 'undefined') return true;
+    registrarLogDebug('error', ['Tentativa de ler planilha sem a biblioteca de Excel carregada (XLSX indefinido).']);
+    showToast('<i class="fas fa-triangle-exclamation"></i> A biblioteca de leitura de planilhas não carregou. Recarregue a página (F5) e tente de novo.', true);
+    return false;
+}
+
 function processarExcel() {
     if (!exigirAdmin('sincronizar a planilha')) return;
+    if (!exigirBibliotecaExcel()) return;
     const input = $('inputExcel'); if (!input.files[0]) return alert("Selecione um arquivo!");
     const r = new FileReader();
     r.onload = function (e) {
@@ -1667,6 +1679,7 @@ function exibirBalancoSincronizacao(movimentacoes, entradas, saidas) {
 // =========================================================================
 function processarGrades() {
     if (!exigirAdmin('importar a grade')) return;
+    if (!exigirBibliotecaExcel()) return;
     const input = $('inputGrades'); if (!input.files[0]) return;
     const r = new FileReader();
     r.onload = function (e) {
@@ -1735,6 +1748,7 @@ function processarGrades() {
 // =========================================================================
 function processarPedidos() {
     if (!exigirAdmin('importar os pedidos')) return;
+    if (!exigirBibliotecaExcel()) return;
     const input = $('inputPedidos'); if (!input.files[0]) return;
     const r = new FileReader();
     r.onload = function (e) {
@@ -2337,6 +2351,7 @@ function renderizarPedidosPendentes() {
 // =========================================================================
 function processarFilaCorte() {
     if (!exigirAdmin('importar a fila de corte')) return;
+    if (!exigirBibliotecaExcel()) return;
     const input = $('inputFilaCorte'); if (!input.files[0]) return;
     const r = new FileReader();
     r.onload = function (e) {
