@@ -532,6 +532,11 @@
                         accept=".xlsx, .xls" style="display:none;"></label>
                 <button id="baixarImagemFilaCorte" class="btn btn-acao" title="Baixar como imagem pra anexar/colar em e-mail"><i
                         class="fas fa-camera"></i> BAIXAR IMAGEM</button>
+                <div class="campo-meta somente-admin" style="width:170px;">
+                    <label>MÉDIA DE CORTE (PÇS/DIA)</label>
+                    <input type="number" id="inputMediaCorteManual" min="0" step="1"
+                        title="Usada pra calcular 'Dias Fila' — digite aqui enquanto a aba de KPI não é refeita (é de lá que essa média vinha antes)">
+                </div>
                 <span style="font-size:11px; color:var(--texto-secundario);">
                     "Dias Fila" = peças paradas no setor ÷ média diária cortada pelo Corte. "Dias Fila Corte" soma só
                     Enfesto + Corte — os dois mais perto da mesa de corte de verdade.

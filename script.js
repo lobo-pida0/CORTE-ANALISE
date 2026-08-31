@@ -2442,7 +2442,18 @@ function processarFilaCorte() {
 // Média diária real cortada pelo setor CORTE, usando só os dias que tiveram
 // lançamento de produção (não uma média corrida de calendário) — reaproveita
 // os mesmos dados que já são lançados na aba Gestão Mensal.
+// Enquanto a aba de KPI não é refeita (removida e ainda não reconstruída),
+// não tem como calcular a média automática — o usuário pode digitar um
+// valor manual na Fila de Corte, que tem prioridade sobre o cálculo
+// automático (que volta a valer sozinho quando a KPI existir de novo).
+function obterMediaCorteManual() {
+    const v = parseFloat(localStorage.getItem('mediaCorteManual'));
+    return isNaN(v) || v <= 0 ? null : v;
+}
+
 function calcularMediaDiariaCorte() {
+    const manual = obterMediaCorteManual();
+    if (manual !== null) return manual;
     let totalPcs = 0, diasTrabalhados = 0;
     (dadosMes || []).forEach(g => {
         if (g && g['CORTE'] && g['CORTE'].pcsReal > 0) {
@@ -2714,10 +2725,13 @@ function atualizarVereditoCapacidade(total, disponivel, qtd, semTempo, pecas) {
 function renderizarFilaCorte() {
     if (!$('listaFilaCorte')) return;
     const media = calcularMediaDiariaCorte();
+    if ($('inputMediaCorteManual') && document.activeElement !== $('inputMediaCorteManual')) {
+        $('inputMediaCorteManual').value = obterMediaCorteManual() || '';
+    }
 
     if ($('mediaCorteInfo')) {
         $('mediaCorteInfo').innerText = media > 0
-            ? `Média diária do Corte: ${Math.round(media).toLocaleString('pt-BR')} pçs/dia`
+            ? `Média diária do Corte: ${Math.round(media).toLocaleString('pt-BR')} pçs/dia${obterMediaCorteManual() !== null ? ' (manual)' : ''}`
             : 'Sem dados de produção do Corte lançados ainda';
     }
 
@@ -4491,6 +4505,14 @@ function inicializarEventosUI() {
         });
         wireEvento('inputFilaCorte', 'change', () => { processarFilaCorte(); });
         wireEvento('baixarImagemFilaCorte', 'click', () => { baixarImagemFilaCorte(); });
+        wireEvento('inputMediaCorteManual', 'change', (e) => {
+            if (!exigirAdmin('definir a média de corte')) { e.target.value = obterMediaCorteManual() || ''; return; }
+            const v = parseFloat(e.target.value);
+            if (v > 0) localStorage.setItem('mediaCorteManual', v);
+            else localStorage.removeItem('mediaCorteManual');
+            renderizarFilaCorte();
+            renderizarTudoImediato();
+        });
         wireEvento('filtroSetorOPsFilaCorte', 'change', () => { renderizarListaOPsFilaCorte(); });
         wireEvento('buscaOPsFilaCorte', 'input', () => { renderizarListaOPsFilaCorte(); });
         wireEvento('listaFiltroLocalProd', 'change', (e) => {
