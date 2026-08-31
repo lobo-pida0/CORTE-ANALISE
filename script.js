@@ -1151,7 +1151,7 @@ function mostrarTooltipOP(e, id) {
     if (tt && tt.style.display === 'block' && tt.dataset.opAtual === id) return;
     const op = bancoDadosOPs.find(o => o.id === id); if (!op) return;
     let alertaAtraso = '';
-    if (op.dataCorte && new Date(op.dataCorte) < new Date(new Date().setHours(0, 0, 0, 0))) alertaAtraso = `<div style="margin-top:6px; background:rgba(193, 68, 78, 0.1); padding:4px 8px; border-radius:4px; color:var(--cor-alerta); font-size:11px; font-weight:900; display:inline-block;"><i class="fas fa-exclamation-triangle"></i> ATRASADO</div>`;
+    if (op.dataCorte && new Date(op.dataCorte) < new Date(new Date().setHours(0, 0, 0, 0))) alertaAtraso = `<div style="margin-bottom:8px; background:rgba(193, 68, 78, 0.1); padding:4px 8px; border-radius:4px; color:var(--cor-alerta); font-size:11px; font-weight:900; display:inline-block;"><i class="fas fa-exclamation-triangle"></i> ATRASADO</div>`;
 
     // Grade por tamanho, se a planilha de grades já foi importada pra essa OP
     let gradeHtml = '';
@@ -1211,6 +1211,7 @@ function mostrarTooltipOP(e, id) {
             <span class="pill" style="background:var(--cor-primaria); font-size:10px;">${nomesEtapas[op.etapa]}</span>
         </div>
         <div class="tt-body">
+            ${alertaAtraso}
             <div><span class="lbl">Ciclo:</span> <strong>${op.ciclo}</strong></div>
             <div><span class="lbl">Destino:</span> <strong>${op.localDestino}</strong></div>
             <div><span class="lbl">Setor Atual:</span> <strong style="color:var(--cor-sugestao);">${op.localExcel || 'N/D'}</strong></div>
@@ -1219,9 +1220,7 @@ function mostrarTooltipOP(e, id) {
             <div><span class="lbl">Dublagem:</span> <strong>${op.temDublado ? 'SIM' : 'NÃO'}</strong></div>
             <div><span class="lbl">Dias Parada:</span> <strong style="color:var(--cor-alerta);">${op.diasLocal || 0} dias</strong></div>
             ${op.dataCorteSuposta && formatarDataBR(op.dataCorteSuposta) ? `<div><span class="lbl">Corte Suposto:</span> <strong style="color:var(--cor-roxo);" title="Calculado de trás pra frente a partir da data de finalização no estoque (${formatarDataBR(op.dataFinalizacao)}), descontando ~22 dias de etiquetação+distribuição+estoque. É uma estimativa, não um compromisso.">${formatarDataBR(op.dataCorteSuposta)} <i class="fas fa-circle-question" style="font-size:10px;"></i></strong></div>` : ''}
-            ${gradeHtml}
-            ${pedidosHtml}
-            ${alertaAtraso}
+            ${gradeHtml || pedidosHtml ? `<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--borda-cor);">${gradeHtml}${pedidosHtml}</div>` : ''}
             <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--borda-cor); color:var(--texto-secundario); font-style:italic;">${op.desc}</div>
         </div>
     `;
@@ -3262,15 +3261,15 @@ function renderizarTudoImediato() {
         const pedidoVinc = pedidoVinculadoPorOP.get(o.id);
         const tintaPedido = pedidoVinc ? (pedidoVinc.prior !== 99 ? 'background:rgba(107, 76, 122,0.12);' : 'background:rgba(107, 76, 122,0.06);') : '';
         const badgePedido = pedidoVinc
-            ? `<br><span class="pill pill-pedido" style="margin-top:4px; display:inline-block;" title="Pedido ${pedidoVinc.pedido} de ${pedidoVinc.cliente} — falta ${pedidoVinc.faltaProduzir} pçs (tam ${pedidoVinc.tam})${pedidoVinc.chegada ? ' — chegada ' + new Date(pedidoVinc.chegada).toLocaleDateString('pt-BR') : ''}"><i class="fas fa-user-clock"></i> ${pedidoVinc.cliente.split(' ').slice(0, 2).join(' ')}</span>`
+            ? `<span class="selo-icone" style="background:var(--cor-roxo);" title="Pedido ${pedidoVinc.pedido} de ${pedidoVinc.cliente} — falta ${pedidoVinc.faltaProduzir} pçs (tam ${pedidoVinc.tam})${pedidoVinc.chegada ? ' — chegada ' + new Date(pedidoVinc.chegada).toLocaleDateString('pt-BR') : ''}"><i class="fas fa-user-clock"></i></span>`
             : '';
         const entrouPorMP = bOP !== "" && !o.id.toLowerCase().includes(bOP);
         const badgeMP = entrouPorMP
-            ? `<br><span class="pill" style="background:var(--cor-sugestao); margin-top:4px; display:inline-block;" title="Não bateu com a busca — apareceu por ser da mesma matéria-prima (${mpOP}) de uma OP buscada"><i class="fas fa-layer-group"></i> MESMA MP</span>`
+            ? `<span class="selo-icone" style="background:var(--cor-sugestao);" title="Não bateu com a busca — apareceu por ser da mesma matéria-prima (${mpOP}) de uma OP buscada"><i class="fas fa-layer-group"></i></span>`
             : '';
         const grupoRef = mapaTamanhoGrupoReferencia.get(o.referencia);
         const badgeAgrupamento = grupoRef
-            ? `<br><span class="pill" style="background:var(--cor-alerta); margin-top:4px; display:inline-block; cursor:pointer;" title="Essa referência tem ${grupoRef} OPs entre Programação/Análise de Medidas/Aguard. Matéria Prima — clique pra ver o Agrupamento por Referência" onclick="event.stopPropagation(); abrirAgrupamentoReferencia();"><i class="fas fa-object-group"></i> AGRUPA (${grupoRef})</span>`
+            ? `<span class="selo-icone" style="background:var(--cor-historico); cursor:pointer;" title="Essa referência tem ${grupoRef} OPs entre Programação/Análise de Medidas/Aguard. Matéria Prima — clique pra ver o Agrupamento por Referência" onclick="event.stopPropagation(); abrirAgrupamentoReferencia();"><i class="fas fa-object-group"></i></span>`
             : '';
         htmlTabela += `
             <tr oncontextmenu="mostrarMenuContexto(event, '${o.id}')" style="${o.prioridade ? 'background:rgba(107, 76, 122,0.05);' : (tintaPedido || (emAtraso ? 'background:rgba(193, 68, 78,0.06);' : ''))}">
@@ -4445,6 +4444,7 @@ function inicializarEventosUI() {
         wireEvento('btnMenuAnalise', 'click', () => { toggleDropdown('menuAnalise'); });
         wireEvento('btnMenuImportar', 'click', () => { toggleDropdown('menuImportar'); });
         wireEvento('btnMenuSistema', 'click', () => { toggleDropdown('menuSistema'); });
+        wireEvento('btnMenuMaisOpcoes', 'click', () => { toggleDropdown('menuMaisOpcoes'); });
         wireEvento('analisarGargalo', 'click', () => { analisarGargalo(); });
         wireEvento('ativarModoTV', 'click', () => { ativarModoTV(); });
         wireEvento('toggleTema', 'click', () => { toggleTema(); });

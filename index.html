@@ -168,12 +168,18 @@
         <h2 style="margin:0; border-left:4px solid var(--cor-selecao); padding-left:15px;">CORTE PRO <span
                 style="font-weight:300; font-size:14px; margin-left:8px;">| Controle Integrado</span></h2>
         <div style="display:flex; gap:var(--espaco-sm); align-items:center;">
-            <button id="toggleTema" class="btn" title="Alternar tema claro/escuro" style="background:rgba(255,255,255,0.2); color:white;"><i
-                    class="fas fa-moon"></i></button>
+            <div class="dropdown-container">
+                <button id="btnMenuMaisOpcoes" class="btn" title="Mais opções" style="background:rgba(255,255,255,0.2); color:white;"><i
+                        class="fas fa-ellipsis-vertical"></i></button>
+                <div id="menuMaisOpcoes" class="dropdown-menu">
+                    <button id="toggleTema" class="btn" style="background:var(--bg-painel); color:var(--texto-cor);"><i
+                            class="fas fa-moon"></i> ALTERNAR TEMA CLARO/ESCURO</button>
+                    <button id="abrirGuiaSistema" class="btn" style="background:var(--bg-painel); color:var(--texto-cor);"><i
+                            class="fas fa-circle-question"></i> GUIA DO SISTEMA</button>
+                </div>
+            </div>
             <button id="abrirBuscaGlobal" class="btn" title="Busca global (Ctrl+K)" style="background:rgba(255,255,255,0.2); color:white;"><i
                     class="fas fa-search"></i></button>
-            <button id="abrirGuiaSistema" class="btn" title="Guia — o que esse sistema faz" style="background:rgba(255,255,255,0.2); color:white;"><i
-                    class="fas fa-circle-question"></i></button>
             <button id="btnLoginAdmin" class="btn" title="Entrar como admin" style="background:rgba(255,255,255,0.2); color:white;"><i
                     class="fas fa-user-lock"></i> <span id="txtLoginAdmin">VISITANTE</span></button>
             <span id="indicadorUltimaPublicacao" style="font-size:10px; color:rgba(255,255,255,0.6); white-space:nowrap;"></span>

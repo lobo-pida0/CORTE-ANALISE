@@ -770,6 +770,25 @@ body.dark-mode .tabela-dados tbody tr:hover {
     text-transform: uppercase;
 }
 
+/* Selo compacto — só o ícone, sem texto. Usado quando várias condições
+   podem acontecer na mesma linha ao mesmo tempo (ex: uma OP vinculada a
+   pedido E da mesma matéria-prima E agrupada por referência) — em pílulas
+   cheias empilhadas isso deixava a linha bem mais alta que as vizinhas. O
+   texto continua disponível no title (aparece no hover). */
+.selo-icone {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    color: white;
+    font-size: 9px;
+    margin-left: 3px;
+    cursor: default;
+    vertical-align: middle;
+}
+
 .pill-atraso {
     background: var(--cor-alerta);
 }
