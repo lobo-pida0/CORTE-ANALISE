@@ -680,6 +680,7 @@ async function carregarOPsDaNuvemParaVisitante() {
             // mesmo com o dado certo por trás.
             inicializarFiltros();
             renderizarFiltroDataCorte();
+            renderizarFiltroMesDestino();
             renderizarTudoImediato();
             showToast(`<i class="fas fa-cloud"></i> ${data.length} OPs carregadas da nuvem (modo visitante).`);
         }
@@ -1575,6 +1576,7 @@ function processarExcel() {
         localStorage.setItem('opsAguardandoMP', JSON.stringify(opsAguardandoMP));
         inicializarFiltros();
         renderizarFiltroDataCorte();
+        renderizarFiltroMesDestino();
         renderizarTudoImediato();
 
         input.value = '';
@@ -1858,14 +1860,20 @@ function processarDestino() {
                 throw new Error("Não encontrei as colunas OP e Prioridade no cabeçalho da planilha (primeira linha).");
             }
 
-            const prioritarias = new Set();
+            // Acumula em cima do que já existia de outras importações — só
+            // as OPs que aparecem NESSE arquivo têm seu estado reavaliado
+            // (podem virar prioritárias, ou deixar de ser, se essa planilha
+            // disser prior=99 agora); as que não aparecem aqui mantêm o que
+            // já tinham de uma importação anterior. Antes disso, importar um
+            // mês novo APAGAVA a prioridade dos meses anteriores por engano.
+            const prioritarias = obterPrioridadesDestino();
             const mesPorOP = obterOpsMesDestino(); // acumula em cima do que já tinha de outros meses
             let linhasLidas = 0;
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxOP]) continue;
                 const opId = String(row[idxOP]).trim();
                 const prior = parseFloat(row[idxPrioridade]);
-                if (!isNaN(prior) && prior !== 99) prioritarias.add(opId);
+                if (!isNaN(prior) && prior !== 99) prioritarias.add(opId); else prioritarias.delete(opId);
                 mesPorOP[opId] = mes; // se essa OP já tinha mês de uma importação anterior, o mais recente vence
                 linhasLidas++;
             }
@@ -1891,6 +1899,7 @@ function processarDestino() {
             cacheGruposPorReferencia = null; // a prioridade/mês não entram nesse cache, mas por segurança
 
             input.value = '';
+            renderizarFiltroMesDestino();
             renderizarTudoImediato();
             registrarAtualizacao('destino'); atualizarIndicadoresDeAtualizacao();
             showToast(`<i class="fas fa-check-double"></i> Destino de ${mes} importado! ${prioritarias.size} OP(s) com prioridade${mudou > 0 ? ` — ${mudou} OP(s) já na tela foram atualizadas agora` : ''}.`);
@@ -3269,7 +3278,8 @@ function renderizarTudoImediato() {
     // outras OPs da MESMA matéria-prima — mesmo que o número delas não bata
     // com o texto buscado. Ajuda a já visualizar o que "cabe" no mesmo corte.
     const condBase = o => locaisSelecionados.includes(o.localDestino) && (bCic === "" || o.ciclo.toLowerCase().includes(bCic)) && (bMP === "" || (o.codigoMP || '').toLowerCase().includes(bMP))
-        && passaFiltroDataCorte(o);
+        && passaFiltroDataCorte(o)
+        && passaFiltroMesDestino(o);
     let filtrados;
     if (bOP !== "") {
         const localizadasPorTexto = bancoDadosOPs.filter(o => condBase(o) && o.id.toLowerCase().includes(bOP));
@@ -4475,6 +4485,54 @@ function passaFiltroDataCorte(op) {
     return !datasCorteExcluidas.has(formatarDataBR(op.dataCorte));
 }
 
+// Filtro de "Mês Destino" — o mês que o usuário informou na importação de
+// Destino (não tem coluna de data que sirva pra isso na planilha, então é
+// informado na hora de importar). Mesmo padrão do filtro de Data de Corte.
+const CHAVE_SEM_MES_DESTINO = '__SEM_MES__';
+let mesesDestinoExcluidos = new Set();
+
+function renderizarFiltroMesDestino() {
+    const el = $('listaFiltroMesDestino');
+    if (!el) return;
+
+    const meses = new Set();
+    let temSemMes = false;
+    bancoDadosOPs.forEach(op => { if (op.mesDestino) meses.add(op.mesDestino); else temSemMes = true; });
+    const listaMeses = [...meses].sort();
+    if (temSemMes) listaMeses.push(CHAVE_SEM_MES_DESTINO);
+
+    if (listaMeses.length === 0) {
+        el.innerHTML = '<label style="color:var(--texto-secundario); padding:8px 12px; display:block;">Nenhum mês disponível — importe o Destino primeiro.</label>';
+        atualizarTextoFiltroMesDestino(0, 0);
+        return;
+    }
+
+    const marcadas = listaMeses.filter(m => !mesesDestinoExcluidos.has(m)).length;
+    const todasMarcadas = marcadas === listaMeses.length;
+
+    let html = `<label style="font-weight:700; border-bottom:1px solid var(--borda-cor);">
+        <input type="checkbox" id="chkTodosMesesDestino" ${todasMarcadas ? 'checked' : ''}> Selecionar tudo</label>`;
+    html += listaMeses.map(m => {
+        const rotulo = m === CHAVE_SEM_MES_DESTINO ? '(sem mês)' : m;
+        return `<label><input type="checkbox" class="chk-mes-destino" value="${m}" ${mesesDestinoExcluidos.has(m) ? '' : 'checked'}> ${rotulo}</label>`;
+    }).join('');
+    el.innerHTML = html;
+
+    atualizarTextoFiltroMesDestino(marcadas, listaMeses.length);
+}
+
+function atualizarTextoFiltroMesDestino(marcadas, total) {
+    if (!$('textoFiltroMesDestino')) return;
+    if (total === 0 || marcadas === total) $('textoFiltroMesDestino').innerText = 'Todos';
+    else if (marcadas === 0) $('textoFiltroMesDestino').innerText = 'Nenhum';
+    else $('textoFiltroMesDestino').innerText = `${marcadas} de ${total}`;
+}
+
+function passaFiltroMesDestino(op) {
+    if (!op.mesDestino) return !mesesDestinoExcluidos.has(CHAVE_SEM_MES_DESTINO);
+    return !mesesDestinoExcluidos.has(op.mesDestino);
+}
+
 function inicializarFiltroEtapa() {
     if (!$('listaFiltroEtapa')) return;
     // Mantém o comportamento de sempre por padrão (só PROGRAMAÇÃO marcada),
@@ -4655,6 +4713,19 @@ function inicializarEventosUI() {
             renderizarFiltroDataCorte();
             renderizarTudoImediato();
         });
+        wireEvento('toggleMultiSelectMesDestino', 'click', () => { const e2 = $('listaFiltroMesDestino'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('listaFiltroMesDestino', 'click', (event) => { event.stopPropagation(); });
+        wireEvento('listaFiltroMesDestino', 'change', (e) => {
+            if (e.target.id === 'chkTodosMesesDestino') {
+                if (e.target.checked) mesesDestinoExcluidos.clear();
+                else $$('.chk-mes-destino').forEach(c => mesesDestinoExcluidos.add(c.value));
+            } else if (e.target.classList.contains('chk-mes-destino')) {
+                if (e.target.checked) mesesDestinoExcluidos.delete(e.target.value);
+                else mesesDestinoExcluidos.add(e.target.value);
+            } else return;
+            renderizarFiltroMesDestino();
+            renderizarTudoImediato();
+        });
         wireEvento('listaFiltroEtapa', 'click', (event) => { event.stopPropagation(); });
         wireEvento('toggleMultiSelect', 'click', () => { toggleMultiSelect(); });
         wireEvento('listaFiltroLocal', 'click', (event) => { event.stopPropagation(); });
@@ -4700,6 +4771,7 @@ window.onload = function () {
     inicializarFiltros();
     renderizarHistorico();
     renderizarFiltroDataCorte();
+    renderizarFiltroMesDestino();
 
     carregarFiltrosFilaCorte();
     carregarCapacidade();
