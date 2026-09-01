@@ -274,6 +274,7 @@
         <button id="abrirAba-aba-sequenciamento" class="tab-btn">SEQUENCIAMENTO</button>
         <button id="abrirAba-aba-fluxo-consolidado" class="tab-btn">FLUXO GERAL</button>
         <button id="abrirAba-aba-necessidade" class="tab-btn">LEVANTAMENTO</button>
+        <button id="abrirAba-aba-prioridades" class="tab-btn">PRIORIDADES</button>
     </div>
 
     <div id="aba-programacao" class="aba-conteudo integra ativa">
@@ -698,6 +699,30 @@
                         </tr>
                     </thead>
                     <tbody id="listaNecessidade"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="aba-prioridades" class="aba-conteudo">
+        <div class="secao">
+            <div class="secao-header" style="background:#B8862A;"><span><i class="fas fa-star"></i> OPs PRIORITÁRIAS</span><span id="contPrioridadesTab">0 OPs</span></div>
+            <div style="padding:14px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor);">
+                <span style="font-size:11px; color:var(--texto-secundario);">Só as OPs marcadas como prioritárias (mesma lista do Radar), num formato de tabela.</span>
+            </div>
+            <div class="secao-corpo">
+                <table class="tabela-dados">
+                    <thead>
+                        <tr>
+                            <th>OP</th>
+                            <th>DESCRIÇÃO</th>
+                            <th>ETAPA</th>
+                            <th style="text-align:right;">PEÇAS</th>
+                            <th style="text-align:right;">DIAS PARADO</th>
+                            <th>MÊS DESTINO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaPrioridadesTab"></tbody>
                 </table>
             </div>
         </div>

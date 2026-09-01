@@ -425,7 +425,7 @@ function atualizarIndicadorLogin() {
 // menu. Não é só estética: como as ações de edição já ficam bloqueadas de
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
-const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-sequenciamento', 'aba-necessidade'];
+const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-sequenciamento', 'aba-necessidade', 'aba-prioridades'];
 function abaLiberadaAgora(idAba) {
     return !!sessaoAdminAtual || ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba);
 }
@@ -2101,6 +2101,34 @@ function opsNaJornadaCompleta(referencia) {
 // telas separadas.
 let modoLevantamentoNecessidade = 'faltaEstoque'; // fica lembrado enquanto o sistema está aberto
 
+// Desenha a aba PRIORIDADES — a mesma lista do Radar, num formato de
+// tabela. Existe especificamente pra quem só visualiza (o Radar é uma
+// sidebar, não uma aba, e não fica óbvio como abrir ela sem já conhecer o
+// sistema).
+function renderizarAbaPrioridades() {
+    if (!$('listaPrioridadesTab')) return;
+    const prioritarias = bancoDadosOPs.filter(o => o.prioridade)
+        .sort((a, b) => (a.mesDestino || '').localeCompare(b.mesDestino || ''));
+
+    if ($('contPrioridadesTab')) $('contPrioridadesTab').innerText = `${prioritarias.length} OP(s)`;
+
+    if (!prioritarias.length) {
+        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária no momento.</td></tr>`;
+        return;
+    }
+
+    $('listaPrioridadesTab').innerHTML = prioritarias.map(op => `
+        <tr>
+            <td><strong>${op.id}</strong></td>
+            <td>${op.desc}</td>
+            <td><span class="pill" style="background:var(--cor-primaria);">${nomesEtapas[op.etapa]}</span></td>
+            <td style="text-align:right;">${op.qtd}</td>
+            <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
+            <td>${op.mesDestino ? `<span class="pill" style="background:#B8862A;">${op.mesDestino}</span>` : '<span style="color:var(--texto-secundario);">—</span>'}</td>
+        </tr>
+    `).join('');
+}
+
 function renderizarNecessidadePorReferencia() {
     if (!$('listaNecessidade')) return;
     const termo = $('buscaNecessidade') ? $('buscaNecessidade').value.trim().toLowerCase() : '';
@@ -3415,6 +3443,7 @@ function renderizarTudoImediato() {
     $$('.check-lote').forEach(cb => cb.onclick = handleShiftClick);
 
     renderizarSidebarPrioridades();
+    renderizarAbaPrioridades();
     renderizarHistorico();
     calcularSomaLoteImediato();
     renderizarOPsVinculadas(pendentesPorReferencia);
@@ -4696,6 +4725,7 @@ function inicializarEventosUI() {
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('abrirAba-aba-fluxo-consolidado', 'click', (event) => { abrirAba(event, 'aba-fluxo-consolidado'); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
+        wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); renderizarAbaPrioridades(); });
         wireEvento('btnAtualizarNecessidade', 'click', () => { renderizarNecessidadePorReferencia(); });
         wireEvento('btnModoNecessidade', 'click', () => { alternarModoLevantamentoNecessidade(); });
         wireEvento('buscaNecessidade', 'input', () => { renderizarNecessidadePorReferencia(); });
