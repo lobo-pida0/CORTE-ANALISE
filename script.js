@@ -374,6 +374,7 @@ function opParaLinhaSupabase(op) {
         // existe no cliente (fica pra uma etapa própria) — por enquanto os
         // dois lados da tabela recebem o mesmo valor.
         prioridade_urgencia: !!op.prioridade, prioridade_manual: !!op.prioridade,
+        mes_destino: op.mesDestino || null,
         dias_local: parseInt(op.diasLocal) || 0, codigo_mp: op.codigoMP || '', desc_mp: op.descMP || '',
         referencia: op.referencia || '', sob_medida: !!op.sobMedida, laser: !!op.laser,
         data_finalizacao: op.dataFinalizacao ? new Date(op.dataFinalizacao).toISOString().slice(0, 10) : null,
@@ -391,6 +392,7 @@ function linhaSupabaseParaOP(l) {
         dataEntradaEtapa: l.data_entrada_etapa, diasLocal: l.dias_local || 0,
         codigoMP: l.codigo_mp || '', descMP: l.desc_mp || '', referencia: l.referencia || '',
         sobMedida: !!l.sob_medida, laser: !!l.laser, dataFinalizacao: l.data_finalizacao,
+        mesDestino: l.mes_destino || null,
         dataCorteSuposta: calcularDataCorteSuposta(l.data_finalizacao)
     };
 }
