@@ -4529,7 +4529,28 @@ function importarBackup(e) {
 }
 
 function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-sequenciamento'; ev = null; } $$('.aba-conteudo').forEach(a => a.classList.remove('ativa')); $$('.tab-btn').forEach(b => b.classList.remove('ativo')); $(id).classList.add('ativa'); if (ev) ev.currentTarget.classList.add('ativo'); else $('abrirAba-' + id)?.classList.add('ativo'); if (id === 'aba-fluxo-consolidado') renderizarFluxoConsolidado(); }
-function toggleMultiSelect() { const e = $('listaFiltroLocal'); e.style.display = e.style.display === 'block' ? 'none' : 'block'; }
+// Abre/fecha um dropdown de filtro (multi-select), calculando a posição na
+// tela na hora de abrir — usado por TODOS os filtros desse tipo no sistema
+// (Etapa, Local, Data de Corte, Mês Destino, Local/Tipo de Produção, Setor e
+// Mês de Prioridades). Precisa disso porque o dropdown é position:fixed (ver
+// comentário no CSS — o container pai corta ele se for position:absolute).
+function abrirFecharMultiSelect(idGatilho, idLista) {
+    const lista = $(idLista);
+    if (!lista) return;
+    const jaAberta = lista.style.display === 'block';
+    $$('.multi-select-options').forEach(o => { o.style.display = 'none'; });
+    if (jaAberta) return;
+    const gatilho = $(idGatilho);
+    if (gatilho) {
+        const rect = gatilho.getBoundingClientRect();
+        lista.style.left = Math.round(rect.left) + 'px';
+        lista.style.top = Math.round(rect.bottom + 5) + 'px';
+        lista.style.minWidth = Math.round(rect.width) + 'px';
+    }
+    lista.style.display = 'block';
+}
+
+function toggleMultiSelect() { abrirFecharMultiSelect('toggleMultiSelect', 'listaFiltroLocal'); }
 
 function inicializarFiltros() {
     locaisSelecionados = [...new Set(bancoDadosOPs.map(o => o.localDestino))].sort();
@@ -4664,7 +4685,7 @@ function atualizarTextoFiltroEtapa() {
     else $('textoFiltroEtapa').innerText = `${etapasSelecionadas.length} etapas`;
 }
 
-function toggleMultiSelectEtapa() { const e = $('listaFiltroEtapa'); e.style.display = e.style.display === 'block' ? 'none' : 'block'; }
+function toggleMultiSelectEtapa() { abrirFecharMultiSelect('toggleMultiSelectEtapa', 'listaFiltroEtapa'); }
 function alternarOrdenacaoCorte() { ordemCorteAsc = !ordemCorteAsc; renderizarTudoImediato(); }
 function zerarTudo() { if (!exigirAdmin('limpar os dados')) return; if (confirm("⚠️ Isso vai apagar TODOS os dados salvos neste navegador (OPs, histórico, filtros) e não pode ser desfeito.\n\nTem certeza que deseja continuar?")) { localStorage.clear(); location.reload(); } }
 
@@ -4799,9 +4820,9 @@ function inicializarEventosUI() {
             salvarFiltrosFilaCorte();
             renderizarFilaCorte();
         });
-        wireEvento('toggleMultiSelectLocalProd', 'click', () => { const e2 = $('listaFiltroLocalProd'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('toggleMultiSelectLocalProd', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectLocalProd', 'listaFiltroLocalProd'); });
         wireEvento('listaFiltroLocalProd', 'click', (event) => { event.stopPropagation(); });
-        wireEvento('toggleMultiSelectTipoProd', 'click', () => { const e2 = $('listaFiltroTipoProd'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('toggleMultiSelectTipoProd', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectTipoProd', 'listaFiltroTipoProd'); });
         wireEvento('listaFiltroTipoProd', 'click', (event) => { event.stopPropagation(); });
         wireEvento('marcarTodosLocalProd', 'click', () => { locaisProducaoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
@@ -4812,7 +4833,7 @@ function inicializarEventosUI() {
         wireEvento('btnModoNecessidade', 'click', () => { alternarModoLevantamentoNecessidade(); });
         wireEvento('buscaNecessidade', 'input', () => { renderizarNecessidadePorReferencia(); });
         wireEvento('toggleMultiSelectEtapa', 'click', () => { toggleMultiSelectEtapa(); });
-        wireEvento('toggleMultiSelectDataCorte', 'click', () => { const e2 = $('listaFiltroDataCorte'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('toggleMultiSelectDataCorte', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectDataCorte', 'listaFiltroDataCorte'); });
         wireEvento('listaFiltroDataCorte', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroDataCorte', 'change', (e) => {
             if (e.target.id === 'chkTodasDatasCorte') {
@@ -4825,7 +4846,7 @@ function inicializarEventosUI() {
             renderizarFiltroDataCorte();
             renderizarTudoImediato();
         });
-        wireEvento('toggleMultiSelectMesDestino', 'click', () => { const e2 = $('listaFiltroMesDestino'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('toggleMultiSelectMesDestino', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectMesDestino', 'listaFiltroMesDestino'); });
         wireEvento('listaFiltroMesDestino', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroMesDestino', 'change', (e) => {
             if (e.target.id === 'chkTodosMesesDestino') {
@@ -4838,7 +4859,7 @@ function inicializarEventosUI() {
             renderizarFiltroMesDestino();
             renderizarTudoImediato();
         });
-        wireEvento('toggleMultiSelectSetorPrioridades', 'click', () => { const e2 = $('listaFiltroSetorPrioridades'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('toggleMultiSelectSetorPrioridades', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectSetorPrioridades', 'listaFiltroSetorPrioridades'); });
         wireEvento('listaFiltroSetorPrioridades', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroSetorPrioridades', 'change', (e) => {
             if (e.target.id === 'chkTodosSetoresPrioridades') {
@@ -4851,7 +4872,7 @@ function inicializarEventosUI() {
             renderizarFiltroSetorPrioridades();
             renderizarAbaPrioridades();
         });
-        wireEvento('toggleMultiSelectMesPrioridades', 'click', () => { const e2 = $('listaFiltroMesPrioridades'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('toggleMultiSelectMesPrioridades', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectMesPrioridades', 'listaFiltroMesPrioridades'); });
         wireEvento('listaFiltroMesPrioridades', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroMesPrioridades', 'change', (e) => {
             if (e.target.id === 'chkTodosMesesPrioridades') {

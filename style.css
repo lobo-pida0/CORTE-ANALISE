@@ -567,16 +567,19 @@ select:focus {
 }
 
 .multi-select-options {
-    position: absolute;
-    top: calc(100% + 5px);
-    left: 0;
+    /* position:fixed (não absolute) de propósito — o container pai (.secao)
+       tem overflow:hidden pros cantos arredondados, e isso CORTA qualquer
+       coisa position:absolute que tente sair da caixa dele. fixed não sofre
+       esse corte, mas precisa que o JS calcule top/left na hora de abrir
+       (função abrirFecharMultiSelect) — sem isso, sempre aparece no canto. */
+    position: fixed;
     width: max-content;
-    min-width: 100%;
+    min-width: 150px;
     max-width: 280px;
     background: var(--bg-card);
     border: 1px solid var(--borda-cor);
     border-radius: 6px;
-    z-index: 1000;
+    z-index: 2000;
     max-height: 250px;
     overflow-y: auto;
     display: none;
