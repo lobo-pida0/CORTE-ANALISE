@@ -570,7 +570,9 @@ select:focus {
     position: absolute;
     top: calc(100% + 5px);
     left: 0;
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
+    max-width: 280px;
     background: var(--bg-card);
     border: 1px solid var(--borda-cor);
     border-radius: 6px;
