@@ -1854,10 +1854,23 @@ function processarDestino() {
             if (linhasLidas === 0) throw new Error("Nenhuma linha válida encontrada (confira se a coluna OP está preenchida).");
 
             localStorage.setItem('prioridadesDestino', JSON.stringify([...prioritarias]));
+
+            // Reaplica a prioridade nas OPs que JÁ ESTÃO na tela agora — sem
+            // isso, quem importasse o Destino DEPOIS de já ter sincronizado
+            // só veria a mudança na próxima sincronização, o que não é óbvio
+            // (a pessoa acha que já devia ter atualizado na hora).
+            let mudou = 0;
+            bancoDadosOPs.forEach(op => {
+                const novaPrioridade = prioritarias.has(op.id);
+                if (op.prioridade !== novaPrioridade) { op.prioridade = novaPrioridade; mudou++; }
+            });
+            if (mudou > 0) localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
+            cacheGruposPorReferencia = null; // a prioridade não entra nesse cache, mas por segurança
+
             input.value = '';
             renderizarTudoImediato();
             registrarAtualizacao('destino'); atualizarIndicadoresDeAtualizacao();
-            showToast(`<i class="fas fa-check-double"></i> Destino importado! ${prioritarias.size} OP(s) com prioridade.`);
+            showToast(`<i class="fas fa-check-double"></i> Destino importado! ${prioritarias.size} OP(s) com prioridade${mudou > 0 ? ` — ${mudou} OP(s) já na tela foram atualizadas agora` : ''}.`);
         } catch (err) {
             console.error('Erro ao processar destino:', err);
             alert("❌ Não foi possível processar a planilha de destino.\n\nVerifique se ela tem as colunas OP e Prioridade no cabeçalho.\n\nDetalhe técnico: " + err.message);
