@@ -1369,6 +1369,18 @@ document.addEventListener('click', e => {
     }
 });
 
+// Os dropdowns de filtro são position:fixed (pra não serem cortados pelo
+// overflow:hidden do container da aba — ver comentário no CSS), mas isso
+// significa que eles NÃO acompanham a rolagem sozinhos. Em vez de recalcular
+// a posição toda hora que rola (mais complexo e arriscado), fecha o
+// dropdown assim que qualquer rolagem acontecer — inclusive rolagem DENTRO
+// de uma área com scroll próprio, tipo a tabela (por isso o "true" no
+// final, que pega o evento na fase de captura, já que "scroll" não borbulha
+// como outros eventos).
+document.addEventListener('scroll', () => {
+    $$('.multi-select-options').forEach(o => { o.style.display = 'none'; });
+}, true);
+
 // Abre/fecha um menu suspenso do cabeçalho, fechando qualquer outro que já
 // estivesse aberto (evita dois menus abertos ao mesmo tempo).
 function toggleDropdown(id) {
