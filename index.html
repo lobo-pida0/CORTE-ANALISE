@@ -707,8 +707,20 @@
     <div id="aba-prioridades" class="aba-conteudo">
         <div class="secao">
             <div class="secao-header" style="background:#B8862A;"><span><i class="fas fa-star"></i> OPs PRIORITÁRIAS</span><span id="contPrioridadesTab">0 OPs</span></div>
-            <div style="padding:14px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor);">
-                <span style="font-size:11px; color:var(--texto-secundario);">Só as OPs marcadas como prioritárias (mesma lista do Radar), num formato de tabela.</span>
+            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:14px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
+                <span style="font-size:11px; color:var(--texto-secundario); flex-basis:100%;">Só as OPs marcadas como prioritárias (mesma lista do Radar), num formato de tabela.</span>
+                <div class="campo-meta" style="width:170px;"><label>SETOR</label>
+                    <div id="toggleMultiSelectSetorPrioridades" class="multi-select-container">
+                        <div class="multi-select-trigger" id="textoFiltroSetorPrioridades">Todos</div>
+                        <div class="multi-select-options" id="listaFiltroSetorPrioridades"></div>
+                    </div>
+                </div>
+                <div class="campo-meta" style="width:150px;"><label>MÊS DESTINO</label>
+                    <div id="toggleMultiSelectMesPrioridades" class="multi-select-container">
+                        <div class="multi-select-trigger" id="textoFiltroMesPrioridades">Todos</div>
+                        <div class="multi-select-options" id="listaFiltroMesPrioridades"></div>
+                    </div>
+                </div>
             </div>
             <div class="secao-corpo">
                 <table class="tabela-dados">

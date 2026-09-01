@@ -681,6 +681,7 @@ async function carregarOPsDaNuvemParaVisitante() {
             inicializarFiltros();
             renderizarFiltroDataCorte();
             renderizarFiltroMesDestino();
+            reconstruirFiltrosPrioridades();
             renderizarTudoImediato();
             showToast(`<i class="fas fa-cloud"></i> ${data.length} OPs carregadas da nuvem (modo visitante).`);
         }
@@ -1577,6 +1578,7 @@ function processarExcel() {
         inicializarFiltros();
         renderizarFiltroDataCorte();
         renderizarFiltroMesDestino();
+        reconstruirFiltrosPrioridades();
         renderizarTudoImediato();
 
         input.value = '';
@@ -1900,6 +1902,7 @@ function processarDestino() {
 
             input.value = '';
             renderizarFiltroMesDestino();
+            reconstruirFiltrosPrioridades();
             renderizarTudoImediato();
             registrarAtualizacao('destino'); atualizarIndicadoresDeAtualizacao();
             showToast(`<i class="fas fa-check-double"></i> Destino de ${mes} importado! ${prioritarias.size} OP(s) com prioridade${mudou > 0 ? ` — ${mudou} OP(s) já na tela foram atualizadas agora` : ''}.`);
@@ -2105,15 +2108,92 @@ let modoLevantamentoNecessidade = 'faltaEstoque'; // fica lembrado enquanto o si
 // tabela. Existe especificamente pra quem só visualiza (o Radar é uma
 // sidebar, não uma aba, e não fica óbvio como abrir ela sem já conhecer o
 // sistema).
+// Filtros da aba PRIORIDADES — próprios dessa aba, não misturam com os
+// filtros da Programação. A LISTA de opções (renderizarFiltro...) só é
+// reconstruída em pontos específicos (abrir a aba, sincronizar, importar
+// Destino) — não a cada atualização de tela, senão o dropdown "pisca"
+// enquanto a pessoa está clicando nele.
+let setoresPrioridadesExcluidos = new Set();
+let mesesPrioridadesExcluidos = new Set();
+const CHAVE_SEM_MES_PRIORIDADES = '__SEM_MES_PRI__';
+
+function renderizarFiltroSetorPrioridades() {
+    const el = $('listaFiltroSetorPrioridades');
+    if (!el) return;
+    const etapasPresentes = [...new Set(bancoDadosOPs.filter(o => o.prioridade).map(o => o.etapa))].sort((a, b) => a - b);
+
+    if (!etapasPresentes.length) {
+        el.innerHTML = '<label style="color:var(--texto-secundario); padding:8px 12px; display:block;">Nenhum setor disponível.</label>';
+        atualizarTextoFiltroSetorPrioridades(0, 0);
+        return;
+    }
+    const marcadas = etapasPresentes.filter(e => !setoresPrioridadesExcluidos.has(e)).length;
+    const todasMarcadas = marcadas === etapasPresentes.length;
+    let html = `<label style="font-weight:700; border-bottom:1px solid var(--borda-cor);"><input type="checkbox" id="chkTodosSetoresPrioridades" ${todasMarcadas ? 'checked' : ''}> Selecionar tudo</label>`;
+    html += etapasPresentes.map(e => `<label><input type="checkbox" class="chk-setor-prioridades" value="${e}" ${setoresPrioridadesExcluidos.has(e) ? '' : 'checked'}> ${nomesEtapas[e]}</label>`).join('');
+    el.innerHTML = html;
+    atualizarTextoFiltroSetorPrioridades(marcadas, etapasPresentes.length);
+}
+function atualizarTextoFiltroSetorPrioridades(marcadas, total) {
+    if (!$('textoFiltroSetorPrioridades')) return;
+    if (total === 0 || marcadas === total) $('textoFiltroSetorPrioridades').innerText = 'Todos';
+    else if (marcadas === 0) $('textoFiltroSetorPrioridades').innerText = 'Nenhum';
+    else $('textoFiltroSetorPrioridades').innerText = `${marcadas} de ${total}`;
+}
+
+function renderizarFiltroMesPrioridades() {
+    const el = $('listaFiltroMesPrioridades');
+    if (!el) return;
+    const meses = new Set(); let temSemMes = false;
+    bancoDadosOPs.filter(o => o.prioridade).forEach(o => { if (o.mesDestino) meses.add(o.mesDestino); else temSemMes = true; });
+    const listaMeses = [...meses].sort();
+    if (temSemMes) listaMeses.push(CHAVE_SEM_MES_PRIORIDADES);
+
+    if (!listaMeses.length) {
+        el.innerHTML = '<label style="color:var(--texto-secundario); padding:8px 12px; display:block;">Nenhum mês disponível.</label>';
+        atualizarTextoFiltroMesPrioridades(0, 0);
+        return;
+    }
+    const marcadas = listaMeses.filter(m => !mesesPrioridadesExcluidos.has(m)).length;
+    const todasMarcadas = marcadas === listaMeses.length;
+    let html = `<label style="font-weight:700; border-bottom:1px solid var(--borda-cor);"><input type="checkbox" id="chkTodosMesesPrioridades" ${todasMarcadas ? 'checked' : ''}> Selecionar tudo</label>`;
+    html += listaMeses.map(m => {
+        const rotulo = m === CHAVE_SEM_MES_PRIORIDADES ? '(sem mês)' : m;
+        return `<label><input type="checkbox" class="chk-mes-prioridades" value="${m}" ${mesesPrioridadesExcluidos.has(m) ? '' : 'checked'}> ${rotulo}</label>`;
+    }).join('');
+    el.innerHTML = html;
+    atualizarTextoFiltroMesPrioridades(marcadas, listaMeses.length);
+}
+function atualizarTextoFiltroMesPrioridades(marcadas, total) {
+    if (!$('textoFiltroMesPrioridades')) return;
+    if (total === 0 || marcadas === total) $('textoFiltroMesPrioridades').innerText = 'Todos';
+    else if (marcadas === 0) $('textoFiltroMesPrioridades').innerText = 'Nenhum';
+    else $('textoFiltroMesPrioridades').innerText = `${marcadas} de ${total}`;
+}
+
+// Reconstrói as DUAS listas de opções — chamada só em pontos específicos
+// (abrir a aba, sincronizar, importar Destino), nunca dentro do render
+// frequente.
+function reconstruirFiltrosPrioridades() {
+    renderizarFiltroSetorPrioridades();
+    renderizarFiltroMesPrioridades();
+}
+
+// Desenha a aba PRIORIDADES — a mesma lista do Radar, num formato de
+// tabela, com os 2 filtros aplicados. Existe especificamente pra quem só
+// visualiza (o Radar é uma sidebar, não uma aba, e não fica óbvio como
+// abrir ela sem já conhecer o sistema).
 function renderizarAbaPrioridades() {
     if (!$('listaPrioridadesTab')) return;
     const prioritarias = bancoDadosOPs.filter(o => o.prioridade)
+        .filter(o => !setoresPrioridadesExcluidos.has(o.etapa))
+        .filter(o => !mesesPrioridadesExcluidos.has(o.mesDestino || CHAVE_SEM_MES_PRIORIDADES))
         .sort((a, b) => (a.mesDestino || '').localeCompare(b.mesDestino || ''));
 
     if ($('contPrioridadesTab')) $('contPrioridadesTab').innerText = `${prioritarias.length} OP(s)`;
 
     if (!prioritarias.length) {
-        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária no momento.</td></tr>`;
+        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
         return;
     }
 
@@ -2124,7 +2204,7 @@ function renderizarAbaPrioridades() {
             <td><span class="pill" style="background:var(--cor-primaria);">${nomesEtapas[op.etapa]}</span></td>
             <td style="text-align:right;">${op.qtd}</td>
             <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
-            <td>${op.mesDestino ? `<span class="pill" style="background:#B8862A;">${op.mesDestino}</span>` : '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td>${op.mesDestino ? `<span class="pill" style="background:#B8862A; font-size:12px;">${op.mesDestino}</span>` : '<span style="color:var(--texto-secundario);">—</span>'}</td>
         </tr>
     `).join('');
 }
@@ -4725,7 +4805,7 @@ function inicializarEventosUI() {
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('abrirAba-aba-fluxo-consolidado', 'click', (event) => { abrirAba(event, 'aba-fluxo-consolidado'); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
-        wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); renderizarAbaPrioridades(); });
+        wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('btnAtualizarNecessidade', 'click', () => { renderizarNecessidadePorReferencia(); });
         wireEvento('btnModoNecessidade', 'click', () => { alternarModoLevantamentoNecessidade(); });
         wireEvento('buscaNecessidade', 'input', () => { renderizarNecessidadePorReferencia(); });
@@ -4755,6 +4835,32 @@ function inicializarEventosUI() {
             } else return;
             renderizarFiltroMesDestino();
             renderizarTudoImediato();
+        });
+        wireEvento('toggleMultiSelectSetorPrioridades', 'click', () => { const e2 = $('listaFiltroSetorPrioridades'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('listaFiltroSetorPrioridades', 'click', (event) => { event.stopPropagation(); });
+        wireEvento('listaFiltroSetorPrioridades', 'change', (e) => {
+            if (e.target.id === 'chkTodosSetoresPrioridades') {
+                if (e.target.checked) setoresPrioridadesExcluidos.clear();
+                else $$('.chk-setor-prioridades').forEach(c => setoresPrioridadesExcluidos.add(parseInt(c.value)));
+            } else if (e.target.classList.contains('chk-setor-prioridades')) {
+                if (e.target.checked) setoresPrioridadesExcluidos.delete(parseInt(e.target.value));
+                else setoresPrioridadesExcluidos.add(parseInt(e.target.value));
+            } else return;
+            renderizarFiltroSetorPrioridades();
+            renderizarAbaPrioridades();
+        });
+        wireEvento('toggleMultiSelectMesPrioridades', 'click', () => { const e2 = $('listaFiltroMesPrioridades'); e2.style.display = e2.style.display === 'block' ? 'none' : 'block'; });
+        wireEvento('listaFiltroMesPrioridades', 'click', (event) => { event.stopPropagation(); });
+        wireEvento('listaFiltroMesPrioridades', 'change', (e) => {
+            if (e.target.id === 'chkTodosMesesPrioridades') {
+                if (e.target.checked) mesesPrioridadesExcluidos.clear();
+                else $$('.chk-mes-prioridades').forEach(c => mesesPrioridadesExcluidos.add(c.value));
+            } else if (e.target.classList.contains('chk-mes-prioridades')) {
+                if (e.target.checked) mesesPrioridadesExcluidos.delete(e.target.value);
+                else mesesPrioridadesExcluidos.add(e.target.value);
+            } else return;
+            renderizarFiltroMesPrioridades();
+            renderizarAbaPrioridades();
         });
         wireEvento('listaFiltroEtapa', 'click', (event) => { event.stopPropagation(); });
         wireEvento('toggleMultiSelect', 'click', () => { toggleMultiSelect(); });
@@ -4802,6 +4908,7 @@ window.onload = function () {
     renderizarHistorico();
     renderizarFiltroDataCorte();
     renderizarFiltroMesDestino();
+    reconstruirFiltrosPrioridades();
 
     carregarFiltrosFilaCorte();
     carregarCapacidade();
