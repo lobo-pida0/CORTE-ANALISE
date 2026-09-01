@@ -1377,7 +1377,11 @@ document.addEventListener('click', e => {
 // de uma área com scroll próprio, tipo a tabela (por isso o "true" no
 // final, que pega o evento na fase de captura, já que "scroll" não borbulha
 // como outros eventos).
-document.addEventListener('scroll', () => {
+document.addEventListener('scroll', (e) => {
+    // Se a rolagem aconteceu DENTRO do próprio dropdown (ele tem scroll
+    // próprio quando a lista é grande), não fecha — só fecha quando é a
+    // página ou algum outro container por trás que rolou.
+    if (e.target && e.target.closest && e.target.closest('.multi-select-options')) return;
     $$('.multi-select-options').forEach(o => { o.style.display = 'none'; });
 }, true);
 
@@ -4546,7 +4550,8 @@ function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-sequenciament
 // (Etapa, Local, Data de Corte, Mês Destino, Local/Tipo de Produção, Setor e
 // Mês de Prioridades). Precisa disso porque o dropdown é position:fixed (ver
 // comentário no CSS — o container pai corta ele se for position:absolute).
-function abrirFecharMultiSelect(idGatilho, idLista) {
+function abrirFecharMultiSelect(idGatilho, idLista, event) {
+    if (event) event.stopPropagation(); // abrir o filtro nunca deve contar como "clique fora" pro handler global
     const lista = $(idLista);
     if (!lista) return;
     // Move o dropdown pra ser filho direto do <body>, na primeira vez que
@@ -4571,7 +4576,7 @@ function abrirFecharMultiSelect(idGatilho, idLista) {
     lista.style.display = 'block';
 }
 
-function toggleMultiSelect() { abrirFecharMultiSelect('toggleMultiSelect', 'listaFiltroLocal'); }
+function toggleMultiSelect(event) { abrirFecharMultiSelect('toggleMultiSelect', 'listaFiltroLocal', event); }
 
 function inicializarFiltros() {
     locaisSelecionados = [...new Set(bancoDadosOPs.map(o => o.localDestino))].sort();
@@ -4706,7 +4711,7 @@ function atualizarTextoFiltroEtapa() {
     else $('textoFiltroEtapa').innerText = `${etapasSelecionadas.length} etapas`;
 }
 
-function toggleMultiSelectEtapa() { abrirFecharMultiSelect('toggleMultiSelectEtapa', 'listaFiltroEtapa'); }
+function toggleMultiSelectEtapa(event) { abrirFecharMultiSelect('toggleMultiSelectEtapa', 'listaFiltroEtapa', event); }
 function alternarOrdenacaoCorte() { ordemCorteAsc = !ordemCorteAsc; renderizarTudoImediato(); }
 function zerarTudo() { if (!exigirAdmin('limpar os dados')) return; if (confirm("⚠️ Isso vai apagar TODOS os dados salvos neste navegador (OPs, histórico, filtros) e não pode ser desfeito.\n\nTem certeza que deseja continuar?")) { localStorage.clear(); location.reload(); } }
 
@@ -4841,9 +4846,9 @@ function inicializarEventosUI() {
             salvarFiltrosFilaCorte();
             renderizarFilaCorte();
         });
-        wireEvento('toggleMultiSelectLocalProd', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectLocalProd', 'listaFiltroLocalProd'); });
+        wireEvento('toggleMultiSelectLocalProd', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectLocalProd', 'listaFiltroLocalProd', event); });
         wireEvento('listaFiltroLocalProd', 'click', (event) => { event.stopPropagation(); });
-        wireEvento('toggleMultiSelectTipoProd', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectTipoProd', 'listaFiltroTipoProd'); });
+        wireEvento('toggleMultiSelectTipoProd', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectTipoProd', 'listaFiltroTipoProd', event); });
         wireEvento('listaFiltroTipoProd', 'click', (event) => { event.stopPropagation(); });
         wireEvento('marcarTodosLocalProd', 'click', () => { locaisProducaoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
@@ -4853,8 +4858,8 @@ function inicializarEventosUI() {
         wireEvento('btnAtualizarNecessidade', 'click', () => { renderizarNecessidadePorReferencia(); });
         wireEvento('btnModoNecessidade', 'click', () => { alternarModoLevantamentoNecessidade(); });
         wireEvento('buscaNecessidade', 'input', () => { renderizarNecessidadePorReferencia(); });
-        wireEvento('toggleMultiSelectEtapa', 'click', () => { toggleMultiSelectEtapa(); });
-        wireEvento('toggleMultiSelectDataCorte', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectDataCorte', 'listaFiltroDataCorte'); });
+        wireEvento('toggleMultiSelectEtapa', 'click', (event) => { toggleMultiSelectEtapa(event); });
+        wireEvento('toggleMultiSelectDataCorte', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectDataCorte', 'listaFiltroDataCorte', event); });
         wireEvento('listaFiltroDataCorte', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroDataCorte', 'change', (e) => {
             if (e.target.id === 'chkTodasDatasCorte') {
@@ -4867,7 +4872,7 @@ function inicializarEventosUI() {
             renderizarFiltroDataCorte();
             renderizarTudoImediato();
         });
-        wireEvento('toggleMultiSelectMesDestino', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectMesDestino', 'listaFiltroMesDestino'); });
+        wireEvento('toggleMultiSelectMesDestino', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectMesDestino', 'listaFiltroMesDestino', event); });
         wireEvento('listaFiltroMesDestino', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroMesDestino', 'change', (e) => {
             if (e.target.id === 'chkTodosMesesDestino') {
@@ -4880,7 +4885,7 @@ function inicializarEventosUI() {
             renderizarFiltroMesDestino();
             renderizarTudoImediato();
         });
-        wireEvento('toggleMultiSelectSetorPrioridades', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectSetorPrioridades', 'listaFiltroSetorPrioridades'); });
+        wireEvento('toggleMultiSelectSetorPrioridades', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectSetorPrioridades', 'listaFiltroSetorPrioridades', event); });
         wireEvento('listaFiltroSetorPrioridades', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroSetorPrioridades', 'change', (e) => {
             if (e.target.id === 'chkTodosSetoresPrioridades') {
@@ -4893,7 +4898,7 @@ function inicializarEventosUI() {
             renderizarFiltroSetorPrioridades();
             renderizarAbaPrioridades();
         });
-        wireEvento('toggleMultiSelectMesPrioridades', 'click', () => { abrirFecharMultiSelect('toggleMultiSelectMesPrioridades', 'listaFiltroMesPrioridades'); });
+        wireEvento('toggleMultiSelectMesPrioridades', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectMesPrioridades', 'listaFiltroMesPrioridades', event); });
         wireEvento('listaFiltroMesPrioridades', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroMesPrioridades', 'change', (e) => {
             if (e.target.id === 'chkTodosMesesPrioridades') {
@@ -4907,7 +4912,7 @@ function inicializarEventosUI() {
             renderizarAbaPrioridades();
         });
         wireEvento('listaFiltroEtapa', 'click', (event) => { event.stopPropagation(); });
-        wireEvento('toggleMultiSelect', 'click', () => { toggleMultiSelect(); });
+        wireEvento('toggleMultiSelect', 'click', (event) => { toggleMultiSelect(event); });
         wireEvento('listaFiltroLocal', 'click', (event) => { event.stopPropagation(); });
         wireEvento('filtroCiclo', 'input', () => { renderizarTudo(); });
         wireEvento('filtroOP', 'input', () => { renderizarTudo(); });
