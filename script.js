@@ -1364,7 +1364,7 @@ document.addEventListener('click', e => {
         $$('.dropdown-menu.aberto').forEach(m => m.classList.remove('aberto'));
     }
     // fecha as listas de marcar (locais, etapas, local de produção, tipo)
-    if (!e.target.closest('.multi-select-container')) {
+    if (!e.target.closest('.multi-select-container') && !e.target.closest('.multi-select-options')) {
         $$('.multi-select-options').forEach(o => { o.style.display = 'none'; });
     }
 });
@@ -4549,6 +4549,15 @@ function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-sequenciament
 function abrirFecharMultiSelect(idGatilho, idLista) {
     const lista = $(idLista);
     if (!lista) return;
+    // Move o dropdown pra ser filho direto do <body>, na primeira vez que
+    // abre — assim ele escapa de qualquer propriedade CSS de um ancestral
+    // que atrapalhe position:fixed (overflow:hidden, transform, filter,
+    // backdrop-filter...). Só move uma vez (marca com data-attribute),
+    // continua funcionando pelo mesmo id depois disso.
+    if (!lista.dataset.movidoParaBody) {
+        document.body.appendChild(lista);
+        lista.dataset.movidoParaBody = '1';
+    }
     const jaAberta = lista.style.display === 'block';
     $$('.multi-select-options').forEach(o => { o.style.display = 'none'; });
     if (jaAberta) return;
