@@ -178,6 +178,7 @@ function atualizarIndicadoresDeAtualizacao() {
         { chave: 'bancoOPs', elIds: ['atualizacao-sincronizar', 'atualizacao-sincronizar-aba'] },
         { chave: 'grades', elIds: ['atualizacao-grade'] },
         { chave: 'pedidos', elIds: ['atualizacao-pedidos', 'atualizacao-pedidos-aba', 'atualizacao-pedidos-vinc'] },
+        { chave: 'destino', elIds: ['atualizacao-destino'] },
         { chave: 'filaCorte', elIds: ['atualizacao-filacorte-aba'] },
     ];
     fontes.forEach(f => {
@@ -1468,22 +1469,11 @@ function processarExcel() {
       try {
         registrarEstado();
         const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
-        let urg = new Set(); const nUrg = wb.SheetNames.find(n => n.toUpperCase().includes('URGENCIA'));
-        if (nUrg) {
-            const lUrg = XLSX.utils.sheet_to_json(wb.Sheets[nUrg], { header: 1 });
-            let idX = -1;
-            if (lUrg.length > 0) {
-                lUrg[0].forEach((c, i) => {
-                    const cUp = String(c || '').trim().toUpperCase();
-                    // aceita "OP" exato (formato antigo) ou qualquer cabeçalho que
-                    // contenha "OP" (ex: "Num.\r\nOp", formato mais novo) — sem essa
-                    // tolerância, a coluna não batia e caía num índice fixo errado
-                    if (cUp === 'OP' || cUp.includes('OP')) idX = i;
-                });
-            }
-            if (idX === -1) idX = 4;
-            for (let i = 1; i < lUrg.length; i++) if (lUrg[i] && lUrg[i][idX]) urg.add(String(lUrg[i][idX]).trim());
-        }
+        // A prioridade (estrela) agora vem da importação separada "Destino de
+        // Produção" (DESTINO), não mais da aba URGENCIAS dessa planilha —
+        // decisão do usuário, já que o relatório de destino traz uma
+        // prioridade mais confiável (numérica, vinda direto do sistema).
+        const prioridadesDestino = obterPrioridadesDestino();
 
         // Aba "BASE" — a "Descrição OP" (coluna Y) indica se a OP é feita SOB
         // MEDIDA (contém "SBM" no texto). OPs sob medida não devem ser
@@ -1561,7 +1551,7 @@ function processarExcel() {
                         localDestino: r[17] ? String(r[17]).trim().toUpperCase() : "N/D",
                         localExcel: r[21] ? String(r[21]).trim().toUpperCase() : "",
                         temDublado: r[18] ? String(r[18]).toUpperCase().includes("SIM") : false,
-                        prioridade: urg.has(idOP), // só o que está na aba URGENCIAS agora — antes carregava a marcação antiga (|| old.prioridade), e como nunca limpava, foi acumulando sincronização após sincronização
+                        prioridade: prioridadesDestino.has(idOP), // fonte: importação "Destino de Produção" (DESTINO) — antes vinha da aba URGENCIAS
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
                         diasLocal: parseInt(r[25]) || 0,
                         codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
@@ -1824,6 +1814,61 @@ function processarPedidos() {
         }
     };
     r.readAsArrayBuffer(input.files[0]);
+}
+
+// =========================================================================
+// 🎯 DESTINO DE PRODUÇÃO — planilha "Por Ordem de Produção Destino". Fonte
+// NOVA da prioridade (estrela) das OPs, substituindo a aba URGENCIAS da
+// Planilha A (decisão do usuário). A coluna "Prioridade" aqui é um número
+// (1 a 10 = prioridade real, 99 = sem prioridade — mesma convenção usada no
+// "Prior" da planilha de Pedidos) — é consistente entre os tamanhos de uma
+// mesma OP, então basta olhar 1 linha por OP.
+// =========================================================================
+function processarDestino() {
+    if (!exigirAdmin('importar o destino de produção')) return;
+    if (!exigirBibliotecaExcel()) return;
+    const input = $('inputDestino'); if (!input.files[0]) return;
+    const r = new FileReader();
+    r.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            const cab = rows[0].map(c => String(c || '').trim().toUpperCase());
+
+            const idxOP = cab.findIndex(c => c === 'OP');
+            const idxPrioridade = cab.findIndex(c => c.startsWith('PRIOR'));
+            if (idxOP === -1 || idxPrioridade === -1) {
+                throw new Error("Não encontrei as colunas OP e Prioridade no cabeçalho da planilha (primeira linha).");
+            }
+
+            const prioritarias = new Set();
+            let linhasLidas = 0;
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i]; if (!row || !row[idxOP]) continue;
+                const opId = String(row[idxOP]).trim();
+                const prior = parseFloat(row[idxPrioridade]);
+                if (!isNaN(prior) && prior !== 99) prioritarias.add(opId);
+                linhasLidas++;
+            }
+            if (linhasLidas === 0) throw new Error("Nenhuma linha válida encontrada (confira se a coluna OP está preenchida).");
+
+            localStorage.setItem('prioridadesDestino', JSON.stringify([...prioritarias]));
+            input.value = '';
+            renderizarTudoImediato();
+            registrarAtualizacao('destino'); atualizarIndicadoresDeAtualizacao();
+            showToast(`<i class="fas fa-check-double"></i> Destino importado! ${prioritarias.size} OP(s) com prioridade.`);
+        } catch (err) {
+            console.error('Erro ao processar destino:', err);
+            alert("❌ Não foi possível processar a planilha de destino.\n\nVerifique se ela tem as colunas OP e Prioridade no cabeçalho.\n\nDetalhe técnico: " + err.message);
+            input.value = '';
+        }
+    };
+    r.readAsArrayBuffer(input.files[0]);
+}
+
+function obterPrioridadesDestino() {
+    try { return new Set(JSON.parse(localStorage.getItem('prioridadesDestino') || '[]')); } catch (e) { return new Set(); }
 }
 
 function obterPedidosPendentes() {
@@ -4431,6 +4476,7 @@ function inicializarEventosUI() {
         wireEvento('abrirPrioridadeClientes', 'click', () => { abrirModalPrioridadeClientes(); });
         wireEvento('inputGrades', 'change', () => { processarGrades(); });
         wireEvento('inputPedidos', 'change', () => { processarPedidos(); });
+        wireEvento('inputDestino', 'change', () => { processarDestino(); });
         wireEvento('gerarSugestaoPedidos', 'click', () => { gerarSugestaoSequenciaPedidos(); });
         wireEvento('abrirSequenciamentoFifo', 'click', () => { abrirModalSequenciamentoFifo(); });
         wireEvento('abrirGuiaSequenciamento-montador', 'click', () => { abrirGuiaSequenciamento(); });
