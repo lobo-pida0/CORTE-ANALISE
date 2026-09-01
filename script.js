@@ -1220,6 +1220,7 @@ function mostrarTooltipOP(e, id) {
             <div><span class="lbl">Tempo:</span> <strong style="color:var(--cor-alerta);">${Number(op.tempoCorte).toFixed(1)} min</strong></div>
             <div><span class="lbl">Dublagem:</span> <strong>${op.temDublado ? 'SIM' : 'NÃO'}</strong></div>
             <div><span class="lbl">Dias Parada:</span> <strong style="color:var(--cor-alerta);">${op.diasLocal || 0} dias</strong></div>
+            ${op.mesDestino ? `<div><span class="lbl">Mês Destino:</span> <strong style="color:#B8862A;">${op.mesDestino}</strong></div>` : ''}
             ${op.dataCorteSuposta && formatarDataBR(op.dataCorteSuposta) ? `<div><span class="lbl">Corte Suposto:</span> <strong style="color:var(--cor-roxo);" title="Calculado de trás pra frente a partir da data de finalização no estoque (${formatarDataBR(op.dataFinalizacao)}), descontando ~22 dias de etiquetação+distribuição+estoque. É uma estimativa, não um compromisso.">${formatarDataBR(op.dataCorteSuposta)} <i class="fas fa-circle-question" style="font-size:10px;"></i></strong></div>` : ''}
             ${gradeHtml || pedidosHtml ? `<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--borda-cor);">${gradeHtml}${pedidosHtml}</div>` : ''}
             <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--borda-cor); color:var(--texto-secundario); font-style:italic;">${op.desc}</div>
@@ -1474,6 +1475,7 @@ function processarExcel() {
         // decisão do usuário, já que o relatório de destino traz uma
         // prioridade mais confiável (numérica, vinda direto do sistema).
         const prioridadesDestino = obterPrioridadesDestino();
+        const mesesDestino = obterOpsMesDestino();
 
         // Aba "BASE" — a "Descrição OP" (coluna Y) indica se a OP é feita SOB
         // MEDIDA (contém "SBM" no texto). OPs sob medida não devem ser
@@ -1552,6 +1554,7 @@ function processarExcel() {
                         localExcel: r[21] ? String(r[21]).trim().toUpperCase() : "",
                         temDublado: r[18] ? String(r[18]).toUpperCase().includes("SIM") : false,
                         prioridade: prioridadesDestino.has(idOP), // fonte: importação "Destino de Produção" (DESTINO) — antes vinha da aba URGENCIAS
+                        mesDestino: mesesDestino[idOP] || null, // "AAAA-MM" informado na importação de Destino — planilha não tem data que sirva pra isso
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
                         diasLocal: parseInt(r[25]) || 0,
                         codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
@@ -1828,6 +1831,19 @@ function processarDestino() {
     if (!exigirAdmin('importar o destino de produção')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputDestino'); if (!input.files[0]) return;
+
+    // A planilha só tem a data de ENTRADA no local — não representa pra qual
+    // mês a OP está sendo destinada. Como cada arquivo importado É de um mês
+    // específico (você me manda um arquivo por mês), pergunto aqui e marco
+    // todas as OPs desse arquivo com esse mês.
+    const mesInformado = prompt('Esse relatório é de qual mês? (formato AAAA-MM, ex: 2026-06)', new Date().toISOString().slice(0, 7));
+    if (!mesInformado || !/^\d{4}-\d{2}$/.test(mesInformado.trim())) {
+        showToast('<i class="fas fa-triangle-exclamation"></i> Mês inválido ou não informado (formato esperado: AAAA-MM). Importação cancelada.', true);
+        input.value = '';
+        return;
+    }
+    const mes = mesInformado.trim();
+
     const r = new FileReader();
     r.onload = function (e) {
         try {
@@ -1843,34 +1859,41 @@ function processarDestino() {
             }
 
             const prioritarias = new Set();
+            const mesPorOP = obterOpsMesDestino(); // acumula em cima do que já tinha de outros meses
             let linhasLidas = 0;
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxOP]) continue;
                 const opId = String(row[idxOP]).trim();
                 const prior = parseFloat(row[idxPrioridade]);
                 if (!isNaN(prior) && prior !== 99) prioritarias.add(opId);
+                mesPorOP[opId] = mes; // se essa OP já tinha mês de uma importação anterior, o mais recente vence
                 linhasLidas++;
             }
             if (linhasLidas === 0) throw new Error("Nenhuma linha válida encontrada (confira se a coluna OP está preenchida).");
 
             localStorage.setItem('prioridadesDestino', JSON.stringify([...prioritarias]));
+            localStorage.setItem('opsMesDestino', JSON.stringify(mesPorOP));
 
-            // Reaplica a prioridade nas OPs que JÁ ESTÃO na tela agora — sem
-            // isso, quem importasse o Destino DEPOIS de já ter sincronizado
-            // só veria a mudança na próxima sincronização, o que não é óbvio
-            // (a pessoa acha que já devia ter atualizado na hora).
+            // Reaplica prioridade E mês nas OPs que JÁ ESTÃO na tela agora —
+            // sem isso, quem importasse o Destino DEPOIS de já ter
+            // sincronizado só veria a mudança na próxima sincronização, o
+            // que não é óbvio (a pessoa acha que já devia ter atualizado na
+            // hora).
             let mudou = 0;
             bancoDadosOPs.forEach(op => {
                 const novaPrioridade = prioritarias.has(op.id);
-                if (op.prioridade !== novaPrioridade) { op.prioridade = novaPrioridade; mudou++; }
+                const novoMes = mesPorOP[op.id] || null;
+                if (op.prioridade !== novaPrioridade || op.mesDestino !== novoMes) {
+                    op.prioridade = novaPrioridade; op.mesDestino = novoMes; mudou++;
+                }
             });
             if (mudou > 0) localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
-            cacheGruposPorReferencia = null; // a prioridade não entra nesse cache, mas por segurança
+            cacheGruposPorReferencia = null; // a prioridade/mês não entram nesse cache, mas por segurança
 
             input.value = '';
             renderizarTudoImediato();
             registrarAtualizacao('destino'); atualizarIndicadoresDeAtualizacao();
-            showToast(`<i class="fas fa-check-double"></i> Destino importado! ${prioritarias.size} OP(s) com prioridade${mudou > 0 ? ` — ${mudou} OP(s) já na tela foram atualizadas agora` : ''}.`);
+            showToast(`<i class="fas fa-check-double"></i> Destino de ${mes} importado! ${prioritarias.size} OP(s) com prioridade${mudou > 0 ? ` — ${mudou} OP(s) já na tela foram atualizadas agora` : ''}.`);
         } catch (err) {
             console.error('Erro ao processar destino:', err);
             alert("❌ Não foi possível processar a planilha de destino.\n\nVerifique se ela tem as colunas OP e Prioridade no cabeçalho.\n\nDetalhe técnico: " + err.message);
@@ -1882,6 +1905,12 @@ function processarDestino() {
 
 function obterPrioridadesDestino() {
     try { return new Set(JSON.parse(localStorage.getItem('prioridadesDestino') || '[]')); } catch (e) { return new Set(); }
+}
+
+// Objeto { idDaOP: "AAAA-MM" } — de qual mês cada OP foi marcada na última
+// importação de Destino em que ela apareceu.
+function obterOpsMesDestino() {
+    try { return JSON.parse(localStorage.getItem('opsMesDestino') || '{}'); } catch (e) { return {}; }
 }
 
 function obterPedidosPendentes() {
