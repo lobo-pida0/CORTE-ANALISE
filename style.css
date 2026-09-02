@@ -734,6 +734,12 @@ select:focus {
     bottom: 0;
     z-index: 10;
     background: var(--bg-painel);
+    /* border-collapse (usado nessa tabela) deixa uma frestinha de 1px em
+       elementos sticky em alguns navegadores, por onde a linha de trás
+       "vaza" durante a rolagem — isso estende a mesma cor de fundo um
+       pouquinho além da caixa, selando a frestinha sem mudar como a
+       tabela é montada (afetaria outras telas que usam essa mesma classe). */
+    box-shadow: 0 -1px 0 var(--bg-painel), 0 2px 0 var(--bg-painel);
 }
 
 .th-ordenavel {
