@@ -375,6 +375,7 @@ function opParaLinhaSupabase(op) {
         // dois lados da tabela recebem o mesmo valor.
         prioridade_urgencia: !!op.prioridade, prioridade_manual: !!op.prioridade,
         mes_destino: op.mesDestino || null,
+        numero_prioridade: op.numeroPrioridade || null,
         dias_local: parseInt(op.diasLocal) || 0, codigo_mp: op.codigoMP || '', desc_mp: op.descMP || '',
         referencia: op.referencia || '', sob_medida: !!op.sobMedida, laser: !!op.laser,
         data_finalizacao: op.dataFinalizacao ? new Date(op.dataFinalizacao).toISOString().slice(0, 10) : null,
@@ -393,6 +394,7 @@ function linhaSupabaseParaOP(l) {
         codigoMP: l.codigo_mp || '', descMP: l.desc_mp || '', referencia: l.referencia || '',
         sobMedida: !!l.sob_medida, laser: !!l.laser, dataFinalizacao: l.data_finalizacao,
         mesDestino: l.mes_destino || null,
+        numeroPrioridade: l.numero_prioridade || null,
         dataCorteSuposta: calcularDataCorteSuposta(l.data_finalizacao)
     };
 }
@@ -1496,6 +1498,7 @@ function processarExcel() {
         // prioridade mais confiável (numérica, vinda direto do sistema).
         const prioridadesDestino = obterPrioridadesDestino();
         const mesesDestino = obterOpsMesDestino();
+        const numerosPrioridade = obterNumerosPrioridade();
 
         // Aba "BASE" — a "Descrição OP" (coluna Y) indica se a OP é feita SOB
         // MEDIDA (contém "SBM" no texto). OPs sob medida não devem ser
@@ -1575,6 +1578,7 @@ function processarExcel() {
                         temDublado: r[18] ? String(r[18]).toUpperCase().includes("SIM") : false,
                         prioridade: prioridadesDestino.has(idOP), // fonte: importação "Destino de Produção" (DESTINO) — antes vinha da aba URGENCIAS
                         mesDestino: mesesDestino[idOP] || null, // "AAAA-MM" informado na importação de Destino — planilha não tem data que sirva pra isso
+                        numeroPrioridade: numerosPrioridade[idOP] || null, // valor bruto da coluna Prioridade — só exibição
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
                         diasLocal: parseInt(r[25]) || 0,
                         codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
@@ -1875,6 +1879,7 @@ function processarDestino() {
             const cab = rows[0].map(c => String(c || '').trim().toUpperCase());
 
             const idxOP = cab.findIndex(c => c === 'OP');
+            const idxPrioridade = cab.findIndex(c => c.startsWith('PRIOR'));
             if (idxOP === -1) {
                 throw new Error("Não encontrei a coluna OP no cabeçalho da planilha (primeira linha).");
             }
@@ -1887,23 +1892,28 @@ function processarDestino() {
             //
             // A coluna "Prioridade" da planilha é um dado interno do
             // sistema de origem do usuário — NÃO é usada aqui pra decidir
-            // quem é prioritária ou não. Toda OP que aparece nesse
-            // relatório é considerada prioritária, independente do número
-            // que vier nessa coluna (decisão do usuário).
+            // quem é prioritária ou não (toda OP do relatório entra). O
+            // número em si é só guardado pra MOSTRAR na tela, não filtra
+            // nada.
             const prioritarias = obterPrioridadesDestino();
             const mesPorOP = obterOpsMesDestino(); // acumula em cima do que já tinha de outros meses
+            const numeroPorOP = obterNumerosPrioridade(); // acumula igual, só informativo
             let linhasLidas = 0;
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxOP]) continue;
                 const opId = String(row[idxOP]).trim();
                 prioritarias.add(opId);
                 mesPorOP[opId] = mes; // se essa OP já tinha mês de uma importação anterior, o mais recente vence
+                if (idxPrioridade !== -1 && row[idxPrioridade] !== undefined && row[idxPrioridade] !== null && row[idxPrioridade] !== '') {
+                    numeroPorOP[opId] = String(row[idxPrioridade]).trim();
+                }
                 linhasLidas++;
             }
             if (linhasLidas === 0) throw new Error("Nenhuma linha válida encontrada (confira se a coluna OP está preenchida).");
 
             localStorage.setItem('prioridadesDestino', JSON.stringify([...prioritarias]));
             localStorage.setItem('opsMesDestino', JSON.stringify(mesPorOP));
+            localStorage.setItem('numerosPrioridade', JSON.stringify(numeroPorOP));
 
             // Reaplica prioridade E mês nas OPs que JÁ ESTÃO na tela agora —
             // sem isso, quem importasse o Destino DEPOIS de já ter
@@ -1914,8 +1924,9 @@ function processarDestino() {
             bancoDadosOPs.forEach(op => {
                 const novaPrioridade = prioritarias.has(op.id);
                 const novoMes = mesPorOP[op.id] || null;
-                if (op.prioridade !== novaPrioridade || op.mesDestino !== novoMes) {
-                    op.prioridade = novaPrioridade; op.mesDestino = novoMes; mudou++;
+                const novoNumero = numeroPorOP[op.id] || null;
+                if (op.prioridade !== novaPrioridade || op.mesDestino !== novoMes || op.numeroPrioridade !== novoNumero) {
+                    op.prioridade = novaPrioridade; op.mesDestino = novoMes; op.numeroPrioridade = novoNumero; mudou++;
                 }
             });
             if (mudou > 0) localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
@@ -1944,6 +1955,13 @@ function obterPrioridadesDestino() {
 // importação de Destino em que ela apareceu.
 function obterOpsMesDestino() {
     try { return JSON.parse(localStorage.getItem('opsMesDestino') || '{}'); } catch (e) { return {}; }
+}
+
+// Objeto { idDaOP: "número" } — o valor bruto da coluna Prioridade da
+// planilha de Destino, guardado só pra EXIBIR (não decide mais quem é
+// prioritária — ver processarDestino).
+function obterNumerosPrioridade() {
+    try { return JSON.parse(localStorage.getItem('numerosPrioridade') || '{}'); } catch (e) { return {}; }
 }
 
 function obterPedidosPendentes() {
@@ -2212,6 +2230,12 @@ function compararPrioridades(a, b, campo) {
     let va = a[campo], vb = b[campo];
     if (campo === 'id') { va = parseInt(va) || 0; vb = parseInt(vb) || 0; }
     else if (campo === 'etapa' || campo === 'qtd' || campo === 'diasLocal') { va = va || 0; vb = vb || 0; }
+    else if (campo === 'numeroPrioridade') {
+        // Números primeiro (ordenados de verdade), o que não é número (ou
+        // está vazio) vai pro final, não pro meio da lista
+        const na = parseFloat(va), nb = parseFloat(vb);
+        va = isNaN(na) ? Infinity : na; vb = isNaN(nb) ? Infinity : nb;
+    }
     else { va = (va || '').toString(); vb = (vb || '').toString(); }
     if (va < vb) return -1;
     if (va > vb) return 1;
@@ -2252,13 +2276,14 @@ function renderizarAbaPrioridades() {
     if ($('totalPecasPrioridades')) $('totalPecasPrioridades').innerText = totalPecas.toLocaleString('pt-BR');
 
     if (!prioritarias.length) {
-        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
+        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
         return;
     }
 
     $('listaPrioridadesTab').innerHTML = prioritarias.map(op => `
         <tr>
             <td><strong>${op.id}</strong></td>
+            <td>${op.numeroPrioridade !== null && op.numeroPrioridade !== undefined ? op.numeroPrioridade : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.desc}</td>
             <td><span class="pill" style="background:var(--cor-primaria);">${nomesEtapas[op.etapa]}</span></td>
             <td style="text-align:right;">${op.qtd}</td>
@@ -4896,7 +4921,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-fluxo-consolidado', 'click', (event) => { abrirAba(event, 'aba-fluxo-consolidado'); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
-        ['id', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
+        ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
             wireEvento(`thOrdenarPrioridades-${campo}`, 'click', () => { ordenarPrioridadesPor(campo); });
         });
         wireEvento('btnAtualizarNecessidade', 'click', () => { renderizarNecessidadePorReferencia(); });
