@@ -1875,25 +1875,28 @@ function processarDestino() {
             const cab = rows[0].map(c => String(c || '').trim().toUpperCase());
 
             const idxOP = cab.findIndex(c => c === 'OP');
-            const idxPrioridade = cab.findIndex(c => c.startsWith('PRIOR'));
-            if (idxOP === -1 || idxPrioridade === -1) {
-                throw new Error("Não encontrei as colunas OP e Prioridade no cabeçalho da planilha (primeira linha).");
+            if (idxOP === -1) {
+                throw new Error("Não encontrei a coluna OP no cabeçalho da planilha (primeira linha).");
             }
 
             // Acumula em cima do que já existia de outras importações — só
-            // as OPs que aparecem NESSE arquivo têm seu estado reavaliado
-            // (podem virar prioritárias, ou deixar de ser, se essa planilha
-            // disser prior=99 agora); as que não aparecem aqui mantêm o que
-            // já tinham de uma importação anterior. Antes disso, importar um
-            // mês novo APAGAVA a prioridade dos meses anteriores por engano.
+            // as OPs que aparecem NESSE arquivo têm seu estado reavaliado;
+            // as que não aparecem aqui mantêm o que já tinham de uma
+            // importação anterior. Antes disso, importar um mês novo
+            // APAGAVA a prioridade dos meses anteriores por engano.
+            //
+            // A coluna "Prioridade" da planilha é um dado interno do
+            // sistema de origem do usuário — NÃO é usada aqui pra decidir
+            // quem é prioritária ou não. Toda OP que aparece nesse
+            // relatório é considerada prioritária, independente do número
+            // que vier nessa coluna (decisão do usuário).
             const prioritarias = obterPrioridadesDestino();
             const mesPorOP = obterOpsMesDestino(); // acumula em cima do que já tinha de outros meses
             let linhasLidas = 0;
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxOP]) continue;
                 const opId = String(row[idxOP]).trim();
-                const prior = parseFloat(row[idxPrioridade]);
-                if (!isNaN(prior) && prior !== 99) prioritarias.add(opId); else prioritarias.delete(opId);
+                prioritarias.add(opId);
                 mesPorOP[opId] = mes; // se essa OP já tinha mês de uma importação anterior, o mais recente vence
                 linhasLidas++;
             }
