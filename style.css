@@ -725,6 +725,17 @@ select:focus {
     font-weight: 700;
 }
 
+/* Rodapé fixo embaixo da tabela — sem isso, tabelas com muita linha
+   "escondem" o rodapé lá no fim, só visível rolando até o final de
+   verdade. Mesma ideia do cabeçalho, só que grudado embaixo em vez de
+   em cima. */
+.tabela-dados tfoot td {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: var(--bg-painel);
+}
+
 .th-ordenavel {
     cursor: pointer;
     user-select: none;
