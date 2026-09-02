@@ -1551,11 +1551,11 @@ function processarExcel() {
 
                 if (loc.includes("AGUARD") && loc.includes("MATERIA") && loc.includes("PRIMA")) {
                     opsAguardandoMP.push({
-                        id: String(r[5]), ciclo: String(r[4] || ""), desc: String(r[3] || ""),
+                        id: String(r[5]).trim(), ciclo: String(r[4] || ""), desc: String(r[3] || ""),
                         qtd: parseInt(r[6]) || 0, diasLocal: parseInt(r[25]) || 0,
                         codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
                         referencia: r[40] ? String(r[40]).trim().toUpperCase() : "",
-                        sobMedida: mapaSBM.has(String(r[5]))
+                        sobMedida: mapaSBM.has(String(r[5]).trim())
                     });
                     continue; // não passa pela lógica de etapa 0-7 abaixo
                 }
@@ -1564,7 +1564,7 @@ function processarExcel() {
                 if (loc.includes("CORTE") && !loc.includes("PROG") && !loc.includes("ENFESTO")) idxE = 7; else if (loc.includes("ENFESTO")) idxE = 6; else if (loc.includes("DUBLA")) idxE = 5; else if (loc.includes("ALMOX") && loc.includes("TECIDO")) idxE = 4; else if (loc.includes("PROG") && loc.includes("CORTE")) idxE = 3; else if (loc.includes("CAD")) idxE = 2; else if (loc.includes("ANALISE") || loc.includes("MEDIDA")) idxE = 1; else if (loc.includes("PROGRAMACAO")) idxE = 0;
 
                 if (idxE !== -1) {
-                    const idOP = String(r[5]), old = mapA[idOP];
+                    const idOP = String(r[5]).trim(), old = mapA[idOP];
                     if (old && old.etapa !== idxE) movimentacoes.push({ id: idOP, ciclo: String(r[4] || ""), deIdx: old.etapa, paraIdx: idxE });
                     bancoDadosOPs.push({
                         id: idOP, ciclo: String(r[4] || ""), desc: String(r[3] || ""),
