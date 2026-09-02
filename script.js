@@ -2204,14 +2204,52 @@ function reconstruirFiltrosPrioridades() {
 // tabela, com os 2 filtros aplicados. Existe especificamente pra quem só
 // visualiza (o Radar é uma sidebar, não uma aba, e não fica óbvio como
 // abrir ela sem já conhecer o sistema).
+// Estado de ordenação da aba Prioridades — lembrado enquanto o sistema
+// está aberto, não precisa salvar.
+let ordenacaoPrioridades = { campo: 'mesDestino', direcao: 'asc' };
+
+function compararPrioridades(a, b, campo) {
+    let va = a[campo], vb = b[campo];
+    if (campo === 'id') { va = parseInt(va) || 0; vb = parseInt(vb) || 0; }
+    else if (campo === 'etapa' || campo === 'qtd' || campo === 'diasLocal') { va = va || 0; vb = vb || 0; }
+    else { va = (va || '').toString(); vb = (vb || '').toString(); }
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+    return 0;
+}
+
+// Clique num cabeçalho: primeira vez ordena crescente, clique de novo no
+// mesmo cabeçalho inverte pra decrescente.
+function ordenarPrioridadesPor(campo) {
+    if (ordenacaoPrioridades.campo === campo) {
+        ordenacaoPrioridades.direcao = ordenacaoPrioridades.direcao === 'asc' ? 'desc' : 'asc';
+    } else {
+        ordenacaoPrioridades = { campo, direcao: 'asc' };
+    }
+    renderizarAbaPrioridades();
+}
+
 function renderizarAbaPrioridades() {
     if (!$('listaPrioridadesTab')) return;
     const prioritarias = bancoDadosOPs.filter(o => o.prioridade)
         .filter(o => !setoresPrioridadesExcluidos.has(o.etapa))
         .filter(o => !mesesPrioridadesExcluidos.has(o.mesDestino || CHAVE_SEM_MES_PRIORIDADES))
-        .sort((a, b) => (a.mesDestino || '').localeCompare(b.mesDestino || ''));
+        .sort((a, b) => {
+            const r = compararPrioridades(a, b, ordenacaoPrioridades.campo);
+            return ordenacaoPrioridades.direcao === 'asc' ? r : -r;
+        });
 
     if ($('contPrioridadesTab')) $('contPrioridadesTab').innerText = `${prioritarias.length} OP(s)`;
+
+    // Marca visualmente qual cabeçalho está ordenando agora (a seta ▲/▼)
+    $$('.th-ordenavel').forEach(th => th.classList.remove('ordenado-asc', 'ordenado-desc'));
+    const thAtivo = $(`thOrdenarPrioridades-${ordenacaoPrioridades.campo}`);
+    if (thAtivo) thAtivo.classList.add(ordenacaoPrioridades.direcao === 'asc' ? 'ordenado-asc' : 'ordenado-desc');
+
+    // Total de peças no rodapé — soma só o que está visível com os filtros
+    // atuais, então muda sozinho conforme Setor/Mês Destino mudam.
+    const totalPecas = prioritarias.reduce((s, op) => s + (parseInt(op.qtd) || 0), 0);
+    if ($('totalPecasPrioridades')) $('totalPecasPrioridades').innerText = totalPecas.toLocaleString('pt-BR');
 
     if (!prioritarias.length) {
         $('listaPrioridadesTab').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
@@ -4858,6 +4896,9 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-fluxo-consolidado', 'click', (event) => { abrirAba(event, 'aba-fluxo-consolidado'); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
+        ['id', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
+            wireEvento(`thOrdenarPrioridades-${campo}`, 'click', () => { ordenarPrioridadesPor(campo); });
+        });
         wireEvento('btnAtualizarNecessidade', 'click', () => { renderizarNecessidadePorReferencia(); });
         wireEvento('btnModoNecessidade', 'click', () => { alternarModoLevantamentoNecessidade(); });
         wireEvento('buscaNecessidade', 'input', () => { renderizarNecessidadePorReferencia(); });

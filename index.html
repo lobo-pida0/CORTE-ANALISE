@@ -726,15 +726,23 @@
                 <table class="tabela-dados">
                     <thead>
                         <tr>
-                            <th>OP</th>
-                            <th>DESCRIÇÃO</th>
-                            <th>ETAPA</th>
-                            <th style="text-align:right;">PEÇAS</th>
-                            <th style="text-align:right;">DIAS PARADO</th>
-                            <th>MÊS DESTINO</th>
+                            <th id="thOrdenarPrioridades-id" class="th-ordenavel">OP</th>
+                            <th id="thOrdenarPrioridades-desc" class="th-ordenavel">DESCRIÇÃO</th>
+                            <th id="thOrdenarPrioridades-etapa" class="th-ordenavel">ETAPA</th>
+                            <th id="thOrdenarPrioridades-qtd" class="th-ordenavel" style="text-align:right;">PEÇAS</th>
+                            <th id="thOrdenarPrioridades-diasLocal" class="th-ordenavel" style="text-align:right;">DIAS PARADO</th>
+                            <th id="thOrdenarPrioridades-mesDestino" class="th-ordenavel">MÊS DESTINO</th>
                         </tr>
                     </thead>
                     <tbody id="listaPrioridadesTab"></tbody>
+                    <tfoot>
+                        <tr style="font-weight:900; background:var(--bg-painel); border-top:2px solid var(--borda-cor);">
+                            <td colspan="3">TOTAL (com os filtros atuais)</td>
+                            <td style="text-align:right; color:var(--cor-selecao);" id="totalPecasPrioridades">0</td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>

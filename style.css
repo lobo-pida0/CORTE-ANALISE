@@ -725,6 +725,29 @@ select:focus {
     font-weight: 700;
 }
 
+.th-ordenavel {
+    cursor: pointer;
+    user-select: none;
+}
+.th-ordenavel:hover {
+    background: var(--cor-fila);
+}
+.th-ordenavel::after {
+    content: '';
+    display: inline-block;
+    width: 10px;
+}
+.th-ordenavel.ordenado-asc::after {
+    content: '▲';
+    font-size: 9px;
+    margin-left: 4px;
+}
+.th-ordenavel.ordenado-desc::after {
+    content: '▼';
+    font-size: 9px;
+    margin-left: 4px;
+}
+
 .tabela-dados td {
     padding: 10px;
     border-bottom: 2px solid var(--borda-cor);
