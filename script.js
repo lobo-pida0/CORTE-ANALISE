@@ -321,6 +321,19 @@ function obterOPsFilaCorte() {
     try { return JSON.parse(localStorage.getItem('filaCorteOPs') || '[]'); } catch (e) { return []; }
 }
 
+// Cruza por número de OP com os dados da Fila de Corte (planilha diferente
+// da Sincronização) pra achar o "Local de Produção" — a Sincronização
+// sozinha não tem esse dado. Só funciona pras OPs que também apareceram
+// numa importação de Fila de Corte; as outras ficam sem essa informação,
+// sem quebrar nada (decisão do usuário, sabendo dessa limitação).
+function obterLocalProducaoPorOP() {
+    const mapa = new Map();
+    obterOPsFilaCorte().forEach(item => {
+        if (item.op && item.obs && !mapa.has(item.op)) mapa.set(item.op, item.obs);
+    });
+    return mapa;
+}
+
 function opPassaFiltroFilaCorte(o) {
     return !locaisProducaoExcluidos.includes(chaveLocalObs(o.obs))
         && !tiposProdutoExcluidos.includes(chaveTipoProduto(o.tipo));
@@ -2441,6 +2454,7 @@ function renderizarAbaPrioridades() {
     if (!$('listaPrioridadesTab')) return;
     const manuaisSet = obterPrioridadesManuais();
     const opsManuaisCompletas = obterOpsManuaisPrioridade().map(o => ({ ...o, prioridade: true, manualCompleta: true }));
+    const localProducaoPorOP = obterLocalProducaoPorOP();
 
     const prioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...opsManuaisCompletas]
         .filter(o => !setoresPrioridadesExcluidos.has(o.etapa))
@@ -2463,13 +2477,14 @@ function renderizarAbaPrioridades() {
     if ($('totalPecasPrioridades')) $('totalPecasPrioridades').innerText = totalPecas.toLocaleString('pt-BR');
 
     if (!prioritarias.length) {
-        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
+        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
         return;
     }
 
     $('listaPrioridadesTab').innerHTML = prioritarias.map(op => {
         const ehManual = op.manualCompleta || manuaisSet.has(op.id);
         const botaoRemover = ehManual ? `<button class="btn somente-admin" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerPrioridadeManual('${op.id}')" title="Remover essa marcação manual"><i class="fas fa-times"></i></button>` : '';
+        const localProducao = localProducaoPorOP.get(op.id);
         return `
         <tr>
             <td><strong>${op.id}</strong>${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}</td>
@@ -2479,6 +2494,7 @@ function renderizarAbaPrioridades() {
             <td style="text-align:right;">${op.qtd}</td>
             <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
             <td>${op.mesDestino ? `<span class="pill" style="background:#B8862A; font-size:12px;">${op.mesDestino}</span>` : '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td style="font-size:11px;">${localProducao || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${botaoRemover}</td>
         </tr>
     `;
