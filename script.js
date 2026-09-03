@@ -639,11 +639,13 @@ function opManualParaLinhaSupabase(op) {
         qtd: parseInt(op.qtd) || 0, dias_local: parseInt(op.diasLocal) || 0,
         mes_destino: op.mesDestino || null, numero_prioridade: op.numeroPrioridade || null,
         destaque: !!op.destaque,
+        local_destino_detalhado: op.localDestinoDetalhado || null,
+        origem: op.automaticaDoDestino ? 'auto' : 'manual',
         atualizado_em: new Date().toISOString()
     };
 }
 function linhaSupabaseParaOpManual(l) {
-    return { id: l.id, desc: l.descricao || '', etapa: l.etapa, qtd: l.qtd || 0, diasLocal: l.dias_local || 0, mesDestino: l.mes_destino || null, numeroPrioridade: l.numero_prioridade || null, destaque: !!l.destaque };
+    return { id: l.id, desc: l.descricao || '', etapa: l.etapa, qtd: l.qtd || 0, diasLocal: l.dias_local || 0, mesDestino: l.mes_destino || null, numeroPrioridade: l.numero_prioridade || null, destaque: !!l.destaque, localDestinoDetalhado: l.local_destino_detalhado || null, automaticaDoDestino: l.origem === 'auto' };
 }
 
 async function publicarTudoNoSupabase() {
@@ -690,11 +692,11 @@ async function publicarTudoNoSupabase() {
             const r = await sincronizarTabelaSupabase('pedidos_todos', todosOsPedidos);
             resumo.push(`${r.publicados} pedidos (busca)`);
         }
-        const opsManuais = obterOpsManuaisPrioridade();
+        const opsManuais = [...obterOpsManuaisPrioridade(), ...Object.values(obterOpsDestinoAutomaticas()).map(o => ({ ...o, automaticaDoDestino: true }))];
         if (opsManuais.length) {
-            if (status) status.innerText = `Publicando ${opsManuais.length} OPs manuais...`;
+            if (status) status.innerText = `Publicando ${opsManuais.length} OPs manuais/automáticas...`;
             const r = await sincronizarTabelaSupabase('ops_manuais_prioridade', opsManuais.map(opManualParaLinhaSupabase));
-            resumo.push(`${r.publicados} OPs manuais`);
+            resumo.push(`${r.publicados} OPs manuais/automáticas`);
         }
         const localProducaoMapa = obterLocalProducaoPorOP();
         if (localProducaoMapa.size) {
@@ -835,7 +837,11 @@ async function carregarOpsManuaisDaNuvemParaVisitante() {
     try {
         const data = await buscarTodasLinhasSupabase('ops_manuais_prioridade');
         registrarLogDebug('log', [`[NUVEM] Busca de OPs manuais concluída: ${data ? data.length : 0} itens encontrados.`]);
-        salvarOpsManuaisPrioridade((data || []).map(linhaSupabaseParaOpManual));
+        const todas = (data || []).map(linhaSupabaseParaOpManual);
+        salvarOpsManuaisPrioridade(todas.filter(o => !o.automaticaDoDestino));
+        const automaticasObj = {};
+        todas.filter(o => o.automaticaDoDestino).forEach(o => { automaticasObj[o.id] = o; });
+        salvarOpsDestinoAutomaticas(automaticasObj);
     } catch (e) {
         registrarLogDebug('error', ['Falha ao carregar OPs manuais da nuvem: ' + e.message]);
     }
@@ -1967,6 +1973,9 @@ function processarDestino() {
             const idxOP = cab.findIndex(c => c === 'OP');
             const idxPrioridade = cab.findIndex(c => c.startsWith('PRIOR'));
             const idxDescLocal = cab.findIndex(c => c === 'DESCRIÇÃO LOCAL' || c === 'DESCRICAO LOCAL');
+            const idxDescricaoProduto = cab.findIndex(c => c === 'DESCRIÇÃO' || c === 'DESCRICAO');
+            const idxQtdDestino = cab.findIndex(c => c.includes('QT') && c.includes('DESTINO') && c.includes('LOCAL') && !c.includes('DIFER') && !c.includes('FECHA'));
+            const idxDiasLocalDestino = cab.findIndex(c => c === 'DIAS LOCAL');
             if (idxOP === -1) {
                 throw new Error("Não encontrei a coluna OP no cabeçalho da planilha (primeira linha).");
             }
@@ -1991,6 +2000,12 @@ function processarDestino() {
             const mesPorOP = obterOpsMesDestino(); // acumula em cima do que já tinha de outros meses
             const numeroPorOP = obterNumerosPrioridade(); // acumula igual, só informativo
             const localPorOP = obterLocaisDestinoPorOP(); // acumula igual
+            // OPs que aparecem no Destino mas NÃO existem na Sincronização
+            // (comum pras que já passaram das 8 etapas rastreadas, tipo
+            // costura) — o Destino sozinho tem dado suficiente (Descrição,
+            // Peças, Dias Parado) pra montar a linha, sem precisar dessas
+            // OPs existirem em bancoDadosOPs.
+            const opsAutomaticas = obterOpsDestinoAutomaticas();
             let linhasLidas = 0;
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxOP]) continue;
@@ -2000,8 +2015,21 @@ function processarDestino() {
                 if (idxPrioridade !== -1 && row[idxPrioridade] !== undefined && row[idxPrioridade] !== null && row[idxPrioridade] !== '') {
                     numeroPorOP[opId] = String(row[idxPrioridade]).trim();
                 }
-                if (idxDescLocal !== -1 && row[idxDescLocal]) {
-                    localPorOP[opId] = String(row[idxDescLocal]).trim().toUpperCase();
+                const localDetalhado = idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : null;
+                if (localDetalhado) localPorOP[opId] = localDetalhado;
+
+                if (!bancoDadosOPs.find(o => o.id === opId)) {
+                    opsAutomaticas[opId] = {
+                        id: opId,
+                        desc: idxDescricaoProduto !== -1 && row[idxDescricaoProduto] ? String(row[idxDescricaoProduto]).trim() : '(sem descrição)',
+                        qtd: idxQtdDestino !== -1 ? (parseInt(row[idxQtdDestino]) || 0) : 0,
+                        diasLocal: idxDiasLocalDestino !== -1 ? (parseInt(row[idxDiasLocalDestino]) || 0) : 0,
+                        localDestinoDetalhado: localDetalhado,
+                        mesDestino: mes,
+                        numeroPrioridade: numeroPorOP[opId] || null,
+                    };
+                } else {
+                    delete opsAutomaticas[opId]; // a OP passou a existir na Sincronização, não precisa mais da versão automática
                 }
                 linhasLidas++;
             }
@@ -2011,6 +2039,7 @@ function processarDestino() {
             localStorage.setItem('opsMesDestino', JSON.stringify(mesPorOP));
             localStorage.setItem('numerosPrioridade', JSON.stringify(numeroPorOP));
             localStorage.setItem('locaisDestinoPorOP', JSON.stringify(localPorOP));
+            salvarOpsDestinoAutomaticas(opsAutomaticas);
 
             // Reaplica prioridade E mês nas OPs que JÁ ESTÃO na tela agora —
             // sem isso, quem importasse o Destino DEPOIS de já ter
@@ -2067,6 +2096,18 @@ function obterNumerosPrioridade() {
 // etiquetação etc) — usado como opção extra no filtro de Setor.
 function obterLocaisDestinoPorOP() {
     try { return JSON.parse(localStorage.getItem('locaisDestinoPorOP') || '{}'); } catch (e) { return {}; }
+}
+
+// Objeto { idDaOP: {desc,qtd,diasLocal,localDestinoDetalhado,mesDestino,numeroPrioridade} }
+// — OPs que aparecem no Destino mas não existem na Sincronização (comum
+// pras que já passaram das 8 etapas rastreadas). Montada inteiramente com
+// dado do próprio Destino, sem precisar o usuário digitar nada — diferente
+// de opsManuaisPrioridade, que é 100% digitada à mão.
+function obterOpsDestinoAutomaticas() {
+    try { return JSON.parse(localStorage.getItem('opsDestinoAutomaticas') || '{}'); } catch (e) { return {}; }
+}
+function salvarOpsDestinoAutomaticas(obj) {
+    localStorage.setItem('opsDestinoAutomaticas', JSON.stringify(obj));
 }
 
 // =========================================================================
@@ -2228,9 +2269,10 @@ function salvarOPManual() {
 // cadastro 100% manual, remove da lista de vez.
 function removerPrioridadeManual(numero) {
     if (!exigirAdmin('remover prioridade manual')) return;
-    if (!confirm(`Remover a marcação de prioridade manual da OP ${numero}?`)) return;
+    if (!confirm(`Remover a marcação de prioridade da OP ${numero}? Se ela ainda estiver no próximo relatório de Destino, pode voltar a aparecer.`)) return;
 
     const manuais = obterPrioridadesManuais();
+    const automaticas = obterOpsDestinoAutomaticas();
     if (manuais.has(numero)) {
         manuais.delete(numero);
         localStorage.setItem('prioridadesManuais', JSON.stringify([...manuais]));
@@ -2240,6 +2282,9 @@ function removerPrioridadeManual(numero) {
             op.prioridade = prioridadesDestino.has(numero); // volta a valer só o que o Destino diz
             localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
         }
+    } else if (automaticas[numero]) {
+        delete automaticas[numero];
+        salvarOpsDestinoAutomaticas(automaticas);
     } else {
         const lista = obterOpsManuaisPrioridade().filter(o => o.id !== numero);
         salvarOpsManuaisPrioridade(lista);
@@ -2469,7 +2514,7 @@ function obterSetorExibicaoPrioridade(op) {
 function renderizarFiltroSetorPrioridades() {
     const el = $('listaFiltroSetorPrioridades');
     if (!el) return;
-    const todasPrioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...obterOpsManuaisPrioridade().map(o => ({ ...o, prioridade: true }))];
+    const todasPrioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...obterOpsManuaisPrioridade().map(o => ({ ...o, prioridade: true })), ...Object.values(obterOpsDestinoAutomaticas())];
     const setoresPresentes = [...new Set(todasPrioritarias.map(obterSetorExibicaoPrioridade))].sort();
 
     if (!setoresPresentes.length) {
@@ -2569,9 +2614,10 @@ function renderizarAbaPrioridades() {
     if (!$('listaPrioridadesTab')) return;
     const manuaisSet = obterPrioridadesManuais();
     const opsManuaisCompletas = obterOpsManuaisPrioridade().map(o => ({ ...o, prioridade: true, manualCompleta: true }));
+    const opsAutomaticasCompletas = Object.values(obterOpsDestinoAutomaticas()).map(o => ({ ...o, etapa: null, prioridade: true, automaticaDoDestino: true }));
     const localProducaoPorOP = obterLocalProducaoPorOP();
 
-    const prioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...opsManuaisCompletas]
+    const prioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...opsManuaisCompletas, ...opsAutomaticasCompletas]
         .filter(o => !setoresPrioridadesExcluidos.has(obterSetorExibicaoPrioridade(o)))
         .filter(o => !mesesPrioridadesExcluidos.has(o.mesDestino || CHAVE_SEM_MES_PRIORIDADES))
         .sort((a, b) => {
@@ -2602,13 +2648,14 @@ function renderizarAbaPrioridades() {
 
     $('listaPrioridadesTab').innerHTML = prioritarias.map(op => {
         const ehManual = op.manualCompleta || manuaisSet.has(op.id);
-        const botaoRemover = ehManual ? `<button class="btn somente-admin" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerPrioridadeManual('${op.id}')" title="Remover essa marcação manual"><i class="fas fa-times"></i></button>` : '';
+        const ehAutomatica = !!op.automaticaDoDestino;
+        const botaoRemover = (ehManual || ehAutomatica) ? `<button class="btn somente-admin" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerPrioridadeManual('${op.id}')" title="Remover essa marcação"><i class="fas fa-times"></i></button>` : '';
         const localProducao = localProducaoPorOP.get(op.id);
         const destacada = !!op.destaque;
         const estrela = `<i class="fas fa-star" style="cursor:pointer; color:${destacada ? '#B8862A' : 'var(--borda-cor)'};" onclick="toggleDestaquePrioridade('${op.id}')" title="${destacada ? 'Tirar destaque' : 'Destacar — faça essa primeiro'}"></i>`;
         return `
         <tr style="${destacada ? 'background:rgba(184, 134, 42, 0.15);' : ''}">
-            <td>${estrela} <strong>${op.id}</strong>${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}</td>
+            <td>${estrela} <strong>${op.id}</strong>${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}${ehAutomatica ? ' <i class="fas fa-file-import" style="font-size:9px; color:var(--texto-secundario);" title="Não existe na Sincronização — montada com dado do Destino"></i>' : ''}</td>
             <td>${op.numeroPrioridade !== null && op.numeroPrioridade !== undefined ? op.numeroPrioridade : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.desc}</td>
             <td><span class="pill" style="background:var(--cor-primaria); font-size:10px;">${obterSetorExibicaoPrioridade(op)}</span></td>
