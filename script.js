@@ -331,6 +331,13 @@ function obterLocalProducaoPorOP() {
     obterOPsFilaCorte().forEach(item => {
         if (item.op && item.obs && !mapa.has(item.op)) mapa.set(item.op, item.obs);
     });
+    // Fallback pra quem não tem Fila de Corte importada localmente (ex: o
+    // visitante) — usa a versão enxuta publicada na nuvem só pra esse
+    // cruzamento (não duplica a Fila de Corte inteira lá).
+    try {
+        const daNuvem = JSON.parse(localStorage.getItem('localProducaoPorOPNuvem') || '{}');
+        Object.entries(daNuvem).forEach(([op, local]) => { if (!mapa.has(op)) mapa.set(op, local); });
+    } catch (e) { /* ignora, só não usa o fallback */ }
     return mapa;
 }
 
@@ -687,6 +694,13 @@ async function publicarTudoNoSupabase() {
             const r = await sincronizarTabelaSupabase('ops_manuais_prioridade', opsManuais.map(opManualParaLinhaSupabase));
             resumo.push(`${r.publicados} OPs manuais`);
         }
+        const localProducaoMapa = obterLocalProducaoPorOP();
+        if (localProducaoMapa.size) {
+            const linhasLocalProducao = [...localProducaoMapa.entries()].map(([op, local]) => ({ id: op, local_producao: local, atualizado_em: new Date().toISOString() }));
+            if (status) status.innerText = `Publicando ${linhasLocalProducao.length} locais de produção...`;
+            const r = await sincronizarTabelaSupabase('local_producao_por_op', linhasLocalProducao);
+            resumo.push(`${r.publicados} locais de produção`);
+        }
         // Marca a hora dessa publicação — é isso que o visitante vê como
         // "dados de: há X min"
         await supabaseClient.from('metadados_sistema').upsert({ id: 'global', ultima_publicacao: new Date().toISOString() });
@@ -825,6 +839,22 @@ async function carregarOpsManuaisDaNuvemParaVisitante() {
     }
 }
 
+// Pra quem NÃO está logado: busca a versão enxuta de Local de Produção por
+// OP — o visitante não tem a Fila de Corte importada localmente (isso
+// nunca vai pra nuvem inteira, só esse cruzamento específico).
+async function carregarLocalProducaoDaNuvemParaVisitante() {
+    if (!supabaseClient || sessaoAdminAtual) return;
+    try {
+        const data = await buscarTodasLinhasSupabase('local_producao_por_op');
+        registrarLogDebug('log', [`[NUVEM] Busca de Local de Produção concluída: ${data ? data.length : 0} itens encontrados.`]);
+        const mapa = {};
+        (data || []).forEach(l => { if (l.id && l.local_producao) mapa[l.id] = l.local_producao; });
+        localStorage.setItem('localProducaoPorOPNuvem', JSON.stringify(mapa));
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao carregar Local de Produção da nuvem: ' + e.message]);
+    }
+}
+
 // Formata "há quanto tempo" de um jeito curto e legível — "agora mesmo",
 // "há 3 min", "há 2h", "há 5 dias"
 function formatarTempoRelativo(timestamp) {
@@ -865,6 +895,7 @@ async function carregarTudoDaNuvemParaVisitante() {
         carregarLocalizacaoCompletaDaNuvemParaVisitante(),
         carregarTodosPedidosDaNuvemParaVisitante(),
         carregarOpsManuaisDaNuvemParaVisitante(),
+        carregarLocalProducaoDaNuvemParaVisitante(),
     ]);
     atualizarIndicadorUltimaPublicacao();
 }
