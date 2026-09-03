@@ -2515,7 +2515,7 @@ function renderizarFiltroSetorPrioridades() {
     const el = $('listaFiltroSetorPrioridades');
     if (!el) return;
     const todasPrioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...obterOpsManuaisPrioridade().map(o => ({ ...o, prioridade: true })), ...Object.values(obterOpsDestinoAutomaticas())];
-    const setoresPresentes = [...new Set(todasPrioritarias.map(obterSetorExibicaoPrioridade))].sort();
+    const setoresPresentes = [...new Set(todasPrioritarias.map(obterSetorExibicaoPrioridade))].filter(s => s !== '(SEM SETOR)').sort();
 
     if (!setoresPresentes.length) {
         el.innerHTML = '<label style="color:var(--texto-secundario); padding:8px 12px; display:block;">Nenhum setor disponível.</label>';
@@ -2618,6 +2618,7 @@ function renderizarAbaPrioridades() {
     const localProducaoPorOP = obterLocalProducaoPorOP();
 
     const prioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...opsManuaisCompletas, ...opsAutomaticasCompletas]
+        .filter(o => obterSetorExibicaoPrioridade(o) !== '(SEM SETOR)') // local não reconhecido (nem etapa válida, nem um dos locais aprovados) — não mostra
         .filter(o => !setoresPrioridadesExcluidos.has(obterSetorExibicaoPrioridade(o)))
         .filter(o => !mesesPrioridadesExcluidos.has(o.mesDestino || CHAVE_SEM_MES_PRIORIDADES))
         .sort((a, b) => {
