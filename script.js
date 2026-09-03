@@ -397,6 +397,7 @@ function opParaLinhaSupabase(op) {
         mes_destino: op.mesDestino || null,
         numero_prioridade: op.numeroPrioridade || null,
         destaque: !!op.destaque,
+        local_destino_detalhado: op.localDestinoDetalhado || null,
         dias_local: parseInt(op.diasLocal) || 0, codigo_mp: op.codigoMP || '', desc_mp: op.descMP || '',
         referencia: op.referencia || '', sob_medida: !!op.sobMedida, laser: !!op.laser,
         data_finalizacao: op.dataFinalizacao ? new Date(op.dataFinalizacao).toISOString().slice(0, 10) : null,
@@ -417,6 +418,7 @@ function linhaSupabaseParaOP(l) {
         mesDestino: l.mes_destino || null,
         numeroPrioridade: l.numero_prioridade || null,
         destaque: !!l.destaque,
+        localDestinoDetalhado: l.local_destino_detalhado || null,
         dataCorteSuposta: calcularDataCorteSuposta(l.data_finalizacao)
     };
 }
@@ -1579,6 +1581,7 @@ function processarExcel() {
         const prioridadesManuais = obterPrioridadesManuais();
         const mesesDestino = obterOpsMesDestino();
         const numerosPrioridade = obterNumerosPrioridade();
+        const locaisDestinoPorOP = obterLocaisDestinoPorOP();
         const opsDestacadas = obterOPsDestacadas();
 
         // Aba "BASE" — a "Descrição OP" (coluna Y) indica se a OP é feita SOB
@@ -1660,6 +1663,7 @@ function processarExcel() {
                         prioridade: prioridadesDestino.has(idOP) || prioridadesManuais.has(idOP), // fonte: importação "Destino de Produção" OU marcação manual — antes vinha da aba URGENCIAS
                         mesDestino: mesesDestino[idOP] || null, // "AAAA-MM" informado na importação de Destino — planilha não tem data que sirva pra isso
                         numeroPrioridade: numerosPrioridade[idOP] || null, // valor bruto da coluna Prioridade — só exibição
+                        localDestinoDetalhado: locaisDestinoPorOP[idOP] || null, // "Descrição Local" do Destino — cobre etapas fora das 8 rastreadas
                         destaque: opsDestacadas.has(idOP), // "faça essa primeiro" — marcado na aba Prioridades
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
                         diasLocal: parseInt(r[25]) || 0,
@@ -1962,6 +1966,7 @@ function processarDestino() {
 
             const idxOP = cab.findIndex(c => c === 'OP');
             const idxPrioridade = cab.findIndex(c => c.startsWith('PRIOR'));
+            const idxDescLocal = cab.findIndex(c => c === 'DESCRIÇÃO LOCAL' || c === 'DESCRICAO LOCAL');
             if (idxOP === -1) {
                 throw new Error("Não encontrei a coluna OP no cabeçalho da planilha (primeira linha).");
             }
@@ -1977,9 +1982,15 @@ function processarDestino() {
             // quem é prioritária ou não (toda OP do relatório entra). O
             // número em si é só guardado pra MOSTRAR na tela, não filtra
             // nada.
+            //
+            // "Descrição Local" é o local ATUAL da OP segundo essa
+            // planilha — cobre etapas fora das 8 rastreadas pela
+            // Sincronização (ex: costura, etiquetação), usado como opção
+            // extra no filtro de Setor da aba Prioridades.
             const prioritarias = obterPrioridadesDestino();
             const mesPorOP = obterOpsMesDestino(); // acumula em cima do que já tinha de outros meses
             const numeroPorOP = obterNumerosPrioridade(); // acumula igual, só informativo
+            const localPorOP = obterLocaisDestinoPorOP(); // acumula igual
             let linhasLidas = 0;
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxOP]) continue;
@@ -1989,6 +2000,9 @@ function processarDestino() {
                 if (idxPrioridade !== -1 && row[idxPrioridade] !== undefined && row[idxPrioridade] !== null && row[idxPrioridade] !== '') {
                     numeroPorOP[opId] = String(row[idxPrioridade]).trim();
                 }
+                if (idxDescLocal !== -1 && row[idxDescLocal]) {
+                    localPorOP[opId] = String(row[idxDescLocal]).trim().toUpperCase();
+                }
                 linhasLidas++;
             }
             if (linhasLidas === 0) throw new Error("Nenhuma linha válida encontrada (confira se a coluna OP está preenchida).");
@@ -1996,6 +2010,7 @@ function processarDestino() {
             localStorage.setItem('prioridadesDestino', JSON.stringify([...prioritarias]));
             localStorage.setItem('opsMesDestino', JSON.stringify(mesPorOP));
             localStorage.setItem('numerosPrioridade', JSON.stringify(numeroPorOP));
+            localStorage.setItem('locaisDestinoPorOP', JSON.stringify(localPorOP));
 
             // Reaplica prioridade E mês nas OPs que JÁ ESTÃO na tela agora —
             // sem isso, quem importasse o Destino DEPOIS de já ter
@@ -2007,8 +2022,9 @@ function processarDestino() {
                 const novaPrioridade = prioritarias.has(op.id);
                 const novoMes = mesPorOP[op.id] || null;
                 const novoNumero = numeroPorOP[op.id] || null;
-                if (op.prioridade !== novaPrioridade || op.mesDestino !== novoMes || op.numeroPrioridade !== novoNumero) {
-                    op.prioridade = novaPrioridade; op.mesDestino = novoMes; op.numeroPrioridade = novoNumero; mudou++;
+                const novoLocal = localPorOP[op.id] || null;
+                if (op.prioridade !== novaPrioridade || op.mesDestino !== novoMes || op.numeroPrioridade !== novoNumero || op.localDestinoDetalhado !== novoLocal) {
+                    op.prioridade = novaPrioridade; op.mesDestino = novoMes; op.numeroPrioridade = novoNumero; op.localDestinoDetalhado = novoLocal; mudou++;
                 }
             });
             if (mudou > 0) localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
@@ -2044,6 +2060,13 @@ function obterOpsMesDestino() {
 // prioritária — ver processarDestino).
 function obterNumerosPrioridade() {
     try { return JSON.parse(localStorage.getItem('numerosPrioridade') || '{}'); } catch (e) { return {}; }
+}
+
+// Objeto { idDaOP: "PNP..." } — a "Descrição Local" da planilha de Destino,
+// que cobre etapas fora das 8 rastreadas pela Sincronização (costura,
+// etiquetação etc) — usado como opção extra no filtro de Setor.
+function obterLocaisDestinoPorOP() {
+    try { return JSON.parse(localStorage.getItem('locaisDestinoPorOP') || '{}'); } catch (e) { return {}; }
 }
 
 // =========================================================================
@@ -2418,22 +2441,30 @@ let setoresPrioridadesExcluidos = new Set();
 let mesesPrioridadesExcluidos = new Set();
 const CHAVE_SEM_MES_PRIORIDADES = '__SEM_MES_PRI__';
 
+// O "setor" de uma OP, pra exibição/filtro: prefere o local detalhado que
+// vem da planilha de Destino (cobre etapas fora das 8 rastreadas, tipo
+// costura) — cai pra etapa numérica normal quando não tiver isso.
+function obterSetorExibicaoPrioridade(op) {
+    return op.localDestinoDetalhado || nomesEtapas[op.etapa] || '(SEM SETOR)';
+}
+
 function renderizarFiltroSetorPrioridades() {
     const el = $('listaFiltroSetorPrioridades');
     if (!el) return;
-    const etapasPresentes = [...new Set(bancoDadosOPs.filter(o => o.prioridade).map(o => o.etapa))].sort((a, b) => a - b);
+    const todasPrioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...obterOpsManuaisPrioridade().map(o => ({ ...o, prioridade: true }))];
+    const setoresPresentes = [...new Set(todasPrioritarias.map(obterSetorExibicaoPrioridade))].sort();
 
-    if (!etapasPresentes.length) {
+    if (!setoresPresentes.length) {
         el.innerHTML = '<label style="color:var(--texto-secundario); padding:8px 12px; display:block;">Nenhum setor disponível.</label>';
         atualizarTextoFiltroSetorPrioridades(0, 0);
         return;
     }
-    const marcadas = etapasPresentes.filter(e => !setoresPrioridadesExcluidos.has(e)).length;
-    const todasMarcadas = marcadas === etapasPresentes.length;
+    const marcadas = setoresPresentes.filter(s => !setoresPrioridadesExcluidos.has(s)).length;
+    const todasMarcadas = marcadas === setoresPresentes.length;
     let html = `<label style="font-weight:700; border-bottom:1px solid var(--borda-cor);"><input type="checkbox" id="chkTodosSetoresPrioridades" ${todasMarcadas ? 'checked' : ''}> Selecionar tudo</label>`;
-    html += etapasPresentes.map(e => `<label><input type="checkbox" class="chk-setor-prioridades" value="${e}" ${setoresPrioridadesExcluidos.has(e) ? '' : 'checked'}> ${nomesEtapas[e]}</label>`).join('');
+    html += setoresPresentes.map(s => `<label><input type="checkbox" class="chk-setor-prioridades" value="${s.replace(/"/g, '&quot;')}" ${setoresPrioridadesExcluidos.has(s) ? '' : 'checked'}> ${s}</label>`).join('');
     el.innerHTML = html;
-    atualizarTextoFiltroSetorPrioridades(marcadas, etapasPresentes.length);
+    atualizarTextoFiltroSetorPrioridades(marcadas, setoresPresentes.length);
 }
 function atualizarTextoFiltroSetorPrioridades(marcadas, total) {
     if (!$('textoFiltroSetorPrioridades')) return;
@@ -2491,7 +2522,8 @@ let ordenacaoPrioridades = { campo: 'mesDestino', direcao: 'asc' };
 function compararPrioridades(a, b, campo) {
     let va = a[campo], vb = b[campo];
     if (campo === 'id') { va = parseInt(va) || 0; vb = parseInt(vb) || 0; }
-    else if (campo === 'etapa' || campo === 'qtd' || campo === 'diasLocal') { va = va || 0; vb = vb || 0; }
+    else if (campo === 'etapa') { va = obterSetorExibicaoPrioridade(a); vb = obterSetorExibicaoPrioridade(b); }
+    else if (campo === 'qtd' || campo === 'diasLocal') { va = va || 0; vb = vb || 0; }
     else if (campo === 'numeroPrioridade') {
         // Números primeiro (ordenados de verdade), o que não é número (ou
         // está vazio) vai pro final, não pro meio da lista
@@ -2522,7 +2554,7 @@ function renderizarAbaPrioridades() {
     const localProducaoPorOP = obterLocalProducaoPorOP();
 
     const prioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...opsManuaisCompletas]
-        .filter(o => !setoresPrioridadesExcluidos.has(o.etapa))
+        .filter(o => !setoresPrioridadesExcluidos.has(obterSetorExibicaoPrioridade(o)))
         .filter(o => !mesesPrioridadesExcluidos.has(o.mesDestino || CHAVE_SEM_MES_PRIORIDADES))
         .sort((a, b) => {
             // As destacadas sempre vêm primeiro, não importa a ordenação
@@ -2561,7 +2593,7 @@ function renderizarAbaPrioridades() {
             <td>${estrela} <strong>${op.id}</strong>${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}</td>
             <td>${op.numeroPrioridade !== null && op.numeroPrioridade !== undefined ? op.numeroPrioridade : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.desc}</td>
-            <td><span class="pill" style="background:var(--cor-primaria);">${nomesEtapas[op.etapa]}</span></td>
+            <td><span class="pill" style="background:var(--cor-primaria); font-size:10px;">${obterSetorExibicaoPrioridade(op)}</span></td>
             <td style="text-align:right;">${op.qtd}</td>
             <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
             <td>${op.mesDestino ? `<span class="pill" style="background:#B8862A; font-size:12px;">${op.mesDestino}</span>` : '<span style="color:var(--texto-secundario);">—</span>'}</td>
@@ -5239,10 +5271,10 @@ function inicializarEventosUI() {
         wireEvento('listaFiltroSetorPrioridades', 'change', (e) => {
             if (e.target.id === 'chkTodosSetoresPrioridades') {
                 if (e.target.checked) setoresPrioridadesExcluidos.clear();
-                else $$('.chk-setor-prioridades').forEach(c => setoresPrioridadesExcluidos.add(parseInt(c.value)));
+                else $$('.chk-setor-prioridades').forEach(c => setoresPrioridadesExcluidos.add(c.value));
             } else if (e.target.classList.contains('chk-setor-prioridades')) {
-                if (e.target.checked) setoresPrioridadesExcluidos.delete(parseInt(e.target.value));
-                else setoresPrioridadesExcluidos.add(parseInt(e.target.value));
+                if (e.target.checked) setoresPrioridadesExcluidos.delete(e.target.value);
+                else setoresPrioridadesExcluidos.add(e.target.value);
             } else return;
             renderizarFiltroSetorPrioridades();
             renderizarAbaPrioridades();
