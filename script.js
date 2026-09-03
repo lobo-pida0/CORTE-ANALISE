@@ -2153,7 +2153,12 @@ function toggleDestaquePrioridade(id) {
     else {
         const lista = obterOpsManuaisPrioridade();
         const item = lista.find(o => o.id === id);
-        if (item) { item.destaque = novoValor; salvarOpsManuaisPrioridade(lista); }
+        if (item) {
+            item.destaque = novoValor; salvarOpsManuaisPrioridade(lista);
+        } else {
+            const automaticas = obterOpsDestinoAutomaticas();
+            if (automaticas[id]) { automaticas[id].destaque = novoValor; salvarOpsDestinoAutomaticas(automaticas); }
+        }
     }
     renderizarAbaPrioridades();
 }
