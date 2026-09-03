@@ -389,6 +389,7 @@ function opParaLinhaSupabase(op) {
         prioridade_urgencia: !!op.prioridade, prioridade_manual: !!op.prioridade,
         mes_destino: op.mesDestino || null,
         numero_prioridade: op.numeroPrioridade || null,
+        destaque: !!op.destaque,
         dias_local: parseInt(op.diasLocal) || 0, codigo_mp: op.codigoMP || '', desc_mp: op.descMP || '',
         referencia: op.referencia || '', sob_medida: !!op.sobMedida, laser: !!op.laser,
         data_finalizacao: op.dataFinalizacao ? new Date(op.dataFinalizacao).toISOString().slice(0, 10) : null,
@@ -408,6 +409,7 @@ function linhaSupabaseParaOP(l) {
         sobMedida: !!l.sob_medida, laser: !!l.laser, dataFinalizacao: l.data_finalizacao,
         mesDestino: l.mes_destino || null,
         numeroPrioridade: l.numero_prioridade || null,
+        destaque: !!l.destaque,
         dataCorteSuposta: calcularDataCorteSuposta(l.data_finalizacao)
     };
 }
@@ -627,11 +629,12 @@ function opManualParaLinhaSupabase(op) {
         id: String(op.id), descricao: op.desc || '', etapa: op.etapa,
         qtd: parseInt(op.qtd) || 0, dias_local: parseInt(op.diasLocal) || 0,
         mes_destino: op.mesDestino || null, numero_prioridade: op.numeroPrioridade || null,
+        destaque: !!op.destaque,
         atualizado_em: new Date().toISOString()
     };
 }
 function linhaSupabaseParaOpManual(l) {
-    return { id: l.id, desc: l.descricao || '', etapa: l.etapa, qtd: l.qtd || 0, diasLocal: l.dias_local || 0, mesDestino: l.mes_destino || null, numeroPrioridade: l.numero_prioridade || null };
+    return { id: l.id, desc: l.descricao || '', etapa: l.etapa, qtd: l.qtd || 0, diasLocal: l.dias_local || 0, mesDestino: l.mes_destino || null, numeroPrioridade: l.numero_prioridade || null, destaque: !!l.destaque };
 }
 
 async function publicarTudoNoSupabase() {
@@ -1545,6 +1548,7 @@ function processarExcel() {
         const prioridadesManuais = obterPrioridadesManuais();
         const mesesDestino = obterOpsMesDestino();
         const numerosPrioridade = obterNumerosPrioridade();
+        const opsDestacadas = obterOPsDestacadas();
 
         // Aba "BASE" — a "Descrição OP" (coluna Y) indica se a OP é feita SOB
         // MEDIDA (contém "SBM" no texto). OPs sob medida não devem ser
@@ -1625,6 +1629,7 @@ function processarExcel() {
                         prioridade: prioridadesDestino.has(idOP) || prioridadesManuais.has(idOP), // fonte: importação "Destino de Produção" OU marcação manual — antes vinha da aba URGENCIAS
                         mesDestino: mesesDestino[idOP] || null, // "AAAA-MM" informado na importação de Destino — planilha não tem data que sirva pra isso
                         numeroPrioridade: numerosPrioridade[idOP] || null, // valor bruto da coluna Prioridade — só exibição
+                        destaque: opsDestacadas.has(idOP), // "faça essa primeiro" — marcado na aba Prioridades
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
                         diasLocal: parseInt(r[25]) || 0,
                         codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
@@ -2027,6 +2032,35 @@ function obterNumerosPrioridade() {
 // que não mencione essa OP não apagar a marcação manual sem querer.
 function obterPrioridadesManuais() {
     try { return new Set(JSON.parse(localStorage.getItem('prioridadesManuais') || '[]')); } catch (e) { return new Set(); }
+}
+
+// =========================================================================
+// 🔦 DESTAQUE — dentro das já prioritárias, o usuário quer sinalizar quais
+// fazer PRIMEIRO. Independente de onde a OP vive (bancoDadosOPs ou
+// opsManuaisPrioridade), pra funcionar pras duas do mesmo jeito. Visível
+// pra todo mundo (inclusive visitante), só quem edita é o admin.
+// =========================================================================
+function obterOPsDestacadas() {
+    try { return new Set(JSON.parse(localStorage.getItem('opsDestacadasPrioridade') || '[]')); } catch (e) { return new Set(); }
+}
+function toggleDestaquePrioridade(id) {
+    if (!exigirAdmin('destacar essa OP')) return;
+    const destacadas = obterOPsDestacadas();
+    const novoValor = !destacadas.has(id);
+    if (novoValor) destacadas.add(id); else destacadas.delete(id);
+    localStorage.setItem('opsDestacadasPrioridade', JSON.stringify([...destacadas]));
+
+    // Reaplica na hora, direto no objeto — igual já fazemos com
+    // prioridade/mês/número — pra já refletir sem esperar sincronizar de
+    // novo, e pra viajar certo pra nuvem quando publicar.
+    const op = bancoDadosOPs.find(o => o.id === id);
+    if (op) { op.destaque = novoValor; localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); }
+    else {
+        const lista = obterOpsManuaisPrioridade();
+        const item = lista.find(o => o.id === id);
+        if (item) { item.destaque = novoValor; salvarOpsManuaisPrioridade(lista); }
+    }
+    renderizarAbaPrioridades();
 }
 
 // Lista de OPs 100% cadastradas na mão (não existem em bancoDadosOPs) —
@@ -2460,6 +2494,10 @@ function renderizarAbaPrioridades() {
         .filter(o => !setoresPrioridadesExcluidos.has(o.etapa))
         .filter(o => !mesesPrioridadesExcluidos.has(o.mesDestino || CHAVE_SEM_MES_PRIORIDADES))
         .sort((a, b) => {
+            // As destacadas sempre vêm primeiro, não importa a ordenação
+            // escolhida — é exatamente o "faça isso primeiro" que se quer
+            const destA = a.destaque ? 0 : 1, destB = b.destaque ? 0 : 1;
+            if (destA !== destB) return destA - destB;
             const r = compararPrioridades(a, b, ordenacaoPrioridades.campo);
             return ordenacaoPrioridades.direcao === 'asc' ? r : -r;
         });
@@ -2485,9 +2523,11 @@ function renderizarAbaPrioridades() {
         const ehManual = op.manualCompleta || manuaisSet.has(op.id);
         const botaoRemover = ehManual ? `<button class="btn somente-admin" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerPrioridadeManual('${op.id}')" title="Remover essa marcação manual"><i class="fas fa-times"></i></button>` : '';
         const localProducao = localProducaoPorOP.get(op.id);
+        const destacada = !!op.destaque;
+        const estrela = `<i class="fas fa-star" style="cursor:pointer; color:${destacada ? '#B8862A' : 'var(--borda-cor)'};" onclick="toggleDestaquePrioridade('${op.id}')" title="${destacada ? 'Tirar destaque' : 'Destacar — faça essa primeiro'}"></i>`;
         return `
-        <tr>
-            <td><strong>${op.id}</strong>${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}</td>
+        <tr style="${destacada ? 'background:rgba(184, 134, 42, 0.15);' : ''}">
+            <td>${estrela} <strong>${op.id}</strong>${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}</td>
             <td>${op.numeroPrioridade !== null && op.numeroPrioridade !== undefined ? op.numeroPrioridade : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.desc}</td>
             <td><span class="pill" style="background:var(--cor-primaria);">${nomesEtapas[op.etapa]}</span></td>
