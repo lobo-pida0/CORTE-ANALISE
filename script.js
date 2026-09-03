@@ -609,6 +609,18 @@ function linhasSupabaseParaSequenciaCompleta(linhas) {
 
 // Publica tudo que dá pra publicar hoje (OPs + Pedidos) numa tacada só, pra
 // não precisar de um botão pra cada tabela.
+function opManualParaLinhaSupabase(op) {
+    return {
+        id: String(op.id), descricao: op.desc || '', etapa: op.etapa,
+        qtd: parseInt(op.qtd) || 0, dias_local: parseInt(op.diasLocal) || 0,
+        mes_destino: op.mesDestino || null, numero_prioridade: op.numeroPrioridade || null,
+        atualizado_em: new Date().toISOString()
+    };
+}
+function linhaSupabaseParaOpManual(l) {
+    return { id: l.id, desc: l.descricao || '', etapa: l.etapa, qtd: l.qtd || 0, diasLocal: l.dias_local || 0, mesDestino: l.mes_destino || null, numeroPrioridade: l.numero_prioridade || null };
+}
+
 async function publicarTudoNoSupabase() {
     if (!supabaseClient) { showToast('Conexão com a nuvem não foi iniciada.', true); return; }
     if (!sessaoAdminAtual) { showToast('<i class="fas fa-lock"></i> Entre como admin primeiro.', true); return; }
@@ -652,6 +664,12 @@ async function publicarTudoNoSupabase() {
             if (status) status.innerText = `Publicando ${todosOsPedidos.length} pedidos (todos)...`;
             const r = await sincronizarTabelaSupabase('pedidos_todos', todosOsPedidos);
             resumo.push(`${r.publicados} pedidos (busca)`);
+        }
+        const opsManuais = obterOpsManuaisPrioridade();
+        if (opsManuais.length) {
+            if (status) status.innerText = `Publicando ${opsManuais.length} OPs manuais...`;
+            const r = await sincronizarTabelaSupabase('ops_manuais_prioridade', opsManuais.map(opManualParaLinhaSupabase));
+            resumo.push(`${r.publicados} OPs manuais`);
         }
         // Marca a hora dessa publicação — é isso que o visitante vê como
         // "dados de: há X min"
@@ -778,6 +796,19 @@ async function carregarTodosPedidosDaNuvemParaVisitante() {
     }
 }
 
+// Pra quem NÃO está logado: busca as OPs 100% manuais (cadastradas pelo
+// admin, que não existem em nenhuma planilha) direto da nuvem.
+async function carregarOpsManuaisDaNuvemParaVisitante() {
+    if (!supabaseClient || sessaoAdminAtual) return;
+    try {
+        const data = await buscarTodasLinhasSupabase('ops_manuais_prioridade');
+        registrarLogDebug('log', [`[NUVEM] Busca de OPs manuais concluída: ${data ? data.length : 0} itens encontrados.`]);
+        salvarOpsManuaisPrioridade((data || []).map(linhaSupabaseParaOpManual));
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao carregar OPs manuais da nuvem: ' + e.message]);
+    }
+}
+
 // Formata "há quanto tempo" de um jeito curto e legível — "agora mesmo",
 // "há 3 min", "há 2h", "há 5 dias"
 function formatarTempoRelativo(timestamp) {
@@ -817,6 +848,7 @@ async function carregarTudoDaNuvemParaVisitante() {
         carregarPrioridadeClientesDaNuvemParaVisitante(),
         carregarLocalizacaoCompletaDaNuvemParaVisitante(),
         carregarTodosPedidosDaNuvemParaVisitante(),
+        carregarOpsManuaisDaNuvemParaVisitante(),
     ]);
     atualizarIndicadorUltimaPublicacao();
 }
@@ -1237,7 +1269,7 @@ function mostrarTooltipOP(e, id) {
 function esconderTooltipOP() { const tt = $('tooltip-op'); if (!tt) return; tt.style.opacity = '0'; tt.style.display = 'none'; }
 
 // MODAIS E MENUS
-function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; }
+function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; }
 
 // =========================================================================
 // 👑 PRIORIDADE DE CLIENTES — lista editável, do mais pro menos prioritário.
@@ -1497,6 +1529,7 @@ function processarExcel() {
         // decisão do usuário, já que o relatório de destino traz uma
         // prioridade mais confiável (numérica, vinda direto do sistema).
         const prioridadesDestino = obterPrioridadesDestino();
+        const prioridadesManuais = obterPrioridadesManuais();
         const mesesDestino = obterOpsMesDestino();
         const numerosPrioridade = obterNumerosPrioridade();
 
@@ -1576,7 +1609,7 @@ function processarExcel() {
                         localDestino: r[17] ? String(r[17]).trim().toUpperCase() : "N/D",
                         localExcel: r[21] ? String(r[21]).trim().toUpperCase() : "",
                         temDublado: r[18] ? String(r[18]).toUpperCase().includes("SIM") : false,
-                        prioridade: prioridadesDestino.has(idOP), // fonte: importação "Destino de Produção" (DESTINO) — antes vinha da aba URGENCIAS
+                        prioridade: prioridadesDestino.has(idOP) || prioridadesManuais.has(idOP), // fonte: importação "Destino de Produção" OU marcação manual — antes vinha da aba URGENCIAS
                         mesDestino: mesesDestino[idOP] || null, // "AAAA-MM" informado na importação de Destino — planilha não tem data que sirva pra isso
                         numeroPrioridade: numerosPrioridade[idOP] || null, // valor bruto da coluna Prioridade — só exibição
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
@@ -1964,6 +1997,157 @@ function obterNumerosPrioridade() {
     try { return JSON.parse(localStorage.getItem('numerosPrioridade') || '{}'); } catch (e) { return {}; }
 }
 
+// =========================================================================
+// ⭐ PRIORIDADE MANUAL — usuário pode marcar uma OP como prioritária na mão,
+// além das que já vêm do relatório de Destino. Dois casos:
+// 1) A OP já existe no sistema (veio da Sincronização) — só marca
+//    prioridade=true nela e guarda o número/mês que o usuário informou,
+//    sem duplicar o resto do dado (Descrição/Etapa/Peças/Dias Parado já
+//    existem, não precisa digitar de novo).
+// 2) A OP não existe em lugar nenhum — cadastro completo, guardado numa
+//    lista própria (`opsManuaisPrioridade`), mesclada na hora de mostrar
+//    a aba Prioridades.
+// =========================================================================
+
+// Set de IDs de OP marcadas prioritária manualmente — separado de
+// prioridadesDestino de propósito, pra uma importação de Destino futura
+// que não mencione essa OP não apagar a marcação manual sem querer.
+function obterPrioridadesManuais() {
+    try { return new Set(JSON.parse(localStorage.getItem('prioridadesManuais') || '[]')); } catch (e) { return new Set(); }
+}
+
+// Lista de OPs 100% cadastradas na mão (não existem em bancoDadosOPs) —
+// cada uma com todos os campos que a tabela de Prioridades mostra.
+function obterOpsManuaisPrioridade() {
+    try { return JSON.parse(localStorage.getItem('opsManuaisPrioridade') || '[]'); } catch (e) { return []; }
+}
+function salvarOpsManuaisPrioridade(lista) {
+    localStorage.setItem('opsManuaisPrioridade', JSON.stringify(lista));
+}
+
+function abrirModalPrioridadeManual() {
+    if (!exigirAdmin('adicionar OP prioritária manual')) return;
+    const opcoesEtapa = nomesEtapas.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+    $('modalPrioridadeManual').innerHTML = `
+        <div class="modal-card" style="width:480px; max-width:92vw; max-height:85vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <h2 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;"><i class="fas fa-star" style="color:#B8862A;"></i> ADICIONAR OP PRIORITÁRIA</h2>
+                <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <div class="campo-meta">
+                    <label>NÚMERO DA OP</label>
+                    <input type="text" id="inputOPManualNumero" placeholder="Ex: 4594">
+                </div>
+                <div id="statusOPManual" style="font-size:11px;"></div>
+                <div id="camposOPManual" style="display:flex; flex-direction:column; gap:10px;">
+                    <div class="campo-meta"><label>DESCRIÇÃO</label><input type="text" id="inputOPManualDesc"></div>
+                    <div class="campo-meta"><label>ETAPA</label><select id="inputOPManualEtapa">${opcoesEtapa}</select></div>
+                    <div class="campo-meta"><label>PEÇAS</label><input type="number" id="inputOPManualQtd" min="0"></div>
+                    <div class="campo-meta"><label>DIAS PARADO</label><input type="number" id="inputOPManualDias" min="0"></div>
+                </div>
+                <div class="campo-meta"><label>Nº PRIORIDADE (opcional)</label><input type="text" id="inputOPManualNumPrioridade"></div>
+                <div class="campo-meta"><label>MÊS DESTINO — AAAA-MM (opcional)</label><input type="text" id="inputOPManualMes" placeholder="2026-06"></div>
+                <button id="btnSalvarOPManual" class="btn btn-sugestao"><i class="fas fa-check"></i> SALVAR</button>
+            </div>
+        </div>
+    `;
+    $('modalPrioridadeManual').style.display = 'flex';
+    $('inputOPManualNumero').oninput = conferirOPManualExistente;
+    $('btnSalvarOPManual').onclick = salvarOPManual;
+    conferirOPManualExistente();
+}
+
+// Confere se o número digitado já existe no sistema — se sim, esconde os
+// campos que já vêm de lá (Descrição/Etapa/Peças/Dias Parado), já que
+// digitar de novo seria redundante e podia até contradizer o dado real.
+function conferirOPManualExistente() {
+    const numero = $('inputOPManualNumero').value.trim();
+    const opExistente = bancoDadosOPs.find(o => o.id === numero);
+    const camposDiv = $('camposOPManual');
+    const statusDiv = $('statusOPManual');
+    if (!numero) { statusDiv.innerHTML = ''; camposDiv.style.display = 'flex'; return; }
+    if (opExistente) {
+        statusDiv.innerHTML = `<span style="color:var(--cor-despacho);"><i class="fas fa-check-circle"></i> Essa OP já existe no sistema (${opExistente.desc}) — Descrição/Etapa/Peças/Dias Parado vêm de lá automaticamente.</span>`;
+        camposDiv.style.display = 'none';
+    } else {
+        statusDiv.innerHTML = `<span style="color:var(--texto-secundario);"><i class="fas fa-info-circle"></i> OP não encontrada no sistema — preencha os dados abaixo na mão.</span>`;
+        camposDiv.style.display = 'flex';
+    }
+}
+
+function salvarOPManual() {
+    if (!exigirAdmin('adicionar OP prioritária manual')) return;
+    const numero = $('inputOPManualNumero').value.trim();
+    if (!numero) { showToast('<i class="fas fa-triangle-exclamation"></i> Informe o número da OP.', true); return; }
+    const numPrioridade = $('inputOPManualNumPrioridade').value.trim() || null;
+    const mes = $('inputOPManualMes').value.trim() || null;
+    if (mes && !/^\d{4}-\d{2}$/.test(mes)) { showToast('<i class="fas fa-triangle-exclamation"></i> Mês Destino precisa ser no formato AAAA-MM.', true); return; }
+
+    const opExistente = bancoDadosOPs.find(o => o.id === numero);
+
+    if (opExistente) {
+        // Caso 1: a OP já existe — só marca prioridade e guarda o que é
+        // extra (número/mês), sem duplicar o resto do dado.
+        const manuais = obterPrioridadesManuais();
+        manuais.add(numero);
+        localStorage.setItem('prioridadesManuais', JSON.stringify([...manuais]));
+        opExistente.prioridade = true;
+        if (numPrioridade) {
+            opExistente.numeroPrioridade = numPrioridade;
+            const n = obterNumerosPrioridade(); n[numero] = numPrioridade; localStorage.setItem('numerosPrioridade', JSON.stringify(n));
+        }
+        if (mes) {
+            opExistente.mesDestino = mes;
+            const m = obterOpsMesDestino(); m[numero] = mes; localStorage.setItem('opsMesDestino', JSON.stringify(m));
+        }
+        localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
+    } else {
+        // Caso 2: cadastro completo, OP não existe em lugar nenhum
+        const desc = $('inputOPManualDesc').value.trim();
+        const etapa = parseInt($('inputOPManualEtapa').value);
+        const qtd = parseInt($('inputOPManualQtd').value) || 0;
+        const diasLocal = parseInt($('inputOPManualDias').value) || 0;
+        if (!desc) { showToast('<i class="fas fa-triangle-exclamation"></i> Preencha a descrição.', true); return; }
+        const lista = obterOpsManuaisPrioridade();
+        const jaExiste = lista.findIndex(o => o.id === numero);
+        const entrada = { id: numero, desc, etapa, qtd, diasLocal, mesDestino: mes, numeroPrioridade: numPrioridade };
+        if (jaExiste !== -1) lista[jaExiste] = entrada; else lista.push(entrada);
+        salvarOpsManuaisPrioridade(lista);
+    }
+
+    fecharModais();
+    cacheGruposPorReferencia = null;
+    renderizarTudoImediato();
+    showToast(`<i class="fas fa-check"></i> OP ${numero} adicionada às prioritárias!`);
+}
+
+// Remove uma marcação manual — se a OP existe no sistema, só desmarca a
+// prioridade (não some com a OP, ela continua existindo normal); se for um
+// cadastro 100% manual, remove da lista de vez.
+function removerPrioridadeManual(numero) {
+    if (!exigirAdmin('remover prioridade manual')) return;
+    if (!confirm(`Remover a marcação de prioridade manual da OP ${numero}?`)) return;
+
+    const manuais = obterPrioridadesManuais();
+    if (manuais.has(numero)) {
+        manuais.delete(numero);
+        localStorage.setItem('prioridadesManuais', JSON.stringify([...manuais]));
+        const op = bancoDadosOPs.find(o => o.id === numero);
+        if (op) {
+            const prioridadesDestino = obterPrioridadesDestino();
+            op.prioridade = prioridadesDestino.has(numero); // volta a valer só o que o Destino diz
+            localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
+        }
+    } else {
+        const lista = obterOpsManuaisPrioridade().filter(o => o.id !== numero);
+        salvarOpsManuaisPrioridade(lista);
+    }
+    cacheGruposPorReferencia = null;
+    renderizarTudoImediato();
+    showToast(`<i class="fas fa-check"></i> Removida.`);
+}
+
 function obterPedidosPendentes() {
     const salvo = localStorage.getItem('pedidosPendentes');
     if (!salvo) return [];
@@ -2255,7 +2439,10 @@ function ordenarPrioridadesPor(campo) {
 
 function renderizarAbaPrioridades() {
     if (!$('listaPrioridadesTab')) return;
-    const prioritarias = bancoDadosOPs.filter(o => o.prioridade)
+    const manuaisSet = obterPrioridadesManuais();
+    const opsManuaisCompletas = obterOpsManuaisPrioridade().map(o => ({ ...o, prioridade: true, manualCompleta: true }));
+
+    const prioritarias = [...bancoDadosOPs.filter(o => o.prioridade), ...opsManuaisCompletas]
         .filter(o => !setoresPrioridadesExcluidos.has(o.etapa))
         .filter(o => !mesesPrioridadesExcluidos.has(o.mesDestino || CHAVE_SEM_MES_PRIORIDADES))
         .sort((a, b) => {
@@ -2276,21 +2463,26 @@ function renderizarAbaPrioridades() {
     if ($('totalPecasPrioridades')) $('totalPecasPrioridades').innerText = totalPecas.toLocaleString('pt-BR');
 
     if (!prioritarias.length) {
-        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
+        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
         return;
     }
 
-    $('listaPrioridadesTab').innerHTML = prioritarias.map(op => `
+    $('listaPrioridadesTab').innerHTML = prioritarias.map(op => {
+        const ehManual = op.manualCompleta || manuaisSet.has(op.id);
+        const botaoRemover = ehManual ? `<button class="btn somente-admin" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerPrioridadeManual('${op.id}')" title="Remover essa marcação manual"><i class="fas fa-times"></i></button>` : '';
+        return `
         <tr>
-            <td><strong>${op.id}</strong></td>
+            <td><strong>${op.id}</strong>${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}</td>
             <td>${op.numeroPrioridade !== null && op.numeroPrioridade !== undefined ? op.numeroPrioridade : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.desc}</td>
             <td><span class="pill" style="background:var(--cor-primaria);">${nomesEtapas[op.etapa]}</span></td>
             <td style="text-align:right;">${op.qtd}</td>
             <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
             <td>${op.mesDestino ? `<span class="pill" style="background:#B8862A; font-size:12px;">${op.mesDestino}</span>` : '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td>${botaoRemover}</td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function renderizarNecessidadePorReferencia() {
@@ -4808,6 +5000,7 @@ function inicializarEventosUI() {
         wireEvento('abrirGuiaSequenciamento-menu', 'click', () => { abrirGuiaSequenciamento(); });
         wireEvento('abrirAgrupamentoReferencia', 'click', () => { abrirAgrupamentoReferencia(); });
         wireEvento('abrirModalPerguntarIA', 'click', () => { abrirModalPerguntarIA(); });
+        wireEvento('abrirModalPrioridadeManual', 'click', () => { abrirModalPrioridadeManual(); });
         wireEvento('alcaConsoleDebug', 'click', () => { toggleConsoleDebug(); });
         wireEvento('btnCopiarConsoleDebug', 'click', () => { copiarLogsConsoleDebug(); });
         wireEvento('btnLimparConsoleDebug', 'click', () => { limparLogsConsoleDebug(); });

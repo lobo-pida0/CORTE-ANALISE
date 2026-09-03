@@ -150,6 +150,11 @@
        >
     </div>
 
+    <div id="modalPrioridadeManual"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10000; align-items:center; justify-content:center; backdrop-filter:blur(5px);"
+       >
+    </div>
+
     <div id="ctxMenu">
         <div id="ctxAcao-copiar" class="ctx-item"><i class="fas fa-copy"></i> Copiar Nº OP</div>
         <div id="ctxAcao-prioridade" class="ctx-item somente-admin"><i class="fas fa-star"></i> Alternar Prioridade</div>
@@ -721,6 +726,7 @@
                         <div class="multi-select-options" id="listaFiltroMesPrioridades"></div>
                     </div>
                 </div>
+                <button id="abrirModalPrioridadeManual" class="btn somente-admin" style="background:#B8862A; color:white; align-self:flex-end;"><i class="fas fa-plus"></i> ADICIONAR OP</button>
             </div>
             <div class="secao-corpo">
                 <table class="tabela-dados">
@@ -733,6 +739,7 @@
                             <th id="thOrdenarPrioridades-qtd" class="th-ordenavel" style="text-align:right;">PEÇAS</th>
                             <th id="thOrdenarPrioridades-diasLocal" class="th-ordenavel" style="text-align:right;">DIAS PARADO</th>
                             <th id="thOrdenarPrioridades-mesDestino" class="th-ordenavel">MÊS DESTINO</th>
+                            <th class="somente-admin"></th>
                         </tr>
                     </thead>
                     <tbody id="listaPrioridadesTab"></tbody>
@@ -742,6 +749,7 @@
                             <td style="text-align:right; color:var(--cor-selecao);" id="totalPecasPrioridades">0</td>
                             <td></td>
                             <td></td>
+                            <td class="somente-admin"></td>
                         </tr>
                     </tfoot>
                 </table>
