@@ -2444,8 +2444,26 @@ const CHAVE_SEM_MES_PRIORIDADES = '__SEM_MES_PRI__';
 // O "setor" de uma OP, pra exibição/filtro: prefere o local detalhado que
 // vem da planilha de Destino (cobre etapas fora das 8 rastreadas, tipo
 // costura) — cai pra etapa numérica normal quando não tiver isso.
+// Locais extras (fora das 8 etapas normais) liberados pra aparecer no
+// filtro de Setor da aba Prioridades — lista fechada, o usuário pediu
+// especificamente esses 7. Qualquer outro local que a planilha de Destino
+// trouxer é ignorado aqui (cai pra etapa normal), mesmo que exista de
+// verdade — só esses foram aprovados.
+const LOCAIS_EXTRA_APROVADOS_PRIORIDADES = new Set([
+    'PNP COST SUP CAMISA',
+    'PNP AGUARD DEFINICAO COST INF',
+    'PNP COST CEL HIBRIDA',
+    'PNP COST SUP MALHA',
+    'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA',
+    'PNP COST INF CALCA',
+    'PNP AGUARD DEFINICAO COST SUP',
+]);
+
 function obterSetorExibicaoPrioridade(op) {
-    return op.localDestinoDetalhado || nomesEtapas[op.etapa] || '(SEM SETOR)';
+    if (op.localDestinoDetalhado && LOCAIS_EXTRA_APROVADOS_PRIORIDADES.has(op.localDestinoDetalhado)) {
+        return op.localDestinoDetalhado;
+    }
+    return nomesEtapas[op.etapa] || '(SEM SETOR)';
 }
 
 function renderizarFiltroSetorPrioridades() {
