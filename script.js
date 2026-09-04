@@ -2174,7 +2174,10 @@ function salvarOpsManuaisPrioridade(lista) {
 
 function abrirModalPrioridadeManual() {
     if (!exigirAdmin('adicionar OP prioritária manual')) return;
-    const opcoesEtapa = nomesEtapas.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+    const opcoesEtapa = nomesEtapas.map((n, i) => `<option value="${i}">${n}</option>`).join('')
+        + `<optgroup label="Locais fora das 8 etapas (costura)">`
+        + [...LOCAIS_EXTRA_APROVADOS_PRIORIDADES].map(l => `<option value="local:${l}">${l}</option>`).join('')
+        + `</optgroup>`;
     $('modalPrioridadeManual').innerHTML = `
         <div class="modal-card" style="width:480px; max-width:92vw; max-height:85vh; overflow-y:auto;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
@@ -2252,13 +2255,19 @@ function salvarOPManual() {
     } else {
         // Caso 2: cadastro completo, OP não existe em lugar nenhum
         const desc = $('inputOPManualDesc').value.trim();
-        const etapa = parseInt($('inputOPManualEtapa').value);
         const qtd = parseInt($('inputOPManualQtd').value) || 0;
         const diasLocal = parseInt($('inputOPManualDias').value) || 0;
         if (!desc) { showToast('<i class="fas fa-triangle-exclamation"></i> Preencha a descrição.', true); return; }
+        // O valor do menu pode ser um índice numérico normal (0-7) ou um
+        // dos locais extras aprovados, prefixado com "local:" — os dois
+        // formatos moram no mesmo <select>, então separa aqui.
+        const valorEtapa = $('inputOPManualEtapa').value;
+        let etapa = null, localDestinoDetalhado = null;
+        if (valorEtapa.startsWith('local:')) localDestinoDetalhado = valorEtapa.slice('local:'.length);
+        else etapa = parseInt(valorEtapa);
         const lista = obterOpsManuaisPrioridade();
         const jaExiste = lista.findIndex(o => o.id === numero);
-        const entrada = { id: numero, desc, etapa, qtd, diasLocal, mesDestino: mes, numeroPrioridade: numPrioridade };
+        const entrada = { id: numero, desc, etapa, qtd, diasLocal, mesDestino: mes, numeroPrioridade: numPrioridade, localDestinoDetalhado };
         if (jaExiste !== -1) lista[jaExiste] = entrada; else lista.push(entrada);
         salvarOpsManuaisPrioridade(lista);
     }
