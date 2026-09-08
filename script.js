@@ -2296,10 +2296,11 @@ function obterMesesDisponiveisKPI() {
     return [...meses].sort();
 }
 
-// Quebra um mês em semanas de calendário (1-7, 8-14, 15-21, 22-28, 29-fim)
-// e calcula a média diária de cada uma — em vez de uma janela corrida tipo
-// "últimos 7 dias", isso mostra semana 1, semana 2 etc. de dentro do mês
-// escolhido.
+// Quebra um mês em semanas de calendário DE VERDADE (segunda a sexta —
+// fins de semana não contam, a pedido do usuário: "nossa semana é só de 5
+// dias úteis") e calcula a média diária de cada uma. A primeira/última
+// semana do mês pode ter menos de 5 dias, se o mês não começar numa
+// segunda ou não terminar numa sexta.
 function calcularMediaPorSemanaDoMes(setor, anoMes) {
     const movimentos = obterMovimentacoesPorSetor()[setor] || {};
     const [ano, mes] = anoMes.split('-').map(Number);
@@ -2311,25 +2312,41 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
         const data = new Date(m.data);
         const chaveDoMes = data.toISOString().slice(0, 7);
         if (chaveDoMes !== anoMes) return;
+        const diaSemana = data.getDay(); // 0=domingo, 6=sábado
+        if (diaSemana === 0 || diaSemana === 6) return; // fim de semana não conta
         const dia = data.getDate();
         totalPorDia[dia] = (totalPorDia[dia] || 0) + m.qtd;
     });
 
-    const semanas = [];
-    for (let inicioSemana = 1; inicioSemana <= ultimoDiaDoMes; inicioSemana += 7) {
-        const fimSemana = Math.min(inicioSemana + 6, ultimoDiaDoMes);
+    // Agrupa os dias úteis do mês em semanas de segunda a sexta — a chave
+    // de cada grupo é a data da segunda-feira daquela semana (pode cair no
+    // mês anterior, se o mês não começar numa segunda; nesse caso a
+    // "semana 1" só tem os dias úteis que já são desse mês).
+    const gruposPorSegunda = new Map();
+    for (let dia = 1; dia <= ultimoDiaDoMes; dia++) {
+        const data = new Date(ano, mes - 1, dia);
+        const diaSemana = data.getDay();
+        if (diaSemana === 0 || diaSemana === 6) continue;
+        const deslocamento = diaSemana - 1; // segunda-feira = deslocamento 0
+        const segunda = new Date(ano, mes - 1, dia - deslocamento);
+        const chaveSegunda = segunda.getTime();
+        if (!gruposPorSegunda.has(chaveSegunda)) gruposPorSegunda.set(chaveSegunda, []);
+        gruposPorSegunda.get(chaveSegunda).push(dia);
+    }
+
+    const semanasOrdenadas = [...gruposPorSegunda.entries()].sort((a, b) => a[0] - b[0]);
+    return semanasOrdenadas.map(([, dias], idx) => {
         let totalSemana = 0, diasComMovimento = 0;
-        for (let d = inicioSemana; d <= fimSemana; d++) {
-            if (totalPorDia[d]) { totalSemana += totalPorDia[d]; diasComMovimento++; }
-        }
-        semanas.push({
-            rotulo: `Semana ${semanas.length + 1} (${inicioSemana}-${fimSemana})`,
+        dias.forEach(dia => {
+            if (totalPorDia[dia]) { totalSemana += totalPorDia[dia]; diasComMovimento++; }
+        });
+        return {
+            rotulo: `Semana ${idx + 1} (${dias[0]}-${dias[dias.length - 1]})`,
             totalSemana,
             diasComMovimento,
             mediaDiaria: diasComMovimento ? Math.round(totalSemana / diasComMovimento) : 0,
-        });
-    }
-    return semanas;
+        };
+    });
 }
 
 // Lead time médio até um setor: pra cada OP que já entrou nesse setor,
