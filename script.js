@@ -1668,7 +1668,8 @@ function processarExcel() {
                         sobMedida: mapaSBM.has(idOP), // aba BASE, coluna Y ("Descrição OP" contém "SBM")
                         laser: r[41] ? String(r[41]).trim().toUpperCase().includes('LASER') : false, // coluna AP
                         dataFinalizacao: mapaFinalizacao.get(idOP) || null, // aba BASE, coluna P
-                        dataCorteSuposta: calcularDataCorteSuposta(mapaFinalizacao.get(idOP))
+                        dataCorteSuposta: calcularDataCorteSuposta(mapaFinalizacao.get(idOP)),
+                        dataInclusao: extrairDataExcel(r[16]) || null, // quando a OP foi criada — base do cálculo de lead time por setor
                     });
                 }
             }
@@ -2095,6 +2096,208 @@ function obterLocaisDestinoPorOP() {
 function obterOpsDestinoAutomaticas() {
     try { return JSON.parse(localStorage.getItem('opsDestinoAutomaticas') || '{}'); } catch (e) { return {}; }
 }
+
+// =========================================================================
+// 📊 KPI — MOVIMENTAÇÃO POR SETOR (novo KPI, sendo construído com o
+// usuário). Cada um dos 7 setores rastreados (Análise de Medidas, CAD, PCP
+// Programação-Corte, Almox Tecido, Enfesto, Corte, Etiquetação) tem seu
+// próprio relatório de movimentação (formato .CSV, separado por ";",
+// colunas: Nr. Op / Ciclo / Dt. Movimento / Qt. Movimento, entre outras) —
+// o usuário importa um de cada vez, escolhendo o setor na hora.
+//
+// Guardado como { setor: { opId: {ciclo, data (ISO), qtd} } } — acumula
+// entre importações (uma OP mencionada de novo atualiza a entrada dela, as
+// que não aparecem no arquivo atual mantêm o que já tinha).
+// =========================================================================
+
+const SETORES_KPI = ['ANALISE DE MEDIDAS', 'CAD', 'PCP PROGRAMACAO-CORTE', 'ALMOX TECIDO', 'ENFESTO', 'CORTE', 'ETIQUETACAO'];
+
+function obterMovimentacoesPorSetor() {
+    try { return JSON.parse(localStorage.getItem('movimentacoesPorSetorKPI') || '{}'); } catch (e) { return {}; }
+}
+function salvarMovimentacoesPorSetor(obj) {
+    localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(obj));
+}
+
+// Data no formato brasileiro "DD/MM/AAAA" (como vem no relatório) — vira
+// Date de verdade, guardado como ISO pra ser fácil de comparar depois.
+function parsearDataBR(str) {
+    if (!str) return null;
+    const m = String(str).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+}
+
+function processarMovimentacaoSetor(setor) {
+    if (!exigirAdmin('importar movimentação de setor')) return;
+    const input = $('inputMovimentacaoKPI'); if (!input.files[0]) return;
+    if (!SETORES_KPI.includes(setor)) { showToast('<i class="fas fa-triangle-exclamation"></i> Selecione um setor antes de importar.', true); return; }
+
+    const r = new FileReader();
+    r.onload = function (e) {
+        try {
+            const texto = e.target.result;
+            const linhas = texto.split(/\r?\n/).filter(l => l.trim());
+            if (linhas.length < 2) throw new Error("Arquivo vazio ou só com cabeçalho.");
+            const cabecalho = linhas[0].split(';').map(c => c.trim());
+            const idxOP = cabecalho.findIndex(c => c === 'Nr. Op');
+            const idxCiclo = cabecalho.findIndex(c => c === 'Ciclo');
+            const idxData = cabecalho.findIndex(c => c === 'Dt. Movimento');
+            const idxQtd = cabecalho.findIndex(c => c === 'Qt. Movimento');
+            if (idxOP === -1 || idxData === -1 || idxQtd === -1) {
+                throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento) no cabeçalho da primeira linha.");
+            }
+
+            const todas = obterMovimentacoesPorSetor();
+            if (!todas[setor]) todas[setor] = {};
+
+            let linhasLidas = 0;
+            for (let i = 1; i < linhas.length; i++) {
+                const campos = linhas[i].split(';');
+                const opId = campos[idxOP] ? String(campos[idxOP]).trim() : '';
+                const dataStr = campos[idxData] ? String(campos[idxData]).trim() : '';
+                if (!opId || !dataStr) continue; // pula linha de total (vem com os campos de texto vazios) e linhas malformadas
+                const data = parsearDataBR(dataStr);
+                if (!data) continue;
+                const ciclo = idxCiclo !== -1 && campos[idxCiclo] ? String(campos[idxCiclo]).trim() : '';
+                const qtd = parseInt(campos[idxQtd]) || 0;
+                todas[setor][opId] = { ciclo, data: data.toISOString(), qtd };
+                linhasLidas++;
+            }
+            if (linhasLidas === 0) throw new Error("Nenhuma linha válida encontrada (confira se as colunas Nr. Op e Dt. Movimento estão preenchidas).");
+
+            salvarMovimentacoesPorSetor(todas);
+            input.value = '';
+            showToast(`<i class="fas fa-check-double"></i> ${linhasLidas} movimentações de "${setor}" importadas!`);
+            renderizarGraficoKPI();
+        } catch (err) {
+            console.error('Erro ao processar movimentação de setor:', err);
+            alert("❌ Não foi possível processar o relatório de movimentação.\n\nVerifique se ele tem as colunas Nr. Op, Ciclo, Dt. Movimento e Qt. Movimento no cabeçalho.\n\nDetalhe técnico: " + err.message);
+            input.value = '';
+        }
+    };
+    r.readAsText(input.files[0]);
+}
+
+// Média diária de peças que entraram num setor, numa janela de X dias pra
+// trás (7=semanal, 30=mensal, por exemplo) — só conta os dias que
+// realmente tiveram movimento, não divide pelo tamanho da janela inteira.
+function calcularMediaDiariaSetor(setor, dias) {
+    const movimentos = obterMovimentacoesPorSetor()[setor] || {};
+    const limite = new Date(); limite.setDate(limite.getDate() - dias);
+
+    const totalPorDia = {};
+    Object.values(movimentos).forEach(m => {
+        const data = new Date(m.data);
+        if (data < limite) return;
+        const chave = data.toISOString().slice(0, 10);
+        totalPorDia[chave] = (totalPorDia[chave] || 0) + m.qtd;
+    });
+
+    const dataKeys = Object.keys(totalPorDia);
+    if (!dataKeys.length) return { mediaDiaria: 0, diasComMovimento: 0, totalPeriodo: 0 };
+    const totalPeriodo = Object.values(totalPorDia).reduce((s, v) => s + v, 0);
+    return { mediaDiaria: Math.round(totalPeriodo / dataKeys.length), diasComMovimento: dataKeys.length, totalPeriodo };
+}
+
+// Lead time médio até um setor: pra cada OP que já entrou nesse setor,
+// calcula quantos dias se passaram desde a Inclusão dela (criação, vinda
+// da Sincronização) até a data que ela chegou lá — depois tira a média de
+// todas as OPs que têm os dois dados disponíveis.
+function calcularLeadTimeSetor(setor) {
+    const movimentos = obterMovimentacoesPorSetor()[setor] || {};
+    const leadTimes = [];
+    Object.keys(movimentos).forEach(opId => {
+        const op = bancoDadosOPs.find(o => o.id === opId);
+        if (!op || !op.dataInclusao) return;
+        const dataEntradaSetor = new Date(movimentos[opId].data);
+        const dataInclusao = new Date(op.dataInclusao);
+        const dias = Math.round((dataEntradaSetor - dataInclusao) / 86400000);
+        if (dias >= 0) leadTimes.push(dias); // datas invertidas = dado inconsistente, ignora
+    });
+    if (!leadTimes.length) return { mediaLeadTime: null, opsComDado: 0 };
+    const media = leadTimes.reduce((s, v) => s + v, 0) / leadTimes.length;
+    return { mediaLeadTime: Math.round(media * 10) / 10, opsComDado: leadTimes.length };
+}
+
+// Cor fixa por setor, sempre a mesma em qualquer gráfico — ajuda a
+// reconhecer de relance qual linha é qual quando comparando os 7 juntos.
+const CORES_SETORES_KPI = {
+    'ANALISE DE MEDIDAS': '#B8862A', 'CAD': '#3D6B87', 'PCP PROGRAMACAO-CORTE': '#7A4B8C',
+    'ALMOX TECIDO': '#4C8C4A', 'ENFESTO': '#C0504D', 'CORTE': '#4472C4', 'ETIQUETACAO': '#ED7D31',
+};
+
+let graficoKPIInstance = null;
+
+function renderizarGraficoKPI() {
+    const canvas = $('graficoKPI');
+    if (!canvas) return;
+    const setorSelecionado = $('seletorSetorKPI') ? $('seletorSetorKPI').value : 'TODOS';
+    const setoresParaMostrar = setorSelecionado === 'TODOS' ? SETORES_KPI : [setorSelecionado];
+    const todasMovimentacoes = obterMovimentacoesPorSetor();
+
+    // Monta total por dia, por setor — e a união de todas as datas que
+    // aparecem em qualquer um dos setores mostrados, pro eixo X do gráfico.
+    const totalPorSetorPorDia = {};
+    const todasDatas = new Set();
+    setoresParaMostrar.forEach(setor => {
+        const movs = todasMovimentacoes[setor] || {};
+        totalPorSetorPorDia[setor] = {};
+        Object.values(movs).forEach(m => {
+            const dia = new Date(m.data).toISOString().slice(0, 10);
+            totalPorSetorPorDia[setor][dia] = (totalPorSetorPorDia[setor][dia] || 0) + m.qtd;
+            todasDatas.add(dia);
+        });
+    });
+    const datasOrdenadas = [...todasDatas].sort();
+
+    const datasets = setoresParaMostrar.map(setor => ({
+        label: setor,
+        data: datasOrdenadas.map(d => totalPorSetorPorDia[setor][d] || 0),
+        borderColor: CORES_SETORES_KPI[setor] || '#999',
+        backgroundColor: CORES_SETORES_KPI[setor] || '#999',
+        tension: 0.25,
+        fill: false,
+    }));
+
+    if (graficoKPIInstance) { graficoKPIInstance.destroy(); graficoKPIInstance = null; }
+    if (!datasOrdenadas.length) return; // nada importado ainda pra esse(s) setor(es) — deixa o canvas vazio
+
+    graficoKPIInstance = new Chart(canvas, {
+        type: 'line',
+        data: { labels: datasOrdenadas.map(d => formatarDataBR(d)), datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: setoresParaMostrar.length > 1 } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Peças' } } }
+        }
+    });
+
+    renderizarStatsKPI(setoresParaMostrar);
+}
+
+// Cards com média diária/semanal/mensal + lead time — um por setor sendo
+// mostrado no momento (1 se um setor específico, 7 se "Todos").
+function renderizarStatsKPI(setoresParaMostrar) {
+    const el = $('statsKPI');
+    if (!el) return;
+    el.innerHTML = setoresParaMostrar.map(setor => {
+        const semanal = calcularMediaDiariaSetor(setor, 7);
+        const mensal = calcularMediaDiariaSetor(setor, 30);
+        const lead = calcularLeadTimeSetor(setor);
+        return `
+        <div class="kpi-card" style="flex:1; min-width:220px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px;">
+            <div style="font-weight:700; margin-bottom:8px; font-size:12px;">${setor}</div>
+            <div style="font-size:11px; color:var(--texto-secundario);">Média/dia (7 dias)</div>
+            <div style="font-size:18px; font-weight:900;">${semanal.mediaDiaria.toLocaleString('pt-BR')}</div>
+            <div style="font-size:11px; color:var(--texto-secundario); margin-top:6px;">Média/dia (30 dias)</div>
+            <div style="font-size:18px; font-weight:900;">${mensal.mediaDiaria.toLocaleString('pt-BR')}</div>
+            <div style="font-size:11px; color:var(--texto-secundario); margin-top:6px;">Lead time médio</div>
+            <div style="font-size:18px; font-weight:900;">${lead.mediaLeadTime !== null ? lead.mediaLeadTime + ' dias' : '—'}</div>
+        </div>`;
+    }).join('');
+}
+
 function salvarOpsDestinoAutomaticas(obj) {
     localStorage.setItem('opsDestinoAutomaticas', JSON.stringify(obj));
 }
@@ -5169,6 +5372,9 @@ function inicializarEventosUI() {
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
+        wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
+        wireEvento('seletorSetorKPI', 'change', () => { renderizarGraficoKPI(); });
+        wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor($('seletorSetorKPI').value); });
         ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
             wireEvento(`thOrdenarPrioridades-${campo}`, 'click', () => { ordenarPrioridadesPor(campo); });
         });
