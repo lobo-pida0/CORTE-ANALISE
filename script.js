@@ -1092,11 +1092,11 @@ function abrirModalLoginAdmin() {
 let bancoDadosOPs = JSON.parse(localStorage.getItem('bancoOPs')) || [];
 let historicoLotes = JSON.parse(localStorage.getItem('historicoLotes')) || [];
 
-// A aba de KPI/Gestão Mensal foi removida pra ser refeita do zero — mas duas
-// coisas de FORA dela ainda leem esse dado (calcularMediaDiariaCorte, usada
-// na Fila de Corte, e renderizarFluxoConsolidado, do Fluxo Geral). Um array
-// vazio evita que essas duas quebrem; elas simplesmente mostram "sem dados"
-// até o novo KPI existir e repor essa informação.
+// A aba de KPI/Gestão Mensal foi removida pra ser refeita do zero — uma
+// coisa de FORA dela ainda lê esse dado (calcularMediaDiariaCorte, usada na
+// Fila de Corte). Um array vazio evita que ela quebre; simplesmente mostra
+// "sem dados" até o novo KPI existir e repor essa informação. (O Fluxo
+// Geral, que também lia daqui, foi removido do sistema — não usa mais.)
 let dadosMes = [];
 
 let locaisSelecionados = [], etapasSelecionadas = [], lastChecked = null, ordemCorteAsc = true, ultimaSugestao = 'pecas', ultimaSequenciaPedidosGerada = [];
@@ -1108,18 +1108,7 @@ let opContextoId = null, opFracionarOrigem = null;
 // o filtro fazia a marcação sumir, porque a tabela é reconstruída do zero a
 // cada filtro e o HTML não "lembra" de nada sozinho.
 let selecaoLoteOPs = new Set();
-let meuGraficoConsolidado = null; // usado só pelo Fluxo Geral
 let pilhaUndo = [], pilhaRedo = []; const MAX_HISTORICO = 30;
-
-let modoFluxoAtivo = 'acumulado';
-function mudarModoFluxo(modo) {
-    modoFluxoAtivo = modo;
-    $('btn-fluxo-acumulado').style.background = modo === 'acumulado' ? 'var(--cor-selecao)' : 'transparent';
-    $('btn-fluxo-diario').style.background = modo === 'diario' ? 'var(--cor-selecao)' : 'transparent';
-    $('btn-fluxo-acumulado').style.color = modo === 'acumulado' ? '#333' : 'var(--texto-cor)';
-    $('btn-fluxo-diario').style.color = modo === 'diario' ? '#333' : 'var(--texto-cor)';
-    renderizarFluxoConsolidado();
-}
 
 Chart.register(ChartDataLabels);
 
@@ -1180,7 +1169,7 @@ document.addEventListener('keydown', e => {
         if (e.key.toLowerCase() === 'k') { e.preventDefault(); abrirBuscaGlobal(); }
     }
     if (e.altKey && !isInput) {
-        const abas = { '1': 'aba-programacao', '2': 'aba-fila', '3': 'aba-fluxo-consolidado' };
+        const abas = { '1': 'aba-programacao', '2': 'aba-fila' };
         if (abas[e.key] && abaLiberadaAgora(abas[e.key])) { e.preventDefault(); abrirAba(null, abas[e.key]); }
         if (e.key.toLowerCase() === 's') { e.preventDefault(); processarExcel(); }
         if (e.key.toLowerCase() === 'c') { e.preventDefault(); $('filtroOP').focus(); }
@@ -4780,150 +4769,18 @@ function exportarRelatorioMontador() {
 function renderizarHistorico() { if ($('listaHistorico')) $('listaHistorico').innerHTML = historicoLotes.map(h => `<tr><td>${h.data}</td><td>${h.totalPecas} pçs</td><td>${h.qtdOps} OPs</td></tr>`).join(''); }
 function limparHistorico(e) { e.stopPropagation(); if (confirm("Limpar histórico?")) { historicoLotes = []; localStorage.removeItem('historicoLotes'); renderizarHistorico(); } }
 
-// PAINEL DE FLUXO CONSOLIDADO GERAL
-function renderizarFluxoConsolidado() {
-    const ctx = $('graficoFluxoConsolidado'); if (!ctx) return;
-    const ctxFunil = $('graficoFunil');
-    const fC = document.body.classList.contains('dark-mode') ? '#aaa' : '#666';
-    const gridColor = document.body.classList.contains('dark-mode') ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
-
-    if (meuGraficoConsolidado) meuGraficoConsolidado.destroy();
-    if (typeof window.meuGraficoFunil !== 'undefined' && window.meuGraficoFunil) window.meuGraficoFunil.destroy();
-
-    const setores = ["MEDIDAS", "CAD", "ALMOX", "ENFESTO", "CORTE", "ETIQUETAÇÃO"];
-    const nomesExibicao = ["MEDIDAS", "CAD", "ALMOX TEC", "ENFESTO", "CORTE", "ETIQUETA"];
-    const coresSetores = [corCSS('--cor-roxo'), '#35505C', '#B8862A', '#2F8577', corCSS('--cor-sugestao'), corCSS('--cor-alerta')];
-
-    let totaisReal = setores.map(s => dadosMes.reduce((acc, d) => acc + ((d[s] && d[s].pcsReal) || 0), 0));
-
-    if (modoFluxoAtivo === 'acumulado') {
-        meuGraficoConsolidado = new Chart(ctx, {
-            type: 'bar', config: { id: 'fluxoConsolidado' },
-            plugins: [pluginFundoSolido],
-            data: {
-                labels: nomesExibicao,
-                datasets: [{ label: 'Produção Acumulada', data: totaisReal, backgroundColor: corCSS('--cor-sugestao'), borderRadius: 4 }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: fC } },
-                    datalabels: { anchor: 'end', align: 'end', color: fC, font: { weight: 'bold', size: 10 }, formatter: (value) => value > 0 ? value.toLocaleString('pt-BR') : '' }
-                },
-                scales: {
-                    x: { ticks: { color: fC }, grid: { display: false } },
-                    y: { ticks: { color: fC }, grid: { color: gridColor, borderDash: [5, 5], drawBorder: false } }
-                }
-            }
-        });
-    } else {
-        let labelsDias = dadosMes.map(d => d.dia);
-        let datasets = setores.map((setor, index) => {
-            return {
-                label: nomesExibicao[index],
-                data: dadosMes.map(d => (d[setor] && d[setor].pcsReal) || 0),
-                borderColor: coresSetores[index],
-                backgroundColor: coresSetores[index] + '33',
-                borderWidth: 2, fill: false, tension: 0.3, pointRadius: 3, datalabels: { display: false }
-            }
-        });
-
-        meuGraficoConsolidado = new Chart(ctx, {
-            type: 'line', config: { id: 'fluxoConsolidadoDiario' },
-            plugins: [pluginFundoSolido, pluginFinaisDeSemana],
-            data: { labels: labelsDias, datasets: datasets },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: { legend: { labels: { color: fC } }, datalabels: { display: false } },
-                scales: {
-                    x: { ticks: { color: fC }, grid: { color: gridColor, drawBorder: false } },
-                    y: { ticks: { color: fC }, grid: { color: gridColor, borderDash: [5, 5], drawBorder: false } }
-                }
-            }
-        });
-    }
-
-    if (ctxFunil) {
-        let maxVal = Math.max(...totaisReal) || 1;
-        let funnelData = totaisReal.map(val => {
-            let margin = (maxVal - val) / 2;
-            return [margin, margin + val];
-        });
-
-        window.meuGraficoFunil = new Chart(ctxFunil, {
-            type: 'bar',
-            data: {
-                labels: nomesExibicao,
-                datasets: [{
-                    data: funnelData, backgroundColor: coresSetores, borderRadius: 4, borderSkipped: false
-                }]
-            },
-            options: {
-                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function (context) {
-                                let val = totaisReal[context.dataIndex];
-                                let pct = Math.round((val / totaisReal[0]) * 100) || 0;
-                                return `${val.toLocaleString('pt-BR')} pçs (${pct}% de retenção)`;
-                            }
-                        }
-                    },
-                    datalabels: {
-                        color: '#fff', font: { weight: 'bold', size: 10 },
-                        formatter: (value, context) => { let val = totaisReal[context.dataIndex]; return val > 0 ? val.toLocaleString('pt-BR') : ''; }
-                    }
-                },
-                scales: {
-                    x: { display: false, min: 0, max: maxVal },
-                    y: { ticks: { color: fC, font: { size: 10, weight: 'bold' } }, grid: { display: false }, border: { display: false } }
-                }
-            }
-        });
-    }
-
-    let htmlCards = '';
-    for (let idx = 0; idx < setores.length; idx++) {
-        let r = totaisReal[idx];
-        htmlCards += `
-            <div style="flex:1; min-width:130px; background:var(--bg-painel); padding:15px; border-radius:8px; border:1px solid var(--borda-cor); text-align:center; box-shadow:var(--sombra-leve); border-bottom: 4px solid ${coresSetores[idx]};">
-                <div style="font-size:11px; font-weight:900; color:var(--texto-secundario); text-transform:uppercase;">${nomesExibicao[idx]}</div>
-                <div style="font-size:20px; font-weight:900; margin-top:8px; color:var(--texto-cor);">${r.toLocaleString('pt-BR')}</div>
-            </div>`;
-
-        if (idx < setores.length - 1) {
-            let proxReal = totaisReal[idx + 1] || 0;
-            let wip = r - proxReal;
-            let wipColor = wip > 2000 ? 'var(--cor-alerta)' : (wip > 500 ? 'var(--cor-selecao)' : 'var(--texto-secundario)');
-
-            htmlCards += `
-            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:60px;">
-                <div style="font-size:9px; font-weight:bold; color:var(--texto-secundario);" title="Work In Progress (Aguardando)">WIP</div>
-                <div style="background:var(--bg-card); border:1px dashed ${wipColor}; color:${wipColor}; padding:4px 8px; border-radius:12px; font-size:11px; font-weight:bold; margin-top:2px;">
-                    ${wip > 0 ? wip.toLocaleString('pt-BR') : '0'}
-                </div>
-                <i class="fas fa-arrow-right" style="color:var(--borda-cor); margin-top:4px; font-size:14px;"></i>
-            </div>`;
-        }
-    }
-    $('cardsSectoresResumo').innerHTML = htmlCards;
-}
 
 // SIDEBAR E MODO TV
 function toggleSidebarPrioridades() { const s = $('sidebar-prioridades'), o = $('overlay-sidebar'); if (s.classList.contains('aberta')) { s.classList.remove('aberta'); o.style.display = 'none'; } else { s.classList.add('aberta'); o.style.display = 'block'; renderizarSidebarPrioridades(); } }
 function renderizarSidebarPrioridades() { const u = bancoDadosOPs.filter(o => o.prioridade); if ($('badge-prioridades')) { if (u.length > 0) { $('badge-prioridades').style.display = 'flex'; $('badge-prioridades').innerText = u.length; } else $('badge-prioridades').style.display = 'none'; } if ($('lista-prioridades')) { if (u.length === 0) $('lista-prioridades').innerHTML = '<div style="text-align:center; padding:30px 10px; color:var(--texto-secundario); font-weight:bold;"><i class="fas fa-check-circle" style="font-size:30px; margin-bottom:10px; color:var(--cor-despacho);"></i><br>Nenhuma urgência.</div>'; else $('lista-prioridades').innerHTML = u.map(o => `<div class="card-op" style="border-left-color:#B8862A; padding:12px; cursor:default;" oncontextmenu="mostrarMenuContexto(event,'${o.id}')"><div style="display:flex; justify-content:space-between; margin-bottom:8px;"><strong>OP: ${o.id}</strong><button onclick="opContextoId='${o.id}'; ctxAcao('prioridade');" class="btn" style="padding:4px 8px;"><i class="fas fa-times"></i></button></div><div style="font-size:11px; margin-bottom:10px;">${o.desc.substring(0, 35)}</div><div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span class="pill" style="background:var(--cor-primaria);">${nomesEtapas[o.etapa]}</span> <strong>${o.qtd} pçs</strong>${o.mesDestino ? `<span class="pill" style="background:#B8862A;" title="Mês que essa OP foi destinada, informado na importação de Destino"><i class="fas fa-calendar"></i> ${o.mesDestino}</span>` : ''}</div></div>`).join(''); } }
 
-let tvInt = null, scInt = null, tTv = 0;
-function ativarModoTV() { document.body.classList.add('modo-tv'); if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { }); tTv = 0; abrirAba(null, 'aba-fila'); initScrollV('#aba-fila .secao-corpo'); tvInt = setInterval(altTV, 30000); }
-function altTV() { tTv = tTv > 0 ? 0 : tTv + 1; clearInterval(scInt); if (tTv === 0) { abrirAba(null, 'aba-fila'); initScrollV('#aba-fila .secao-corpo'); } else { abrirAba(null, 'aba-fluxo-consolidado'); } }
+let scInt = null;
+function ativarModoTV() { document.body.classList.add('modo-tv'); if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { }); abrirAba(null, 'aba-fila'); initScrollV('#aba-fila .secao-corpo'); }
 function initScrollV(sel) { const e = document.querySelector(sel); if (!e) return; e.scrollTop = 0; let d = 1; scInt = setInterval(() => { if (e.scrollHeight <= e.clientHeight) return; e.scrollTop += d; if (e.scrollTop >= (e.scrollHeight - e.clientHeight - 1)) d = -1; if (e.scrollTop <= 0) d = 1; }, 40); }
-document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('modo-tv')) { document.body.classList.remove('modo-tv'); clearInterval(tvInt); clearInterval(scInt); abrirAba(null, 'aba-programacao'); } });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('modo-tv')) { document.body.classList.remove('modo-tv'); clearInterval(scInt); abrirAba(null, 'aba-programacao'); } });
 
 // SISTEMA (TEMA, BACKUP, START)
-function toggleTema() { document.body.classList.toggle('dark-mode'); localStorage.setItem('temaEscuro', document.body.classList.contains('dark-mode')); if ($('aba-fluxo-consolidado').classList.contains('ativa')) renderizarFluxoConsolidado(); }
+function toggleTema() { document.body.classList.toggle('dark-mode'); localStorage.setItem('temaEscuro', document.body.classList.contains('dark-mode')); }
 function exportarBackup() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(localStorage)], { type: "application/json" })); a.download = `Backup_${new Date().getDate()}.json`; a.click(); }
 
 // Imprime só a lista de "PROGRAMAR LOTE" (tabela filtrada de OPs na
@@ -5001,7 +4858,7 @@ function importarBackup(e) {
     if (input) input.value = '';
 }
 
-function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-sequenciamento'; ev = null; } $$('.aba-conteudo').forEach(a => a.classList.remove('ativa')); $$('.tab-btn').forEach(b => b.classList.remove('ativo')); $(id).classList.add('ativa'); if (ev) ev.currentTarget.classList.add('ativo'); else $('abrirAba-' + id)?.classList.add('ativo'); if (id === 'aba-fluxo-consolidado') renderizarFluxoConsolidado(); }
+function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-sequenciamento'; ev = null; } $$('.aba-conteudo').forEach(a => a.classList.remove('ativa')); $$('.tab-btn').forEach(b => b.classList.remove('ativo')); $(id).classList.add('ativa'); if (ev) ev.currentTarget.classList.add('ativo'); else $('abrirAba-' + id)?.classList.add('ativo'); }
 // Abre/fecha um dropdown de filtro (multi-select), calculando a posição na
 // tela na hora de abrir — usado por TODOS os filtros desse tipo no sistema
 // (Etapa, Local, Data de Corte, Mês Destino, Local/Tipo de Produção, Setor e
@@ -5310,7 +5167,6 @@ function inicializarEventosUI() {
         wireEvento('listaFiltroTipoProd', 'click', (event) => { event.stopPropagation(); });
         wireEvento('marcarTodosLocalProd', 'click', () => { locaisProducaoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
-        wireEvento('abrirAba-aba-fluxo-consolidado', 'click', (event) => { abrirAba(event, 'aba-fluxo-consolidado'); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
@@ -5396,9 +5252,6 @@ function inicializarEventosUI() {
         wireEvento('ordenarFilaGeral-tempoCorte', 'click', () => { ordenarFilaGeral('tempoCorte'); });
         wireEvento('ordenarFilaGeral-dMeta', 'click', () => { ordenarFilaGeral('dMeta'); });
         wireEvento('ordenarFilaGeral-sTxt', 'click', () => { ordenarFilaGeral('sTxt'); });
-        wireEvento('mudarModoFluxo-acumulado-acumulado', 'change', () => { mudarModoFluxo('acumulado'); });
-        wireEvento('mudarModoFluxo-diario-diario', 'change', () => { mudarModoFluxo('diario'); });
-        wireEvento('renderizarFluxoConsolidado', 'click', () => { renderizarFluxoConsolidado(); });
 }
 
 window.onload = function () {
@@ -5500,7 +5353,7 @@ setTimeout(verificarBackupSexta, 3000); // Aguarda 3 segundos após abrir o pain
 // biblioteca não carrega — envolvendo elas aqui, um erro delas aparece com a
 // mensagem real no console de depuração em vez do genérico "Script error.",
 // e o resto da tela continua funcionando.
-['renderizarFluxoConsolidado', 'atualizarGrafico', 'atualizarGraficoOTD', 'mostrarTooltipOP'].forEach(nome => {
+['atualizarGrafico', 'atualizarGraficoOTD', 'mostrarTooltipOP'].forEach(nome => {
     const original = window[nome];
     if (typeof original === 'function') {
         window[nome] = function (...args) { return executarSeguro(nome, () => original.apply(this, args)); };

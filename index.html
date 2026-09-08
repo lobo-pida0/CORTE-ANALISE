@@ -277,7 +277,6 @@
         <button id="abrirAba-aba-filacorte" class="tab-btn">FILA DE CORTE</button>
         <button id="abrirAba-aba-capacidade" class="tab-btn">MONTAR PRODUÇÃO</button>
         <button id="abrirAba-aba-sequenciamento" class="tab-btn">SEQUENCIAMENTO</button>
-        <button id="abrirAba-aba-fluxo-consolidado" class="tab-btn">FLUXO GERAL</button>
         <button id="abrirAba-aba-necessidade" class="tab-btn">LEVANTAMENTO</button>
         <button id="abrirAba-aba-prioridades" class="tab-btn">PRIORIDADES</button>
     </div>
@@ -778,49 +777,6 @@
                 <span style="font-size:11px; color:var(--texto-secundario);">O caminho contrário: parte de uma OP e mostra quais pedidos ainda em aberto ela ajuda a fechar.</span>
             </div>
             <div id="resultadoSequenciamentoOP"></div>
-        </div>
-    </div>
-
-    <div id="aba-fluxo-consolidado" class="aba-conteudo">
-        <div class="kpi-card" style="border-top:4px solid #35505C; padding:25px; margin-bottom:20px;">
-            <div
-                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px; flex-wrap:wrap; gap:10px;">
-                <h2 style="font-size:16px; margin:0; font-weight:900;"><i class="fas fa-chart-network"></i> BALANÇO DE
-                    LINHA (MÊS ATUAL)</h2>
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <div
-                        style="display:flex; gap:5px; background:var(--bg-input); padding:4px; border-radius:6px; border:1px solid var(--borda-cor);">
-                        <label id="btn-fluxo-acumulado"
-                            style="cursor:pointer; font-size:11px; font-weight:bold; padding:4px 10px; border-radius:4px; background:var(--cor-selecao); color:#333;"><input id="mudarModoFluxo-acumulado-acumulado"
-                                type="radio" name="modo_fluxo" value="acumulado" checked style="display:none;"
-                               > ACUMULADO</label>
-                        <label id="btn-fluxo-diario"
-                            style="cursor:pointer; font-size:11px; font-weight:bold; padding:4px 10px; border-radius:4px; color:var(--texto-cor);"><input id="mudarModoFluxo-diario-diario"
-                                type="radio" name="modo_fluxo" value="diario" style="display:none;"
-                               > DIA A DIA</label>
-                    </div>
-                    <button id="renderizarFluxoConsolidado" class="btn btn-primario"><i
-                            class="fas fa-sync-alt"></i> RECALCULAR</button>
-                </div>
-            </div>
-
-            <div style="display:flex; gap:20px; margin-bottom:25px; flex-wrap:wrap;">
-                <div style="flex:2; height:350px; min-width:400px;">
-                    <canvas id="graficoFluxoConsolidado"></canvas>
-                </div>
-                <div
-                    style="flex:1; height:350px; min-width:250px; background:var(--bg-painel); border-radius:8px; border:1px solid var(--borda-cor); padding:15px; display:flex; flex-direction:column; box-shadow:inset var(--sombra-leve);">
-                    <h3 style="margin-top:0; font-size:12px; text-align:center; color:var(--texto-secundario);">FUNIL DE
-                        RETENÇÃO (%)</h3>
-                    <div style="flex:1; position:relative;">
-                        <canvas id="graficoFunil"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <div id="cardsSectoresResumo"
-                style="display:flex; gap:10px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:10px; align-items:center;">
-            </div>
         </div>
     </div>
 
