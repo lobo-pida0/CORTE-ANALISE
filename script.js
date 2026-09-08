@@ -398,6 +398,7 @@ function opParaLinhaSupabase(op) {
         numero_prioridade: op.numeroPrioridade || null,
         destaque: !!op.destaque,
         local_destino_detalhado: op.localDestinoDetalhado || null,
+        data_inclusao: op.dataInclusao ? new Date(op.dataInclusao).toISOString().slice(0, 10) : null,
         dias_local: parseInt(op.diasLocal) || 0, codigo_mp: op.codigoMP || '', desc_mp: op.descMP || '',
         referencia: op.referencia || '', sob_medida: !!op.sobMedida, laser: !!op.laser,
         data_finalizacao: op.dataFinalizacao ? new Date(op.dataFinalizacao).toISOString().slice(0, 10) : null,
@@ -419,6 +420,7 @@ function linhaSupabaseParaOP(l) {
         numeroPrioridade: l.numero_prioridade || null,
         destaque: !!l.destaque,
         localDestinoDetalhado: l.local_destino_detalhado || null,
+        dataInclusao: l.data_inclusao || null,
         dataCorteSuposta: calcularDataCorteSuposta(l.data_finalizacao)
     };
 }
@@ -705,6 +707,12 @@ async function publicarTudoNoSupabase() {
             const r = await sincronizarTabelaSupabase('local_producao_por_op', linhasLocalProducao);
             resumo.push(`${r.publicados} locais de produção`);
         }
+        const linhasMovimentacoesKPI = movimentacoesParaLinhasSupabase();
+        if (linhasMovimentacoesKPI.length) {
+            if (status) status.innerText = `Publicando ${linhasMovimentacoesKPI.length} movimentações de KPI...`;
+            const r = await sincronizarTabelaSupabase('movimentacoes_kpi', linhasMovimentacoesKPI);
+            resumo.push(`${r.publicados} movimentações de KPI`);
+        }
         // Marca a hora dessa publicação — é isso que o visitante vê como
         // "dados de: há X min"
         await supabaseClient.from('metadados_sistema').upsert({ id: 'global', ultima_publicacao: new Date().toISOString() });
@@ -863,6 +871,20 @@ async function carregarLocalProducaoDaNuvemParaVisitante() {
     }
 }
 
+// Pra quem NÃO está logado: busca as movimentações de KPI (o gráfico da
+// aba KPI ainda é só-admin, mas já deixa o dado pronto na nuvem — se um
+// dia o usuário decidir liberar essa aba pro visitante, é só isso).
+async function carregarMovimentacoesKPIDaNuvemParaVisitante() {
+    if (!supabaseClient || sessaoAdminAtual) return;
+    try {
+        const data = await buscarTodasLinhasSupabase('movimentacoes_kpi');
+        registrarLogDebug('log', [`[NUVEM] Busca de movimentações de KPI concluída: ${data ? data.length : 0} itens encontrados.`]);
+        salvarMovimentacoesPorSetor(linhasSupabaseParaMovimentacoes(data));
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao carregar movimentações de KPI da nuvem: ' + e.message]);
+    }
+}
+
 // Formata "há quanto tempo" de um jeito curto e legível — "agora mesmo",
 // "há 3 min", "há 2h", "há 5 dias"
 function formatarTempoRelativo(timestamp) {
@@ -904,6 +926,7 @@ async function carregarTudoDaNuvemParaVisitante() {
         carregarTodosPedidosDaNuvemParaVisitante(),
         carregarOpsManuaisDaNuvemParaVisitante(),
         carregarLocalProducaoDaNuvemParaVisitante(),
+        carregarMovimentacoesKPIDaNuvemParaVisitante(),
     ]);
     atualizarIndicadorUltimaPublicacao();
 }
@@ -2112,11 +2135,49 @@ function obterOpsDestinoAutomaticas() {
 
 const SETORES_KPI = ['ANALISE DE MEDIDAS', 'CAD', 'PCP PROGRAMACAO-CORTE', 'ALMOX TECIDO', 'ENFESTO', 'CORTE', 'ETIQUETACAO'];
 
+// O relatório de movimentação traz o local em "Ds. Localdestino" com o
+// texto exato usado no sistema de origem do usuário — esse mapeamento
+// traduz pro nome limpo que a gente usa. Assim o sistema reconhece sozinho
+// pra qual setor cada arquivo é, sem precisar perguntar antes de importar.
+const MAPEAMENTO_LOCAL_DESTINO_KPI = {
+    'PNP ALMOX. ANALISE DE MEDIDAS': 'ANALISE DE MEDIDAS',
+    'PNP ALMOX. TECIDOS': 'ALMOX TECIDO',
+    'PNP CAD': 'CAD',
+    'PNP CORTE': 'CORTE',
+    'PNP ENFESTO': 'ENFESTO',
+    'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA': 'ETIQUETACAO',
+    'PNP PPCP-PROGRAMACAO CORTE': 'PCP PROGRAMACAO-CORTE',
+};
+
 function obterMovimentacoesPorSetor() {
     try { return JSON.parse(localStorage.getItem('movimentacoesPorSetorKPI') || '{}'); } catch (e) { return {}; }
 }
 function salvarMovimentacoesPorSetor(obj) {
     localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(obj));
+}
+
+// A nuvem trabalha com linhas, não com o objeto aninhado que usamos aqui —
+// essas duas funções convertem de um formato pro outro. Chave da linha:
+// "setor|op" (uma OP só tem UMA entrada por setor, então essa combinação
+// já é única sozinha).
+function movimentacoesParaLinhasSupabase() {
+    const todas = obterMovimentacoesPorSetor();
+    const linhas = [];
+    Object.entries(todas).forEach(([setor, porOP]) => {
+        Object.entries(porOP).forEach(([opId, m]) => {
+            linhas.push({ id: `${setor}|${opId}`, setor, op: opId, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, atualizado_em: new Date().toISOString() });
+        });
+    });
+    return linhas;
+}
+function linhasSupabaseParaMovimentacoes(linhas) {
+    const todas = {};
+    (linhas || []).forEach(l => {
+        if (!l.setor || !l.op) return;
+        if (!todas[l.setor]) todas[l.setor] = {};
+        todas[l.setor][l.op] = { ciclo: l.ciclo || '', data: l.data, qtd: l.qtd || 0 };
+    });
+    return todas;
 }
 
 // Data no formato brasileiro "DD/MM/AAAA" (como vem no relatório) — vira
@@ -2128,10 +2189,9 @@ function parsearDataBR(str) {
     return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
 }
 
-function processarMovimentacaoSetor(setor) {
+function processarMovimentacaoSetor() {
     if (!exigirAdmin('importar movimentação de setor')) return;
     const input = $('inputMovimentacaoKPI'); if (!input.files[0]) return;
-    if (!SETORES_KPI.includes(setor)) { showToast('<i class="fas fa-triangle-exclamation"></i> Selecione um setor antes de importar.', true); return; }
 
     const r = new FileReader();
     r.onload = function (e) {
@@ -2144,14 +2204,18 @@ function processarMovimentacaoSetor(setor) {
             const idxCiclo = cabecalho.findIndex(c => c === 'Ciclo');
             const idxData = cabecalho.findIndex(c => c === 'Dt. Movimento');
             const idxQtd = cabecalho.findIndex(c => c === 'Qt. Movimento');
-            if (idxOP === -1 || idxData === -1 || idxQtd === -1) {
-                throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento) no cabeçalho da primeira linha.");
+            const idxLocalDestino = cabecalho.findIndex(c => c === 'Ds. Localdestino');
+            if (idxOP === -1 || idxData === -1 || idxQtd === -1 || idxLocalDestino === -1) {
+                throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localdestino) no cabeçalho da primeira linha.");
             }
 
+            // O setor não precisa mais ser escolhido antes de importar — o
+            // sistema lê sozinho pela coluna "Ds. Localdestino" de cada
+            // linha, usando o mapeamento pros 7 nomes conhecidos.
             const todas = obterMovimentacoesPorSetor();
-            if (!todas[setor]) todas[setor] = {};
+            const setoresEncontrados = new Set();
+            let linhasLidas = 0, linhasComLocalDesconhecido = 0;
 
-            let linhasLidas = 0;
             for (let i = 1; i < linhas.length; i++) {
                 const campos = linhas[i].split(';');
                 const opId = campos[idxOP] ? String(campos[idxOP]).trim() : '';
@@ -2159,20 +2223,29 @@ function processarMovimentacaoSetor(setor) {
                 if (!opId || !dataStr) continue; // pula linha de total (vem com os campos de texto vazios) e linhas malformadas
                 const data = parsearDataBR(dataStr);
                 if (!data) continue;
+
+                const localBruto = campos[idxLocalDestino] ? String(campos[idxLocalDestino]).trim().toUpperCase() : '';
+                const setor = MAPEAMENTO_LOCAL_DESTINO_KPI[localBruto];
+                if (!setor) { linhasComLocalDesconhecido++; continue; }
+
                 const ciclo = idxCiclo !== -1 && campos[idxCiclo] ? String(campos[idxCiclo]).trim() : '';
                 const qtd = parseInt(campos[idxQtd]) || 0;
+                if (!todas[setor]) todas[setor] = {};
                 todas[setor][opId] = { ciclo, data: data.toISOString(), qtd };
+                setoresEncontrados.add(setor);
                 linhasLidas++;
             }
-            if (linhasLidas === 0) throw new Error("Nenhuma linha válida encontrada (confira se as colunas Nr. Op e Dt. Movimento estão preenchidas).");
+            if (linhasLidas === 0) throw new Error("Nenhuma linha reconhecida — confira se a coluna Ds. Localdestino tem um dos 7 setores conhecidos.");
 
             salvarMovimentacoesPorSetor(todas);
             input.value = '';
-            showToast(`<i class="fas fa-check-double"></i> ${linhasLidas} movimentações de "${setor}" importadas!`);
+            let msg = `<i class="fas fa-check-double"></i> ${linhasLidas} movimentações importadas (${[...setoresEncontrados].join(', ')})!`;
+            if (linhasComLocalDesconhecido > 0) msg += ` ${linhasComLocalDesconhecido} linha(s) com local desconhecido foram ignoradas.`;
+            showToast(msg);
             renderizarGraficoKPI();
         } catch (err) {
             console.error('Erro ao processar movimentação de setor:', err);
-            alert("❌ Não foi possível processar o relatório de movimentação.\n\nVerifique se ele tem as colunas Nr. Op, Ciclo, Dt. Movimento e Qt. Movimento no cabeçalho.\n\nDetalhe técnico: " + err.message);
+            alert("❌ Não foi possível processar o relatório de movimentação.\n\nVerifique se ele tem as colunas Nr. Op, Ciclo, Dt. Movimento, Qt. Movimento e Ds. Localdestino no cabeçalho.\n\nDetalhe técnico: " + err.message);
             input.value = '';
         }
     };
@@ -5374,7 +5447,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
         wireEvento('seletorSetorKPI', 'change', () => { renderizarGraficoKPI(); });
-        wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor($('seletorSetorKPI').value); });
+        wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor(); });
         ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
             wireEvento(`thOrdenarPrioridades-${campo}`, 'click', () => { ordenarPrioridadesPor(campo); });
         });
