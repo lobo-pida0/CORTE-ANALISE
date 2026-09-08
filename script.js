@@ -2283,6 +2283,55 @@ function calcularMediaDiariaSetor(setor, dias) {
     return { mediaDiaria: Math.round(totalPeriodo / dataKeys.length), diasComMovimento: dataKeys.length, totalPeriodo };
 }
 
+// Lista os meses ("AAAA-MM") que têm algum movimento importado, olhando
+// todos os setores juntos — usado pra popular o seletor de mês da aba KPI.
+function obterMesesDisponiveisKPI() {
+    const todas = obterMovimentacoesPorSetor();
+    const meses = new Set();
+    Object.values(todas).forEach(porOP => {
+        Object.values(porOP).forEach(m => {
+            if (m.data) meses.add(new Date(m.data).toISOString().slice(0, 7));
+        });
+    });
+    return [...meses].sort();
+}
+
+// Quebra um mês em semanas de calendário (1-7, 8-14, 15-21, 22-28, 29-fim)
+// e calcula a média diária de cada uma — em vez de uma janela corrida tipo
+// "últimos 7 dias", isso mostra semana 1, semana 2 etc. de dentro do mês
+// escolhido.
+function calcularMediaPorSemanaDoMes(setor, anoMes) {
+    const movimentos = obterMovimentacoesPorSetor()[setor] || {};
+    const [ano, mes] = anoMes.split('-').map(Number);
+    const ultimoDiaDoMes = new Date(ano, mes, 0).getDate();
+
+    const totalPorDia = {};
+    Object.values(movimentos).forEach(m => {
+        if (!m.data) return;
+        const data = new Date(m.data);
+        const chaveDoMes = data.toISOString().slice(0, 7);
+        if (chaveDoMes !== anoMes) return;
+        const dia = data.getDate();
+        totalPorDia[dia] = (totalPorDia[dia] || 0) + m.qtd;
+    });
+
+    const semanas = [];
+    for (let inicioSemana = 1; inicioSemana <= ultimoDiaDoMes; inicioSemana += 7) {
+        const fimSemana = Math.min(inicioSemana + 6, ultimoDiaDoMes);
+        let totalSemana = 0, diasComMovimento = 0;
+        for (let d = inicioSemana; d <= fimSemana; d++) {
+            if (totalPorDia[d]) { totalSemana += totalPorDia[d]; diasComMovimento++; }
+        }
+        semanas.push({
+            rotulo: `Semana ${semanas.length + 1} (${inicioSemana}-${fimSemana})`,
+            totalSemana,
+            diasComMovimento,
+            mediaDiaria: diasComMovimento ? Math.round(totalSemana / diasComMovimento) : 0,
+        });
+    }
+    return semanas;
+}
+
 // Lead time médio até um setor: pra cada OP que já entrou nesse setor,
 // calcula quantos dias se passaram desde a Inclusão dela (criação, vinda
 // da Sincronização) até a data que ela chegou lá — depois tira a média de
@@ -2312,22 +2361,48 @@ const CORES_SETORES_KPI = {
 
 let graficoKPIInstance = null;
 
+function formatarMesLegivelKPI(anoMes) {
+    if (!anoMes) return '';
+    const [ano, mes] = anoMes.split('-');
+    const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    return `${nomesMeses[parseInt(mes) - 1]}/${ano}`;
+}
+
+// Preenche o seletor de mês com os meses que realmente têm dado importado
+// — mantém a seleção atual se ainda existir, senão pega o mês mais
+// recente (então, na primeira vez, já abre direto no mês do que acabou de
+// ser importado).
+function popularSeletorMesKPI() {
+    const sel = $('seletorMesKPI');
+    if (!sel) return;
+    const meses = obterMesesDisponiveisKPI();
+    const valorAnterior = sel.value;
+    sel.innerHTML = meses.map(m => `<option value="${m}">${formatarMesLegivelKPI(m)}</option>`).join('');
+    if (meses.includes(valorAnterior)) sel.value = valorAnterior;
+    else if (meses.length) sel.value = meses[meses.length - 1];
+}
+
 function renderizarGraficoKPI() {
     const canvas = $('graficoKPI');
     if (!canvas) return;
+    popularSeletorMesKPI();
     const setorSelecionado = $('seletorSetorKPI') ? $('seletorSetorKPI').value : 'TODOS';
+    const mesSelecionado = $('seletorMesKPI') ? $('seletorMesKPI').value : null;
     const setoresParaMostrar = setorSelecionado === 'TODOS' ? SETORES_KPI : [setorSelecionado];
     const todasMovimentacoes = obterMovimentacoesPorSetor();
 
-    // Monta total por dia, por setor — e a união de todas as datas que
-    // aparecem em qualquer um dos setores mostrados, pro eixo X do gráfico.
+    // Monta total por dia, por setor — só do mês selecionado — e a união
+    // de todas as datas que aparecem em qualquer um dos setores mostrados,
+    // pro eixo X do gráfico.
     const totalPorSetorPorDia = {};
     const todasDatas = new Set();
     setoresParaMostrar.forEach(setor => {
         const movs = todasMovimentacoes[setor] || {};
         totalPorSetorPorDia[setor] = {};
         Object.values(movs).forEach(m => {
+            if (!m.data) return;
             const dia = new Date(m.data).toISOString().slice(0, 10);
+            if (mesSelecionado && !dia.startsWith(mesSelecionado)) return;
             totalPorSetorPorDia[setor][dia] = (totalPorSetorPorDia[setor][dia] || 0) + m.qtd;
             todasDatas.add(dia);
         });
@@ -2344,38 +2419,42 @@ function renderizarGraficoKPI() {
     }));
 
     if (graficoKPIInstance) { graficoKPIInstance.destroy(); graficoKPIInstance = null; }
-    if (!datasOrdenadas.length) return; // nada importado ainda pra esse(s) setor(es) — deixa o canvas vazio
+    if (datasOrdenadas.length) {
+        graficoKPIInstance = new Chart(canvas, {
+            type: 'line',
+            data: { labels: datasOrdenadas.map(d => formatarDataBR(d)), datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: setoresParaMostrar.length > 1 } },
+                scales: { y: { beginAtZero: true, title: { display: true, text: 'Peças' } } }
+            }
+        });
+    } // se não tiver dado nenhum pro mês/setor escolhido, só deixa o canvas vazio
 
-    graficoKPIInstance = new Chart(canvas, {
-        type: 'line',
-        data: { labels: datasOrdenadas.map(d => formatarDataBR(d)), datasets },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: setoresParaMostrar.length > 1 } },
-            scales: { y: { beginAtZero: true, title: { display: true, text: 'Peças' } } }
-        }
-    });
-
-    renderizarStatsKPI(setoresParaMostrar);
+    renderizarStatsKPI(setoresParaMostrar, mesSelecionado);
 }
 
-// Cards com média diária/semanal/mensal + lead time — um por setor sendo
-// mostrado no momento (1 se um setor específico, 7 se "Todos").
-function renderizarStatsKPI(setoresParaMostrar) {
+// Cards com a média diária de cada SEMANA DO MÊS escolhido + lead time —
+// um card por setor sendo mostrado no momento (1 se um setor específico, 7
+// se "Todos").
+function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
     const el = $('statsKPI');
     if (!el) return;
+    if (!mesSelecionado) { el.innerHTML = ''; return; }
+
     el.innerHTML = setoresParaMostrar.map(setor => {
-        const semanal = calcularMediaDiariaSetor(setor, 7);
-        const mensal = calcularMediaDiariaSetor(setor, 30);
+        const semanas = calcularMediaPorSemanaDoMes(setor, mesSelecionado);
         const lead = calcularLeadTimeSetor(setor);
+        const linhasSemanas = semanas.map(s => `
+            <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px; padding:4px 0; border-bottom:1px solid var(--borda-cor);">
+                <span style="color:var(--texto-secundario);">${s.rotulo}</span>
+                <strong style="font-size:14px;">${s.mediaDiaria.toLocaleString('pt-BR')}<span style="font-size:10px; font-weight:400; color:var(--texto-secundario);"> /dia</span></strong>
+            </div>`).join('');
         return `
-        <div class="kpi-card" style="flex:1; min-width:220px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px;">
+        <div class="kpi-card" style="flex:1; min-width:240px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px;">
             <div style="font-weight:700; margin-bottom:8px; font-size:12px;">${setor}</div>
-            <div style="font-size:11px; color:var(--texto-secundario);">Média/dia (7 dias)</div>
-            <div style="font-size:18px; font-weight:900;">${semanal.mediaDiaria.toLocaleString('pt-BR')}</div>
-            <div style="font-size:11px; color:var(--texto-secundario); margin-top:6px;">Média/dia (30 dias)</div>
-            <div style="font-size:18px; font-weight:900;">${mensal.mediaDiaria.toLocaleString('pt-BR')}</div>
-            <div style="font-size:11px; color:var(--texto-secundario); margin-top:6px;">Lead time médio</div>
+            ${linhasSemanas}
+            <div style="font-size:11px; color:var(--texto-secundario); margin-top:8px;">Lead time médio</div>
             <div style="font-size:18px; font-weight:900;">${lead.mediaLeadTime !== null ? lead.mediaLeadTime + ' dias' : '—'}</div>
         </div>`;
     }).join('');
@@ -5457,6 +5536,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
         wireEvento('seletorSetorKPI', 'change', () => { renderizarGraficoKPI(); });
+        wireEvento('seletorMesKPI', 'change', () => { renderizarGraficoKPI(); });
         wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor(); });
         ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
             wireEvento(`thOrdenarPrioridades-${campo}`, 'click', () => { ordenarPrioridadesPor(campo); });
