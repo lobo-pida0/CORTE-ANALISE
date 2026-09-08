@@ -2135,10 +2135,18 @@ function obterOpsDestinoAutomaticas() {
 
 const SETORES_KPI = ['ANALISE DE MEDIDAS', 'CAD', 'PCP PROGRAMACAO-CORTE', 'ALMOX TECIDO', 'ENFESTO', 'CORTE', 'ETIQUETACAO'];
 
-// O relatório de movimentação traz o local em "Ds. Localdestino" com o
-// texto exato usado no sistema de origem do usuário — esse mapeamento
-// traduz pro nome limpo que a gente usa. Assim o sistema reconhece sozinho
-// pra qual setor cada arquivo é, sem precisar perguntar antes de importar.
+// O relatório de movimentação traz o local de ORIGEM ("Ds. Localorigem")
+// com o texto exato usado no sistema de origem do usuário — o número
+// representa quanto aquele setor PRODUZIU/liberou (confirmado com o
+// usuário: atribui à origem, não ao destino, do movimento). Esse
+// mapeamento traduz pro nome limpo que a gente usa. Assim o sistema
+// reconhece sozinho pra qual setor cada arquivo é, sem precisar perguntar
+// antes de importar.
+//
+// Uma mesma etapa pode aparecer com grafias levemente diferentes conforme
+// é ORIGEM ou DESTINO em relatórios diferentes (confirmado com o usuário
+// pro caso de PPCP-Programação) — por isso duas chaves apontando pro
+// mesmo setor limpo em alguns casos.
 const MAPEAMENTO_LOCAL_DESTINO_KPI = {
     'PNP ALMOX. ANALISE DE MEDIDAS': 'ANALISE DE MEDIDAS',
     'PNP ALMOX. TECIDOS': 'ALMOX TECIDO',
@@ -2147,6 +2155,7 @@ const MAPEAMENTO_LOCAL_DESTINO_KPI = {
     'PNP ENFESTO': 'ENFESTO',
     'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA': 'ETIQUETACAO',
     'PNP PPCP-PROGRAMACAO CORTE': 'PCP PROGRAMACAO-CORTE',
+    'PNP PPCP - PROGRAMACAO': 'PCP PROGRAMACAO-CORTE',
 };
 
 function obterMovimentacoesPorSetor() {
@@ -2204,14 +2213,15 @@ function processarMovimentacaoSetor() {
             const idxCiclo = cabecalho.findIndex(c => c === 'Ciclo');
             const idxData = cabecalho.findIndex(c => c === 'Dt. Movimento');
             const idxQtd = cabecalho.findIndex(c => c === 'Qt. Movimento');
-            const idxLocalDestino = cabecalho.findIndex(c => c === 'Ds. Localdestino');
-            if (idxOP === -1 || idxData === -1 || idxQtd === -1 || idxLocalDestino === -1) {
-                throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localdestino) no cabeçalho da primeira linha.");
+            const idxLocalOrigem = cabecalho.findIndex(c => c === 'Ds. Localorigem');
+            if (idxOP === -1 || idxData === -1 || idxQtd === -1 || idxLocalOrigem === -1) {
+                throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localorigem) no cabeçalho da primeira linha.");
             }
 
             // O setor não precisa mais ser escolhido antes de importar — o
-            // sistema lê sozinho pela coluna "Ds. Localdestino" de cada
-            // linha, usando o mapeamento pros 7 nomes conhecidos.
+            // sistema lê sozinho pela coluna "Ds. Localorigem" de cada
+            // linha (o número representa o que aquele setor PRODUZIU, é de
+            // lá que a OP sai), usando o mapeamento pros 7 nomes conhecidos.
             const todas = obterMovimentacoesPorSetor();
             const setoresEncontrados = new Set();
             let linhasLidas = 0, linhasComLocalDesconhecido = 0;
@@ -2224,7 +2234,7 @@ function processarMovimentacaoSetor() {
                 const data = parsearDataBR(dataStr);
                 if (!data) continue;
 
-                const localBruto = campos[idxLocalDestino] ? String(campos[idxLocalDestino]).trim().toUpperCase() : '';
+                const localBruto = campos[idxLocalOrigem] ? String(campos[idxLocalOrigem]).trim().toUpperCase() : '';
                 const setor = MAPEAMENTO_LOCAL_DESTINO_KPI[localBruto];
                 if (!setor) { linhasComLocalDesconhecido++; continue; }
 
@@ -2245,7 +2255,7 @@ function processarMovimentacaoSetor() {
             renderizarGraficoKPI();
         } catch (err) {
             console.error('Erro ao processar movimentação de setor:', err);
-            alert("❌ Não foi possível processar o relatório de movimentação.\n\nVerifique se ele tem as colunas Nr. Op, Ciclo, Dt. Movimento, Qt. Movimento e Ds. Localdestino no cabeçalho.\n\nDetalhe técnico: " + err.message);
+            alert("❌ Não foi possível processar o relatório de movimentação.\n\nVerifique se ele tem as colunas Nr. Op, Ciclo, Dt. Movimento, Qt. Movimento e Ds. Localorigem no cabeçalho.\n\nDetalhe técnico: " + err.message);
             input.value = '';
         }
     };
