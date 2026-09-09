@@ -2426,6 +2426,19 @@ const CORES_SETORES_KPI = {
 
 let graficoKPIInstance = null;
 
+// Formata uma chave "AAAA-MM-DD" (a que usamos pra agrupar por dia no
+// gráfico) direto por texto, sem nunca passar por um objeto Date — evita
+// um bug real de fuso horário: "2026-09-01" vira meia-noite UTC quando
+// convertido pra Date, e formatarDataBR() usa o fuso LOCAL do navegador
+// pra mostrar, o que "puxa" a data um dia pra trás em fusos negativos
+// (Brasil, UTC-3) — descoberto porque o navegador do usuário mostrava
+// 31/08 quando o dado real era 01/09.
+function formatarChaveDataBR(chave) {
+    if (!chave) return '';
+    const [ano, mes, dia] = chave.split('-');
+    return `${dia}/${mes}/${ano}`;
+}
+
 function formatarMesLegivelKPI(anoMes) {
     if (!anoMes) return '';
     const [ano, mes] = anoMes.split('-');
@@ -2487,7 +2500,7 @@ function renderizarGraficoKPI() {
     if (datasOrdenadas.length) {
         graficoKPIInstance = new Chart(canvas, {
             type: 'line',
-            data: { labels: datasOrdenadas.map(d => formatarDataBR(d)), datasets },
+            data: { labels: datasOrdenadas.map(formatarChaveDataBR), datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 plugins: { legend: { display: setoresParaMostrar.length > 1 } },
