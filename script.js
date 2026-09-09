@@ -2584,17 +2584,63 @@ function abrirModalPrioridadeManual() {
 // digitar de novo seria redundante e podia até contradizer o dado real.
 function conferirOPManualExistente() {
     const numero = $('inputOPManualNumero').value.trim();
-    const opExistente = bancoDadosOPs.find(o => o.id === numero);
     const camposDiv = $('camposOPManual');
     const statusDiv = $('statusOPManual');
     if (!numero) { statusDiv.innerHTML = ''; camposDiv.style.display = 'flex'; return; }
+
+    // Caso 1: já existe na Sincronização — dado vem de lá, esconde os
+    // campos redundantes (mesmo comportamento de antes).
+    const opExistente = bancoDadosOPs.find(o => o.id === numero);
     if (opExistente) {
         statusDiv.innerHTML = `<span style="color:var(--cor-despacho);"><i class="fas fa-check-circle"></i> Essa OP já existe no sistema (${opExistente.desc}) — Descrição/Etapa/Peças/Dias Parado vêm de lá automaticamente.</span>`;
         camposDiv.style.display = 'none';
-    } else {
-        statusDiv.innerHTML = `<span style="color:var(--texto-secundario);"><i class="fas fa-info-circle"></i> OP não encontrada no sistema — preencha os dados abaixo na mão.</span>`;
-        camposDiv.style.display = 'flex';
+        $('inputOPManualNumPrioridade').value = opExistente.numeroPrioridade || '';
+        $('inputOPManualMes').value = opExistente.mesDestino || '';
+        return;
     }
+
+    // Caso 2: já tem um cadastro manual completo — avisa e pré-preenche
+    // com o que já existe, em vez de deixar como se fosse novo (antes
+    // dizia "não encontrada" mesmo quando já existia, arriscando
+    // sobrescrever sem avisar).
+    const itemManual = obterOpsManuaisPrioridade().find(o => o.id === numero);
+    if (itemManual) {
+        statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Essa OP já tem um cadastro manual (${itemManual.desc}) — os campos já vêm preenchidos com o que existe. Salvar vai ATUALIZAR esse cadastro, não criar um novo.</span>`;
+        camposDiv.style.display = 'flex';
+        $('inputOPManualDesc').value = itemManual.desc || '';
+        $('inputOPManualEtapa').value = itemManual.localDestinoDetalhado ? `local:${itemManual.localDestinoDetalhado}` : String(itemManual.etapa);
+        $('inputOPManualQtd').value = itemManual.qtd || 0;
+        $('inputOPManualDias').value = itemManual.diasLocal || 0;
+        $('inputOPManualNumPrioridade').value = itemManual.numeroPrioridade || '';
+        $('inputOPManualMes').value = itemManual.mesDestino || '';
+        return;
+    }
+
+    // Caso 3: já existe como automática do Destino (OP que só existe na
+    // costura, montada sozinha) — mesma ideia do caso 2.
+    const itemAutomatico = obterOpsDestinoAutomaticas()[numero];
+    if (itemAutomatico) {
+        statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Essa OP já foi importada automaticamente do relatório de Destino (${itemAutomatico.desc}) — os campos já vêm preenchidos com o que existe. Salvar vai ATUALIZAR essa entrada.</span>`;
+        camposDiv.style.display = 'flex';
+        $('inputOPManualDesc').value = itemAutomatico.desc || '';
+        $('inputOPManualEtapa').value = itemAutomatico.localDestinoDetalhado ? `local:${itemAutomatico.localDestinoDetalhado}` : '0';
+        $('inputOPManualQtd').value = itemAutomatico.qtd || 0;
+        $('inputOPManualDias').value = itemAutomatico.diasLocal || 0;
+        $('inputOPManualNumPrioridade').value = itemAutomatico.numeroPrioridade || '';
+        $('inputOPManualMes').value = itemAutomatico.mesDestino || '';
+        return;
+    }
+
+    // Não existe em lugar nenhum — limpa os campos (pode ter sobrado dado
+    // de uma consulta anterior no mesmo modal) e deixa preencher do zero.
+    statusDiv.innerHTML = `<span style="color:var(--texto-secundario);"><i class="fas fa-info-circle"></i> OP não encontrada no sistema — preencha os dados abaixo na mão.</span>`;
+    camposDiv.style.display = 'flex';
+    $('inputOPManualDesc').value = '';
+    $('inputOPManualEtapa').value = '0';
+    $('inputOPManualQtd').value = '';
+    $('inputOPManualDias').value = '';
+    $('inputOPManualNumPrioridade').value = '';
+    $('inputOPManualMes').value = '';
 }
 
 function salvarOPManual() {
