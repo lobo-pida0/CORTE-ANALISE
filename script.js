@@ -2214,6 +2214,7 @@ function processarMovimentacaoSetor() {
             const idxData = cabecalho.findIndex(c => c === 'Dt. Movimento');
             const idxQtd = cabecalho.findIndex(c => c === 'Qt. Movimento');
             const idxLocalOrigem = cabecalho.findIndex(c => c === 'Ds. Localorigem');
+            const idxLocalDestino = cabecalho.findIndex(c => c === 'Ds. Localdestino');
             if (idxOP === -1 || idxData === -1 || idxQtd === -1 || idxLocalOrigem === -1) {
                 throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localorigem) no cabeçalho da primeira linha.");
             }
@@ -2222,9 +2223,17 @@ function processarMovimentacaoSetor() {
             // sistema lê sozinho pela coluna "Ds. Localorigem" de cada
             // linha (o número representa o que aquele setor PRODUZIU, é de
             // lá que a OP sai), usando o mapeamento pros 7 nomes conhecidos.
+            //
+            // Duas situações NÃO contam como produção de verdade (a peça
+            // não seguiu adiante) e são ignoradas, mesmo tendo uma origem
+            // reconhecida: (1) o movimento não tem NENHUM destino — a
+            // planilha vem assim quando a peça foi descartada/perdida, não
+            // produzida; (2) o destino é um setor que vem ANTES do de
+            // origem na esteira (voltou pra trás, é retrabalho/correção,
+            // não produção nova).
             const todas = obterMovimentacoesPorSetor();
             const setoresEncontrados = new Set();
-            let linhasLidas = 0, linhasComLocalDesconhecido = 0;
+            let linhasLidas = 0, linhasComLocalDesconhecido = 0, linhasSemDestino = 0, linhasRetrocedendo = 0;
 
             for (let i = 1; i < linhas.length; i++) {
                 const campos = linhas[i].split(';');
@@ -2234,9 +2243,23 @@ function processarMovimentacaoSetor() {
                 const data = parsearDataBR(dataStr);
                 if (!data) continue;
 
-                const localBruto = campos[idxLocalOrigem] ? String(campos[idxLocalOrigem]).trim().toUpperCase() : '';
-                const setor = MAPEAMENTO_LOCAL_DESTINO_KPI[localBruto];
+                const localOrigemBruto = campos[idxLocalOrigem] ? String(campos[idxLocalOrigem]).trim().toUpperCase() : '';
+                const setor = MAPEAMENTO_LOCAL_DESTINO_KPI[localOrigemBruto];
                 if (!setor) { linhasComLocalDesconhecido++; continue; }
+
+                const localDestinoBruto = idxLocalDestino !== -1 && campos[idxLocalDestino] ? String(campos[idxLocalDestino]).trim().toUpperCase() : '';
+                if (!localDestinoBruto) { linhasSemDestino++; continue; } // sem destino nenhum = peça não produzida
+
+                const setorDestino = MAPEAMENTO_LOCAL_DESTINO_KPI[localDestinoBruto];
+                if (setorDestino) {
+                    const idxOrigemEsteira = SETORES_KPI.indexOf(setor);
+                    const idxDestinoEsteira = SETORES_KPI.indexOf(setorDestino);
+                    if (idxDestinoEsteira < idxOrigemEsteira) { linhasRetrocedendo++; continue; } // voltou pra trás na esteira
+                }
+                // se o destino não é um dos 7 setores conhecidos (ex: uma
+                // etapa fora dos 7, tipo "Prep Partes"), assume que é
+                // avanço normal na esteira — só sabemos comparar posição
+                // entre os 7 que já mapeamos.
 
                 const ciclo = idxCiclo !== -1 && campos[idxCiclo] ? String(campos[idxCiclo]).trim() : '';
                 const qtd = parseInt(campos[idxQtd]) || 0;
@@ -2250,7 +2273,9 @@ function processarMovimentacaoSetor() {
             salvarMovimentacoesPorSetor(todas);
             input.value = '';
             let msg = `<i class="fas fa-check-double"></i> ${linhasLidas} movimentações importadas (${[...setoresEncontrados].join(', ')})!`;
-            if (linhasComLocalDesconhecido > 0) msg += ` ${linhasComLocalDesconhecido} linha(s) com local desconhecido foram ignoradas.`;
+            if (linhasComLocalDesconhecido > 0) msg += ` ${linhasComLocalDesconhecido} com local de origem desconhecido.`;
+            if (linhasSemDestino > 0) msg += ` ${linhasSemDestino} sem destino (não contadas como produção).`;
+            if (linhasRetrocedendo > 0) msg += ` ${linhasRetrocedendo} voltando pra trás na esteira (não contadas como produção).`;
             showToast(msg);
             renderizarGraficoKPI();
         } catch (err) {
