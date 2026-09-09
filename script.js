@@ -2355,7 +2355,8 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
     const ultimoDiaDoMes = new Date(ano, mes, 0).getDate();
 
     const totalPorDia = {};
-    Object.values(movimentos).forEach(m => {
+    const opsPorDia = {}; // quais OPs tiveram movimento em cada dia, pra contar distintas por semana
+    Object.entries(movimentos).forEach(([opId, m]) => {
         if (!m.data) return;
         const data = new Date(m.data);
         const chaveDoMes = data.toISOString().slice(0, 7);
@@ -2364,6 +2365,8 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
         if (diaSemana === 0 || diaSemana === 6) return; // fim de semana não conta
         const dia = data.getDate();
         totalPorDia[dia] = (totalPorDia[dia] || 0) + m.qtd;
+        if (!opsPorDia[dia]) opsPorDia[dia] = new Set();
+        opsPorDia[dia].add(opId);
     });
 
     // Agrupa os dias úteis do mês em semanas de segunda a sexta — a chave
@@ -2385,12 +2388,15 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
     const semanasOrdenadas = [...gruposPorSegunda.entries()].sort((a, b) => a[0] - b[0]);
     return semanasOrdenadas.map(([, dias], idx) => {
         let totalSemana = 0, diasComMovimento = 0;
+        const opsDaSemana = new Set();
         dias.forEach(dia => {
             if (totalPorDia[dia]) { totalSemana += totalPorDia[dia]; diasComMovimento++; }
+            if (opsPorDia[dia]) opsPorDia[dia].forEach(op => opsDaSemana.add(op));
         });
         return {
             rotulo: `Semana ${idx + 1} (${dias[0]}-${dias[dias.length - 1]})`,
             totalSemana,
+            totalOPs: opsDaSemana.size,
             diasComMovimento,
             mediaDiaria: diasComMovimento ? Math.round(totalSemana / diasComMovimento) : 0,
         };
@@ -2526,7 +2532,10 @@ function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
         const linhasSemanas = semanas.map(s => `
             <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px; padding:4px 0; border-bottom:1px solid var(--borda-cor);">
                 <span style="color:var(--texto-secundario);">${s.rotulo}</span>
-                <strong style="font-size:14px;">${s.mediaDiaria.toLocaleString('pt-BR')}<span style="font-size:10px; font-weight:400; color:var(--texto-secundario);"> /dia</span></strong>
+                <span style="text-align:right;">
+                    <strong style="font-size:14px;">${s.mediaDiaria.toLocaleString('pt-BR')}<span style="font-size:10px; font-weight:400; color:var(--texto-secundario);"> peças/dia</span></strong>
+                    <span style="font-size:10px; color:var(--texto-secundario); display:block;">${s.totalOPs.toLocaleString('pt-BR')} OP(s)</span>
+                </span>
             </div>`).join('');
         return `
         <div class="kpi-card" style="flex:1; min-width:240px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px;">
