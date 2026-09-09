@@ -2198,6 +2198,29 @@ function parsearDataBR(str) {
     return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
 }
 
+// Apaga as movimentações importadas — do setor selecionado no momento, ou
+// de todos os 7 se estiver em "Todos". Existe pra resolver dado de teste
+// que ficou acumulado por engano (o sistema acumula por design, então
+// importações de teste antigas podem somar junto com dado real depois).
+function limparMovimentacoesKPI() {
+    if (!exigirAdmin('limpar dados do KPI')) return;
+    const setorSelecionado = $('seletorSetorKPI') ? $('seletorSetorKPI').value : 'TODOS';
+    const mensagem = setorSelecionado === 'TODOS'
+        ? 'Isso vai apagar TODAS as movimentações importadas, de TODOS os 7 setores. Não dá pra desfazer. Confirma?'
+        : `Isso vai apagar todas as movimentações importadas de "${setorSelecionado}". Não dá pra desfazer. Confirma?`;
+    if (!confirm(mensagem)) return;
+
+    if (setorSelecionado === 'TODOS') {
+        salvarMovimentacoesPorSetor({});
+    } else {
+        const todas = obterMovimentacoesPorSetor();
+        delete todas[setorSelecionado];
+        salvarMovimentacoesPorSetor(todas);
+    }
+    renderizarGraficoKPI();
+    showToast('<i class="fas fa-check"></i> Dados de KPI limpos.');
+}
+
 function processarMovimentacaoSetor() {
     if (!exigirAdmin('importar movimentação de setor')) return;
     const input = $('inputMovimentacaoKPI'); if (!input.files[0]) return;
@@ -5626,6 +5649,7 @@ function inicializarEventosUI() {
         wireEvento('seletorSetorKPI', 'change', () => { renderizarGraficoKPI(); });
         wireEvento('seletorMesKPI', 'change', () => { renderizarGraficoKPI(); });
         wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor(); });
+        wireEvento('btnLimparMovimentacoesKPI', 'click', () => { limparMovimentacoesKPI(); });
         ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
             wireEvento(`thOrdenarPrioridades-${campo}`, 'click', () => { ordenarPrioridadesPor(campo); });
         });
