@@ -2229,15 +2229,15 @@ function processarMovimentacaoSetor() {
     r.onload = function (e) {
         try {
             const texto = e.target.result;
-            const linhas = texto.split(/\r?\n/).filter(l => l.trim());
+            const linhas = texto.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim()); // remove BOM (comum em CSV exportado do Windows), que senão gruda no primeiro nome de coluna
             if (linhas.length < 2) throw new Error("Arquivo vazio ou só com cabeçalho.");
-            const cabecalho = linhas[0].split(';').map(c => c.trim());
-            const idxOP = cabecalho.findIndex(c => c === 'Nr. Op');
-            const idxCiclo = cabecalho.findIndex(c => c === 'Ciclo');
-            const idxData = cabecalho.findIndex(c => c === 'Dt. Movimento');
-            const idxQtd = cabecalho.findIndex(c => c === 'Qt. Movimento');
-            const idxLocalOrigem = cabecalho.findIndex(c => c === 'Ds. Localorigem');
-            const idxLocalDestino = cabecalho.findIndex(c => c === 'Ds. Localdestino');
+            const cabecalho = linhas[0].split(';').map(c => c.trim().toUpperCase());
+            const idxOP = cabecalho.findIndex(c => c === 'NR. OP');
+            const idxCiclo = cabecalho.findIndex(c => c === 'CICLO');
+            const idxData = cabecalho.findIndex(c => c === 'DT. MOVIMENTO');
+            const idxQtd = cabecalho.findIndex(c => c === 'QT. MOVIMENTO');
+            const idxLocalOrigem = cabecalho.findIndex(c => c === 'DS. LOCALORIGEM');
+            const idxLocalDestino = cabecalho.findIndex(c => c === 'DS. LOCALDESTINO');
             if (idxOP === -1 || idxData === -1 || idxQtd === -1 || idxLocalOrigem === -1) {
                 throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localorigem) no cabeçalho da primeira linha.");
             }
