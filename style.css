@@ -149,6 +149,7 @@ h1, h2, h3 {
 
 .dropdown-menu .btn {
     width: 100%;
+    box-sizing: border-box;
     justify-content: flex-start;
     text-align: left;
 }
