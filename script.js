@@ -2614,38 +2614,61 @@ let graficoAcertividadeKPIInstance = null;
 function renderizarGraficoAcertividadeKPI() {
     const canvas = $('graficoAcertividadeKPI');
     if (!canvas) return;
-    const idxPar = $('seletorParAcertividadeKPI') ? parseInt($('seletorParAcertividadeKPI').value) : 0;
-    const [setorOrigem, setorDestino] = PARES_ADJACENTES_KPI[idxPar] || PARES_ADJACENTES_KPI[0];
+    const valorSelecionado = $('seletorParAcertividadeKPI') ? $('seletorParAcertividadeKPI').value : '0';
     const mesSelecionado = $('seletorMesKPI') ? $('seletorMesKPI').value : null;
 
     if (graficoAcertividadeKPIInstance) { graficoAcertividadeKPIInstance.destroy(); graficoAcertividadeKPIInstance = null; }
     if (!mesSelecionado) return;
 
-    const dados = calcularAcertividadeSetores(setorOrigem, setorDestino, mesSelecionado);
-    if (!dados.length) return; // sem OPs saindo da origem nesse mês — deixa o canvas vazio
+    const paresParaMostrar = valorSelecionado === 'TODOS'
+        ? PARES_ADJACENTES_KPI.map((par, idx) => ({ par, idx }))
+        : [{ par: PARES_ADJACENTES_KPI[parseInt(valorSelecionado)], idx: parseInt(valorSelecionado) }];
+
+    // Calcula a acertividade de cada par sendo mostrado, e monta um mapa
+    // dia -> resultado, pra poder alinhar todos os pares no mesmo eixo X.
+    const resultadosPorPar = paresParaMostrar.map(({ par }) => {
+        const [origem, destino] = par;
+        const dados = calcularAcertividadeSetores(origem, destino, mesSelecionado);
+        const porDia = {};
+        dados.forEach(d => { porDia[d.dia] = d; });
+        return { par, dados, porDia };
+    });
+
+    // União de todas as datas que aparecem em QUALQUER par mostrado
+    const todasDatas = new Set();
+    resultadosPorPar.forEach(r => r.dados.forEach(d => todasDatas.add(d.dia)));
+    const datasOrdenadas = [...todasDatas].sort();
+    if (!datasOrdenadas.length) return; // nenhum dos pares tem OP saindo da origem nesse mês
+
+    const cores = ['#4C8C4A', '#B8862A', '#3D6B87', '#7A4B8C', '#C0504D', '#4472C4'];
+    const datasets = resultadosPorPar.map((r, i) => ({
+        label: `${r.par[0]} → ${r.par[1]}`,
+        // null pros dias que esse par específico não teve OP saindo da
+        // origem — deixa uma frestinha na linha em vez de fingir 0%, que
+        // seria enganoso (0% de acerto é diferente de "não teve OP saindo
+        // nesse dia").
+        data: datasOrdenadas.map(dia => r.porDia[dia] ? r.porDia[dia].percentual : null),
+        borderColor: cores[i % cores.length],
+        backgroundColor: cores[i % cores.length],
+        tension: 0.25,
+        fill: false,
+    }));
 
     graficoAcertividadeKPIInstance = new Chart(canvas, {
         type: 'line',
-        data: {
-            labels: dados.map(d => formatarChaveDataBR(d.dia)),
-            datasets: [{
-                label: `${setorOrigem} → ${setorDestino}`,
-                data: dados.map(d => d.percentual),
-                borderColor: '#4C8C4A',
-                backgroundColor: '#4C8C4A',
-                tension: 0.25,
-                fill: false,
-            }]
-        },
+        data: { labels: datasOrdenadas.map(formatarChaveDataBR), datasets },
         options: {
             responsive: true, maintainAspectRatio: false,
             plugins: {
-                legend: { display: false },
+                legend: { display: paresParaMostrar.length > 1 },
                 tooltip: {
                     callbacks: {
                         label: function (context) {
-                            const d = dados[context.dataIndex];
-                            return `${d.percentual}% (${d.acertos} de ${d.totalOrigem} OPs bateram em até 2 dias)`;
+                            const dia = datasOrdenadas[context.dataIndex];
+                            const r = resultadosPorPar[context.datasetIndex];
+                            const d = r.porDia[dia];
+                            if (!d) return `${r.par.join(' → ')}: sem OP saindo nesse dia`;
+                            return `${r.par.join(' → ')}: ${d.percentual}% (${d.acertos} de ${d.totalOrigem} OPs bateram em até 2 dias)`;
                         }
                     }
                 }
