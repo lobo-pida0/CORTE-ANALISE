@@ -2423,6 +2423,60 @@ function calcularLeadTimeSetor(setor) {
     return { mediaLeadTime: Math.round(media * 10) / 10, opsComDado: leadTimes.length };
 }
 
+// Pares de setores adjacentes na esteira (só entre vizinhos — o usuário
+// confirmou que não precisa comparar setores quaisquer).
+const PARES_ADJACENTES_KPI = SETORES_KPI.slice(0, -1).map((s, i) => [s, SETORES_KPI[i + 1]]);
+
+// "Acertividade": pra cada dia que teve OPs saindo do setor de ORIGEM,
+// quantas dessas MESMAS OPs também aparecem no setor de DESTINO dentro de
+// uma janela de até 2 dias depois (confirmado com o usuário — nem toda OP
+// anda tão rápido assim pra aparecer já no dia seguinte).
+function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
+    const movsOrigem = obterMovimentacoesPorSetor()[setorOrigem] || {};
+    const movsDestino = obterMovimentacoesPorSetor()[setorDestino] || {};
+
+    // Agrupa as OPs de origem por dia (só do mês escolhido)
+    const opsPorDiaOrigem = {};
+    Object.entries(movsOrigem).forEach(([opId, m]) => {
+        if (!m.data) return;
+        const dia = new Date(m.data).toISOString().slice(0, 10);
+        if (!dia.startsWith(anoMes)) return;
+        if (!opsPorDiaOrigem[dia]) opsPorDiaOrigem[dia] = new Set();
+        opsPorDiaOrigem[dia].add(opId);
+    });
+
+    // Pra cada OP, todas as datas em que ela aparece no destino (uma OP
+    // pode, em tese, ter passado por reprocessamento e aparecer mais de
+    // uma vez, embora o armazenamento normal só guarde a mais recente)
+    const datasDestinoPorOP = {};
+    Object.entries(movsDestino).forEach(([opId, m]) => {
+        if (!m.data) return;
+        const dia = new Date(m.data).toISOString().slice(0, 10);
+        if (!datasDestinoPorOP[opId]) datasDestinoPorOP[opId] = new Set();
+        datasDestinoPorOP[opId].add(dia);
+    });
+
+    const resultado = [];
+    Object.keys(opsPorDiaOrigem).sort().forEach(diaOrigem => {
+        const opsDoDia = [...opsPorDiaOrigem[diaOrigem]];
+        let acertos = 0;
+        opsDoDia.forEach(opId => {
+            const datasNoDestino = datasDestinoPorOP[opId];
+            if (!datasNoDestino) return;
+            for (let deslocamento = 1; deslocamento <= 2; deslocamento++) {
+                if (datasNoDestino.has(somarDiasChaveData(diaOrigem, deslocamento))) { acertos++; break; }
+            }
+        });
+        resultado.push({
+            dia: diaOrigem,
+            totalOrigem: opsDoDia.length,
+            acertos,
+            percentual: opsDoDia.length ? Math.round((acertos / opsDoDia.length) * 100) : 0,
+        });
+    });
+    return resultado;
+}
+
 // Cor fixa por setor, sempre a mesma em qualquer gráfico — ajuda a
 // reconhecer de relance qual linha é qual quando comparando os 7 juntos.
 const CORES_SETORES_KPI = {
@@ -2443,6 +2497,17 @@ function formatarChaveDataBR(chave) {
     if (!chave) return '';
     const [ano, mes, dia] = chave.split('-');
     return `${dia}/${mes}/${ano}`;
+}
+
+// Soma dias numa chave "AAAA-MM-DD", devolvendo outra chave no mesmo
+// formato — usa Date.UTC/getUTCDate de propósito, pra nunca sofrer aquele
+// mesmo bug de fuso horário que já corrigimos no rótulo do gráfico (uma
+// chave de data pura não deveria nunca passar por hora LOCAL).
+function somarDiasChaveData(chave, dias) {
+    const [ano, mes, dia] = chave.split('-').map(Number);
+    const data = new Date(Date.UTC(ano, mes - 1, dia));
+    data.setUTCDate(data.getUTCDate() + dias);
+    return data.toISOString().slice(0, 10);
 }
 
 function formatarMesLegivelKPI(anoMes) {
@@ -2537,6 +2602,57 @@ function renderizarGraficoKPI() {
     } // se não tiver dado nenhum pro mês/setor escolhido, só deixa o canvas vazio
 
     renderizarStatsKPI(setoresParaMostrar, mesSelecionado);
+    renderizarGraficoAcertividadeKPI();
+}
+
+let graficoAcertividadeKPIInstance = null;
+
+// Gráfico próprio de "acertividade" entre dois setores adjacentes — mostra
+// dia a dia, dentro do mês escolhido no seletor principal, quantas OPs que
+// saíram do setor de origem apareceram no setor seguinte da esteira
+// (dentro de até 2 dias depois, que é a janela combinada com o usuário).
+function renderizarGraficoAcertividadeKPI() {
+    const canvas = $('graficoAcertividadeKPI');
+    if (!canvas) return;
+    const idxPar = $('seletorParAcertividadeKPI') ? parseInt($('seletorParAcertividadeKPI').value) : 0;
+    const [setorOrigem, setorDestino] = PARES_ADJACENTES_KPI[idxPar] || PARES_ADJACENTES_KPI[0];
+    const mesSelecionado = $('seletorMesKPI') ? $('seletorMesKPI').value : null;
+
+    if (graficoAcertividadeKPIInstance) { graficoAcertividadeKPIInstance.destroy(); graficoAcertividadeKPIInstance = null; }
+    if (!mesSelecionado) return;
+
+    const dados = calcularAcertividadeSetores(setorOrigem, setorDestino, mesSelecionado);
+    if (!dados.length) return; // sem OPs saindo da origem nesse mês — deixa o canvas vazio
+
+    graficoAcertividadeKPIInstance = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: dados.map(d => formatarChaveDataBR(d.dia)),
+            datasets: [{
+                label: `${setorOrigem} → ${setorDestino}`,
+                data: dados.map(d => d.percentual),
+                borderColor: '#4C8C4A',
+                backgroundColor: '#4C8C4A',
+                tension: 0.25,
+                fill: false,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            const d = dados[context.dataIndex];
+                            return `${d.percentual}% (${d.acertos} de ${d.totalOrigem} OPs bateram em até 2 dias)`;
+                        }
+                    }
+                }
+            },
+            scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: '% de OPs que bateram' } } }
+        }
+    });
 }
 
 // Cards com a média diária de cada SEMANA DO MÊS escolhido + lead time —
@@ -5691,6 +5807,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
         wireEvento('seletorSetorKPI', 'change', () => { renderizarGraficoKPI(); });
         wireEvento('seletorMesKPI', 'change', () => { renderizarGraficoKPI(); });
+        wireEvento('seletorParAcertividadeKPI', 'change', () => { renderizarGraficoAcertividadeKPI(); });
         wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor(); });
         wireEvento('btnLimparMovimentacoesKPI', 'click', () => { limparMovimentacoesKPI(); });
         ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {

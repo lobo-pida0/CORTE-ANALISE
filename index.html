@@ -788,6 +788,21 @@
                 <div style="position:relative; height:400px;">
                     <canvas id="graficoKPI"></canvas>
                 </div>
+                <div style="margin-top:24px; border-top:1px solid var(--borda-cor); padding-top:16px;">
+                    <div class="campo-meta" style="width:320px; margin-bottom:12px;"><label>ACERTIVIDADE ENTRE SETORES (dia seguinte, até 2 dias)</label>
+                        <select id="seletorParAcertividadeKPI">
+                            <option value="0">Análise de Medidas → CAD</option>
+                            <option value="1">CAD → PCP Programação-Corte</option>
+                            <option value="2">PCP Programação-Corte → Almox Tecido</option>
+                            <option value="3">Almox Tecido → Enfesto</option>
+                            <option value="4">Enfesto → Corte</option>
+                            <option value="5">Corte → Etiquetação</option>
+                        </select>
+                    </div>
+                    <div style="position:relative; height:250px;">
+                        <canvas id="graficoAcertividadeKPI"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
