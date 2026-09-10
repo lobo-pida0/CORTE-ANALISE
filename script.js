@@ -3946,10 +3946,98 @@ function salvarTemposManuais() {
     try { localStorage.setItem('capTemposManuais', JSON.stringify(capTemposManuais)); } catch (e) { /* ignora */ }
 }
 
-// Tempo que vale pra conta: o da planilha quando existe, senão o digitado
+// =========================================================================
+// ⏱️ TEMPOS POR REFERÊNCIA (planilha "Tempo Peça por Tipo de Operação") —
+// usuário decidiu DESCONSIDERAR o tempo que vem da Sincronização e usar só
+// esse: o tempo por peça é fixo por referência (confirmado com dado real —
+// a mesma referência sempre traz o mesmo tempo, não importa a OP), então o
+// tempo TOTAL da OP é recalculado sempre que a quantidade mudar, em vez de
+// ficar travado no valor que a Sincronização trouxe da última vez.
+// =========================================================================
+
+let cacheTemposPorReferenciaOperacao = null;
+function obterTemposPorReferenciaOperacao() {
+    if (cacheTemposPorReferenciaOperacao) return cacheTemposPorReferenciaOperacao;
+    try { cacheTemposPorReferenciaOperacao = JSON.parse(localStorage.getItem('temposPorReferenciaOperacao') || '{}'); }
+    catch (e) { cacheTemposPorReferenciaOperacao = {}; }
+    return cacheTemposPorReferenciaOperacao;
+}
+
+function processarTemposPorOperacao() {
+    if (!exigirAdmin('importar tempos por operação')) return;
+    if (!exigirBibliotecaExcel()) return;
+    const input = $('inputTemposPorOperacao'); if (!input.files[0]) return;
+
+    const r = new FileReader();
+    r.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            if (rows.length < 3) throw new Error("Arquivo vazio ou incompleto — esperava pelo menos 3 linhas (2 de cabeçalho + dado).");
+
+            // Linha 0 tem os nomes dos 14 tipos de operação, a partir da
+            // coluna J (índice 9) — linha 1 é o cabeçalho normal
+            // (Empresa/Ciclo/OP/Situação/Referência/...).
+            const tiposOperacao = rows[0].slice(9).map(t => String(t || '').trim().toUpperCase());
+            const cabecalho = rows[1].map(c => String(c || '').trim().toUpperCase());
+            const idxReferencia = cabecalho.findIndex(c => c === 'REFERÊNCIA' || c === 'REFERENCIA');
+            if (idxReferencia === -1) throw new Error("Não encontrei a coluna Referência no cabeçalho.");
+
+            // O tempo é o mesmo pra toda OP da mesma referência (confirmado
+            // com dado real) — só guarda a primeira ocorrência de cada uma.
+            const temposPorReferencia = {};
+            let linhasLidas = 0;
+            for (let i = 2; i < rows.length; i++) {
+                const row = rows[i]; if (!row || !row[idxReferencia]) continue;
+                const referencia = String(row[idxReferencia]).trim().toUpperCase();
+                if (temposPorReferencia[referencia]) continue;
+                const tempos = {};
+                tiposOperacao.forEach((tipo, idx) => {
+                    const valor = row[9 + idx];
+                    if (valor !== null && valor !== undefined && valor !== '') tempos[tipo] = parseFloat(valor);
+                });
+                temposPorReferencia[referencia] = tempos;
+                linhasLidas++;
+            }
+            if (linhasLidas === 0) throw new Error("Nenhuma referência com tempo encontrada.");
+
+            localStorage.setItem('temposPorReferenciaOperacao', JSON.stringify(temposPorReferencia));
+            cacheTemposPorReferenciaOperacao = null; // invalida o cache, próxima leitura recarrega do zero
+            input.value = '';
+            renderizarCapacidade();
+            showToast(`<i class="fas fa-check-double"></i> Tempos de ${linhasLidas} referências importados!`);
+        } catch (err) {
+            console.error('Erro ao processar tempos por operação:', err);
+            alert("❌ Não foi possível processar a planilha de tempos por operação.\n\nDetalhe técnico: " + err.message);
+            input.value = '';
+        }
+    };
+    r.readAsArrayBuffer(input.files[0]);
+}
+
+// Se true, o tempo dessa OP já vem pronto da referência (não precisa
+// digitar manual) — usado tanto pra decidir o que mostrar na tela quanto
+// pro filtro "só as sem tempo".
+function opTemTempoDaReferencia(op) {
+    const temposPorReferencia = obterTemposPorReferenciaOperacao();
+    const referencia = op.referencia ? String(op.referencia).trim().toUpperCase() : '';
+    const tempoRef = temposPorReferencia[referencia];
+    return !!(tempoRef && tempoRef['CORTE E ETIQUETACAO'] !== undefined && !isNaN(tempoRef['CORTE E ETIQUETACAO']));
+}
+
+// Tempo que vale pra conta, em ordem de prioridade: (1) tempo por peça da
+// referência (planilha de tempos) × quantidade ATUAL da OP — sempre
+// recalculado, então acompanha se a quantidade mudar depois; (2) se a
+// referência não tiver tempo cadastrado, cai pro digitado à mão. O tempo
+// que vinha da Sincronização foi descartado de propósito (decisão do
+// usuário — o da referência é mais confiável e sempre atualizado).
 function tempoEfetivoOP(op) {
-    const daPlanilha = parseFloat(op.tempoCorte) || 0;
-    if (daPlanilha > 0) return daPlanilha;
+    if (opTemTempoDaReferencia(op)) {
+        const temposPorReferencia = obterTemposPorReferenciaOperacao();
+        const referencia = String(op.referencia).trim().toUpperCase();
+        return temposPorReferencia[referencia]['CORTE E ETIQUETACAO'] * (parseInt(op.qtd) || 0);
+    }
     return parseFloat(capTemposManuais[op.id]) || 0;
 }
 
@@ -3993,7 +4081,7 @@ function renderizarCapacidade() {
 
     const candidatas = opsCandidatasCapacidade();
     const visiveis = candidatas.filter(op => {
-        if (soSemTempo && (parseFloat(op.tempoCorte) || 0) > 0) return false;
+        if (soSemTempo && opTemTempoDaReferencia(op)) return false;
         if (termo && !`${op.id} ${op.ciclo} ${op.desc || ''}`.toLowerCase().includes(termo)) return false;
         return true;
     }).sort((a, b) => (a.etapa - b.etapa) || (tempoEfetivoOP(b) - tempoEfetivoOP(a)));
@@ -4020,11 +4108,11 @@ function renderizarCapacidade() {
     }
 
     $('capListaOPs').innerHTML = visiveis.map(op => {
-        const daPlanilha = parseFloat(op.tempoCorte) || 0;
+        const temTempoDaReferencia = opTemTempoDaReferencia(op);
         const t = tempoEfetivoOP(op);
         const marcada = capSelecionadas.has(op.id);
-        const campoTempo = daPlanilha > 0
-            ? `<strong>${daPlanilha.toFixed(1).replace('.', ',')}</strong>`
+        const campoTempo = temTempoDaReferencia
+            ? `<strong>${t.toFixed(1).replace('.', ',')}</strong>`
             : `<input type="number" class="cap-tempo-manual" data-id="${op.id}" value="${capTemposManuais[op.id] || ''}" placeholder="—" min="0" step="0.1" style="width:70px; text-align:right; font-size:11px; padding:3px; border:1px dashed var(--cor-selecao);">`;
         return `<tr${marcada ? ' style="background:rgba(62,124,151,0.08);"' : ''}>
             <td><input type="checkbox" class="cap-check" data-id="${op.id}" ${marcada ? 'checked' : ''}></td>
@@ -5781,6 +5869,7 @@ function inicializarEventosUI() {
         wireEvento('capBusca', 'input', () => { renderizarCapacidade(); });
         wireEvento('capSoSemTempo', 'change', () => { renderizarCapacidade(); });
         wireEvento('capLimparSelecao', 'click', () => { capSelecionadas.clear(); renderizarCapacidade(); });
+        wireEvento('inputTemposPorOperacao', 'change', () => { processarTemposPorOperacao(); });
         wireEvento('capListaOPs', 'change', (e) => {
             if (e.target.classList.contains('cap-check')) {
                 const id = e.target.dataset.id;
