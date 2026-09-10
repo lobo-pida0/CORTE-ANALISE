@@ -2583,6 +2583,11 @@ function renderizarGraficoKPI() {
                 responsive: true, maintainAspectRatio: false,
                 plugins: {
                     legend: { display: setoresParaMostrar.length > 1 },
+                    // ChartDataLabels é registrado globalmente pro gráfico de
+                    // OTD, mas isso faz ele aparecer em TODO gráfico por
+                    // padrão — desligado aqui, senão poluía a tela com um
+                    // número em cima de cada ponto, ilegível com 7 linhas.
+                    datalabels: { display: false },
                     tooltip: {
                         callbacks: {
                             label: function (context) {
@@ -2661,6 +2666,7 @@ function renderizarGraficoAcertividadeKPI() {
             responsive: true, maintainAspectRatio: false,
             plugins: {
                 legend: { display: paresParaMostrar.length > 1 },
+                datalabels: { display: false }, // mesmo motivo do gráfico principal — sem isso, poluía a tela
                 tooltip: {
                     callbacks: {
                         label: function (context) {
@@ -2687,16 +2693,19 @@ function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
     if (!mesSelecionado) { el.innerHTML = ''; return; }
 
     el.innerHTML = setoresParaMostrar.map(setor => {
-        const semanas = calcularMediaPorSemanaDoMes(setor, mesSelecionado);
+        const todasSemanas = calcularMediaPorSemanaDoMes(setor, mesSelecionado);
+        const semanas = todasSemanas.filter(s => s.diasComMovimento > 0); // esconde semana sem dado nenhum, em vez de repetir "0 peças/dia" várias vezes
         const lead = calcularLeadTimeSetor(setor);
-        const linhasSemanas = semanas.map(s => `
+        const linhasSemanas = semanas.length
+            ? semanas.map(s => `
             <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px; padding:4px 0; border-bottom:1px solid var(--borda-cor);">
                 <span style="color:var(--texto-secundario);">${s.rotulo}</span>
                 <span style="text-align:right;">
                     <strong style="font-size:14px;">${s.mediaDiaria.toLocaleString('pt-BR')}<span style="font-size:10px; font-weight:400; color:var(--texto-secundario);"> peças/dia</span></strong>
                     <span style="font-size:10px; color:var(--texto-secundario); display:block;">${s.totalOPs.toLocaleString('pt-BR')} OP(s)</span>
                 </span>
-            </div>`).join('');
+            </div>`).join('')
+            : `<div style="font-size:11px; color:var(--texto-secundario); padding:8px 0;">Sem dados importados pra esse mês ainda.</div>`;
         return `
         <div class="kpi-card" style="flex:1; min-width:240px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px;">
             <div style="font-weight:700; margin-bottom:8px; font-size:12px;">${setor}</div>
