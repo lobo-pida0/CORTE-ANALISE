@@ -2477,17 +2477,24 @@ function renderizarGraficoKPI() {
 
     // Monta total por dia, por setor — só do mês selecionado — e a união
     // de todas as datas que aparecem em qualquer um dos setores mostrados,
-    // pro eixo X do gráfico.
+    // pro eixo X do gráfico. Também rastreia quais OPs distintas tiveram
+    // movimento em cada dia, pra mostrar a contagem na dica do gráfico
+    // (sem precisar de uma segunda linha/eixo, já que a escala de OPs é
+    // bem menor que a de peças).
     const totalPorSetorPorDia = {};
+    const opsPorSetorPorDia = {};
     const todasDatas = new Set();
     setoresParaMostrar.forEach(setor => {
         const movs = todasMovimentacoes[setor] || {};
         totalPorSetorPorDia[setor] = {};
-        Object.values(movs).forEach(m => {
+        opsPorSetorPorDia[setor] = {};
+        Object.entries(movs).forEach(([opId, m]) => {
             if (!m.data) return;
             const dia = new Date(m.data).toISOString().slice(0, 10);
             if (mesSelecionado && !dia.startsWith(mesSelecionado)) return;
             totalPorSetorPorDia[setor][dia] = (totalPorSetorPorDia[setor][dia] || 0) + m.qtd;
+            if (!opsPorSetorPorDia[setor][dia]) opsPorSetorPorDia[setor][dia] = new Set();
+            opsPorSetorPorDia[setor][dia].add(opId);
             todasDatas.add(dia);
         });
     });
@@ -2509,7 +2516,21 @@ function renderizarGraficoKPI() {
             data: { labels: datasOrdenadas.map(formatarChaveDataBR), datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: setoresParaMostrar.length > 1 } },
+                plugins: {
+                    legend: { display: setoresParaMostrar.length > 1 },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const setor = context.dataset.label;
+                                const dia = datasOrdenadas[context.dataIndex];
+                                const opsDoDia = opsPorSetorPorDia[setor] && opsPorSetorPorDia[setor][dia];
+                                const qtdOPs = opsDoDia ? opsDoDia.size : 0;
+                                const peças = (context.parsed.y || 0).toLocaleString('pt-BR');
+                                return `${setor}: ${peças} peças (${qtdOPs} OP${qtdOPs === 1 ? '' : 's'})`;
+                            }
+                        }
+                    }
+                },
                 scales: { y: { beginAtZero: true, title: { display: true, text: 'Peças' } } }
             }
         });
