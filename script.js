@@ -455,7 +455,7 @@ function atualizarIndicadorLogin() {
 // menu. Não é só estética: como as ações de edição já ficam bloqueadas de
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
-const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-sequenciamento', 'aba-necessidade', 'aba-prioridades'];
+const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-sequenciamento', 'aba-necessidade', 'aba-prioridades', 'aba-kpi'];
 function abaLiberadaAgora(idAba) {
     return !!sessaoAdminAtual || ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba);
 }
