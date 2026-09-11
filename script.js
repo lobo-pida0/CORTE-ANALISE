@@ -455,7 +455,7 @@ function atualizarIndicadorLogin() {
 // menu. Não é só estética: como as ações de edição já ficam bloqueadas de
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
-const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-sequenciamento', 'aba-necessidade', 'aba-prioridades', 'aba-kpi'];
+const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi'];
 function abaLiberadaAgora(idAba) {
     return !!sessaoAdminAtual || ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba);
 }
@@ -466,10 +466,10 @@ function aplicarRestricaoDeAbaVisitante() {
         btn.style.display = abaLiberadaAgora(idAba) ? '' : 'none';
     });
     // Se a aba aberta agora não é mais permitida (ex: era admin e deslogou),
-    // joga pra Sequenciamento em vez de deixar a tela numa aba escondida.
+    // joga pra Prioridades em vez de deixar a tela numa aba escondida.
     const abaAtivaEl = document.querySelector('.aba-conteudo.ativa');
     if (abaAtivaEl && !abaLiberadaAgora(abaAtivaEl.id)) {
-        abrirAba(null, 'aba-sequenciamento');
+        abrirAba(null, 'aba-prioridades');
     }
 }
 
@@ -5699,7 +5699,7 @@ function importarBackup(e) {
     if (input) input.value = '';
 }
 
-function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-sequenciamento'; ev = null; } $$('.aba-conteudo').forEach(a => a.classList.remove('ativa')); $$('.tab-btn').forEach(b => b.classList.remove('ativo')); $(id).classList.add('ativa'); if (ev) ev.currentTarget.classList.add('ativo'); else $('abrirAba-' + id)?.classList.add('ativo'); }
+function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-prioridades'; ev = null; } $$('.aba-conteudo').forEach(a => a.classList.remove('ativa')); $$('.tab-btn').forEach(b => b.classList.remove('ativo')); $(id).classList.add('ativa'); if (ev) ev.currentTarget.classList.add('ativo'); else $('abrirAba-' + id)?.classList.add('ativo'); }
 // Abre/fecha um dropdown de filtro (multi-select), calculando a posição na
 // tela na hora de abrir — usado por TODOS os filtros desse tipo no sistema
 // (Etapa, Local, Data de Corte, Mês Destino, Local/Tipo de Produção, Setor e
