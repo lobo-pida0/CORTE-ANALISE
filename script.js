@@ -530,6 +530,27 @@ async function buscarTodasLinhasSupabase(nomeTabela, colunas) {
     return todas;
 }
 
+// Publica linhas SEM NUNCA apagar nada da nuvem, mesmo que não existam mais
+// localmente — usada pra dado HISTÓRICO (tipo movimentação de KPI), onde o
+// navegador só guarda uma janela recente por limite de espaço, mas a nuvem
+// deve continuar acumulando pra sempre. Diferente de
+// sincronizarTabelaSupabase(), que apaga da nuvem o que sumiu do lado
+// local — certo pra "estado atual" (OPs, pedidos), errado pra histórico
+// (já causou perda real de dado de meses antigos quando usado aqui antes).
+async function publicarSemApagar(nomeTabela, linhas) {
+    const porId = new Map();
+    linhas.forEach(l => porId.set(l.id, l));
+    linhas = [...porId.values()];
+
+    const TAMANHO_LOTE = 500;
+    for (let i = 0; i < linhas.length; i += TAMANHO_LOTE) {
+        const lote = linhas.slice(i, i + TAMANHO_LOTE);
+        const { error } = await supabaseClient.from(nomeTabela).upsert(lote, { onConflict: 'id' });
+        if (error) throw error;
+    }
+    return { publicados: linhas.length };
+}
+
 async function sincronizarTabelaSupabase(nomeTabela, linhas) {
     // Se duas linhas tiverem o mesmo id no mesmo lote, o Postgres recusa o
     // upsert inteiro ("cannot affect row a second time") — normalmente
@@ -710,7 +731,7 @@ async function publicarTudoNoSupabase() {
         const linhasMovimentacoesKPI = movimentacoesParaLinhasSupabase();
         if (linhasMovimentacoesKPI.length) {
             if (status) status.innerText = `Publicando ${linhasMovimentacoesKPI.length} movimentações de KPI...`;
-            const r = await sincronizarTabelaSupabase('movimentacoes_kpi', linhasMovimentacoesKPI);
+            const r = await publicarSemApagar('movimentacoes_kpi', linhasMovimentacoesKPI);
             resumo.push(`${r.publicados} movimentações de KPI`);
         }
         // Marca a hora dessa publicação — é isso que o visitante vê como
