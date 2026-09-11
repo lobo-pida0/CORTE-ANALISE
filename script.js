@@ -2440,9 +2440,16 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
         const data = new Date(m.data);
         const chaveDoMes = data.toISOString().slice(0, 7);
         if (chaveDoMes !== anoMes) return;
-        const diaSemana = data.getDay(); // 0=domingo, 6=sábado
+        // getUTCDay/getUTCDate, não getDay/getDate — o dado do visitante vem
+        // da nuvem só como "AAAA-MM-DD" (sem hora), que o JS sempre
+        // interpreta como meia-noite UTC; ler isso com hora LOCAL (fuso do
+        // Brasil, negativo) fazia o dia "voltar" um dia inteiro — mesma
+        // família do bug já corrigido no rótulo do gráfico, só que dessa
+        // vez escondido aqui, causando a Semana 5 sumir inteira e todas as
+        // outras semanas baterem diferente entre admin e visitante.
+        const diaSemana = data.getUTCDay(); // 0=domingo, 6=sábado
         if (diaSemana === 0 || diaSemana === 6) return; // fim de semana não conta
-        const dia = data.getDate();
+        const dia = data.getUTCDate();
         totalPorDia[dia] = (totalPorDia[dia] || 0) + m.qtd;
         if (!opsPorDia[dia]) opsPorDia[dia] = new Set();
         opsPorDia[dia].add(opId);
