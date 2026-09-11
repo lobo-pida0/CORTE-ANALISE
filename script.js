@@ -540,14 +540,24 @@ async function buscarTodasLinhasSupabase(nomeTabela, colunas) {
 async function publicarSemApagar(nomeTabela, linhas) {
     const porId = new Map();
     linhas.forEach(l => porId.set(l.id, l));
+    const duplicatasRemovidas = linhas.length - porId.size;
     linhas = [...porId.values()];
+    if (duplicatasRemovidas > 0) {
+        registrarLogDebug('log', [`[NUVEM] "${nomeTabela}": ${duplicatasRemovidas} linha(s) duplicada(s) (mesmo id) ignorada(s) antes de publicar.`]);
+    }
 
     const TAMANHO_LOTE = 500;
+    let enviadas = 0;
     for (let i = 0; i < linhas.length; i += TAMANHO_LOTE) {
         const lote = linhas.slice(i, i + TAMANHO_LOTE);
         const { error } = await supabaseClient.from(nomeTabela).upsert(lote, { onConflict: 'id' });
-        if (error) throw error;
+        if (error) {
+            registrarLogDebug('error', [`[NUVEM] "${nomeTabela}": erro ao publicar lote (linhas ${i}-${i + lote.length}): ${error.message}`]);
+            throw error;
+        }
+        enviadas += lote.length;
     }
+    registrarLogDebug('log', [`[NUVEM] "${nomeTabela}": ${enviadas} linha(s) publicada(s) com sucesso (sem apagar nada da nuvem).`]);
     return { publicados: linhas.length };
 }
 
@@ -729,10 +739,13 @@ async function publicarTudoNoSupabase() {
             resumo.push(`${r.publicados} locais de produção`);
         }
         const linhasMovimentacoesKPI = movimentacoesParaLinhasSupabase();
+        registrarLogDebug('log', [`[NUVEM] Preparando publicação de movimentacoes_kpi: ${linhasMovimentacoesKPI.length} linha(s) encontrada(s) localmente.`]);
         if (linhasMovimentacoesKPI.length) {
             if (status) status.innerText = `Publicando ${linhasMovimentacoesKPI.length} movimentações de KPI...`;
             const r = await publicarSemApagar('movimentacoes_kpi', linhasMovimentacoesKPI);
             resumo.push(`${r.publicados} movimentações de KPI`);
+        } else {
+            registrarLogDebug('log', ['[NUVEM] "movimentacoes_kpi": pulado, não havia nenhuma movimentação salva localmente no momento de publicar.']);
         }
         // Marca a hora dessa publicação — é isso que o visitante vê como
         // "dados de: há X min"
