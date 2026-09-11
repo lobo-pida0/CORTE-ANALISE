@@ -2570,6 +2570,27 @@ const CORES_SETORES_KPI = {
     'ALMOX TECIDO': '#4C8C4A', 'ENFESTO': '#C0504D', 'CORTE': '#4472C4', 'ETIQUETACAO': '#ED7D31',
 };
 
+function hexParaRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Escurece todas as linhas menos a destacada (ou restaura todas se indice
+// for null) — usado tanto ao passar o mouse numa linha do gráfico quanto
+// ao passar o mouse num item da legenda. Não faz nada com 1 linha só (não
+// tem o que destacar).
+function destacarLinhaGrafico(chart, indice, coresOriginais) {
+    if (coresOriginais.length <= 1) return;
+    chart.data.datasets.forEach((ds, i) => {
+        const destacada = indice === null || i === indice;
+        ds.borderColor = destacada ? coresOriginais[i] : hexParaRgba(coresOriginais[i], 0.12);
+        ds.borderWidth = destacada ? 2 : 1;
+    });
+    chart.update('none'); // 'none' evita reanimar o gráfico inteiro a cada movimento do mouse
+}
+
 let graficoKPIInstance = null;
 
 // Formata uma chave "AAAA-MM-DD" (a que usamos pra agrupar por dia no
@@ -2651,11 +2672,12 @@ function renderizarGraficoKPI() {
     });
     const datasOrdenadas = [...todasDatas].sort();
 
-    const datasets = setoresParaMostrar.map(setor => ({
+    const coresOriginaisGraficoKPI = setoresParaMostrar.map(setor => CORES_SETORES_KPI[setor] || '#999');
+    const datasets = setoresParaMostrar.map((setor, i) => ({
         label: setor,
         data: datasOrdenadas.map(d => totalPorSetorPorDia[setor][d] || 0),
-        borderColor: CORES_SETORES_KPI[setor] || '#999',
-        backgroundColor: CORES_SETORES_KPI[setor] || '#999',
+        borderColor: coresOriginaisGraficoKPI[i],
+        backgroundColor: coresOriginaisGraficoKPI[i],
         tension: 0.25,
         fill: false,
     }));
@@ -2667,8 +2689,15 @@ function renderizarGraficoKPI() {
             data: { labels: datasOrdenadas.map(formatarChaveDataBR), datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
+                onHover: (event, activeElements, chart) => {
+                    destacarLinhaGrafico(chart, activeElements.length ? activeElements[0].datasetIndex : null, coresOriginaisGraficoKPI);
+                },
                 plugins: {
-                    legend: { display: setoresParaMostrar.length > 1 },
+                    legend: {
+                        display: setoresParaMostrar.length > 1,
+                        onHover: (event, legendItem, legend) => destacarLinhaGrafico(legend.chart, legendItem.datasetIndex, coresOriginaisGraficoKPI),
+                        onLeave: (event, legendItem, legend) => destacarLinhaGrafico(legend.chart, null, coresOriginaisGraficoKPI),
+                    },
                     // ChartDataLabels é registrado globalmente pro gráfico de
                     // OTD, mas isso faz ele aparecer em TODO gráfico por
                     // padrão — desligado aqui, senão poluía a tela com um
@@ -2732,6 +2761,7 @@ function renderizarGraficoAcertividadeKPI() {
     if (!datasOrdenadas.length) return; // nenhum dos pares tem OP saindo da origem nesse mês
 
     const cores = ['#4C8C4A', '#B8862A', '#3D6B87', '#7A4B8C', '#C0504D', '#4472C4'];
+    const coresOriginaisAcertividade = resultadosPorPar.map((r, i) => cores[i % cores.length]);
     const datasets = resultadosPorPar.map((r, i) => ({
         label: `${r.par[0]} → ${r.par[1]}`,
         // null pros dias que esse par específico não teve OP saindo da
@@ -2739,8 +2769,8 @@ function renderizarGraficoAcertividadeKPI() {
         // seria enganoso (0% de acerto é diferente de "não teve OP saindo
         // nesse dia").
         data: datasOrdenadas.map(dia => r.porDia[dia] ? r.porDia[dia].percentual : null),
-        borderColor: cores[i % cores.length],
-        backgroundColor: cores[i % cores.length],
+        borderColor: coresOriginaisAcertividade[i],
+        backgroundColor: coresOriginaisAcertividade[i],
         tension: 0.25,
         fill: false,
     }));
@@ -2750,8 +2780,15 @@ function renderizarGraficoAcertividadeKPI() {
         data: { labels: datasOrdenadas.map(formatarChaveDataBR), datasets },
         options: {
             responsive: true, maintainAspectRatio: false,
+            onHover: (event, activeElements, chart) => {
+                destacarLinhaGrafico(chart, activeElements.length ? activeElements[0].datasetIndex : null, coresOriginaisAcertividade);
+            },
             plugins: {
-                legend: { display: paresParaMostrar.length > 1 },
+                legend: {
+                    display: paresParaMostrar.length > 1,
+                    onHover: (event, legendItem, legend) => destacarLinhaGrafico(legend.chart, legendItem.datasetIndex, coresOriginaisAcertividade),
+                    onLeave: (event, legendItem, legend) => destacarLinhaGrafico(legend.chart, null, coresOriginaisAcertividade),
+                },
                 datalabels: { display: false }, // mesmo motivo do gráfico principal — sem isso, poluía a tela
                 tooltip: {
                     callbacks: {
