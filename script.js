@@ -2204,21 +2204,30 @@ function podarMovimentacoesAntigas(obj, diasParaManter) {
 }
 
 function salvarMovimentacoesPorSetor(obj) {
-    let podado = podarMovimentacoesAntigas(obj, 90);
+    // Tenta salvar TUDO primeiro, sem podar nada — só entra em modo de
+    // poda se o espaço realmente estourar. Antes, a poda de 90 dias rodava
+    // sempre, mesmo com espaço de sobra — isso descartava na hora qualquer
+    // relatório antigo importado de propósito (ex: reimportar janeiro em
+    // setembro), mesmo sem precisar.
     try {
-        localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(podado));
-    } catch (e) {
-        // Ainda estourou mesmo com 90 dias — tenta de novo bem mais
-        // agressivo (só 30 dias) antes de desistir de vez. O dado mais
-        // antigo continua garantido na nuvem, só não fica no navegador.
-        try {
-            podado = podarMovimentacoesAntigas(obj, 30);
-            localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(podado));
-            showToast('<i class="fas fa-triangle-exclamation"></i> Espaço do navegador ficou apertado — mantidos só os últimos 30 dias localmente (o resto já está salvo na nuvem, publique antes de limpar se ainda não publicou).', true);
-        } catch (e2) {
-            console.error('Falha ao salvar movimentações de KPI mesmo após podar:', e2);
-            alert("❌ Não foi possível salvar as movimentações — o armazenamento do navegador está cheio.\n\nUse o botão LIMPAR DADOS (escolhendo um setor específico ou 'Todos') pra liberar espaço. Se ainda não publicou na nuvem recentemente, publique antes de limpar.");
-        }
+        localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(obj));
+        return;
+    } catch (e) { /* segue pra tentar podar */ }
+
+    try {
+        const podado90 = podarMovimentacoesAntigas(obj, 90);
+        localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(podado90));
+        showToast('<i class="fas fa-triangle-exclamation"></i> Espaço do navegador ficou apertado — mantidos só os últimos 90 dias localmente (o resto já está salvo na nuvem, publique antes de limpar se ainda não publicou).', true);
+        return;
+    } catch (e) { /* segue pra tentar mais agressivo */ }
+
+    try {
+        const podado30 = podarMovimentacoesAntigas(obj, 30);
+        localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(podado30));
+        showToast('<i class="fas fa-triangle-exclamation"></i> Espaço do navegador ficou bem apertado — mantidos só os últimos 30 dias localmente (o resto já está salvo na nuvem, publique antes de limpar se ainda não publicou).', true);
+    } catch (e2) {
+        console.error('Falha ao salvar movimentações de KPI mesmo após podar:', e2);
+        alert("❌ Não foi possível salvar as movimentações — o armazenamento do navegador está cheio.\n\nUse o botão LIMPAR DADOS (escolhendo um setor específico ou 'Todos') pra liberar espaço. Se ainda não publicou na nuvem recentemente, publique antes de limpar.");
     }
 }
 
