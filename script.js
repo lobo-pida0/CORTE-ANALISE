@@ -2161,8 +2161,44 @@ const MAPEAMENTO_LOCAL_DESTINO_KPI = {
 function obterMovimentacoesPorSetor() {
     try { return JSON.parse(localStorage.getItem('movimentacoesPorSetorKPI') || '{}'); } catch (e) { return {}; }
 }
+
+// Remove movimentações mais antigas que X dias — usado antes de salvar,
+// pra evitar estourar o limite de armazenamento do navegador (localStorage
+// costuma ter só uns 5-10MB no total, compartilhado com todo o resto do
+// sistema). Dado antigo já foi publicado na nuvem várias vezes até essa
+// altura, então não tem problema não guardar ele localmente pra sempre.
+function podarMovimentacoesAntigas(obj, diasParaManter) {
+    const limite = new Date();
+    limite.setDate(limite.getDate() - diasParaManter);
+    const limiteISO = limite.toISOString();
+    const resultado = {};
+    Object.entries(obj).forEach(([setor, porOP]) => {
+        const filtrado = {};
+        Object.entries(porOP).forEach(([opId, m]) => {
+            if (m.data && m.data >= limiteISO) filtrado[opId] = m;
+        });
+        if (Object.keys(filtrado).length) resultado[setor] = filtrado;
+    });
+    return resultado;
+}
+
 function salvarMovimentacoesPorSetor(obj) {
-    localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(obj));
+    let podado = podarMovimentacoesAntigas(obj, 90);
+    try {
+        localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(podado));
+    } catch (e) {
+        // Ainda estourou mesmo com 90 dias — tenta de novo bem mais
+        // agressivo (só 30 dias) antes de desistir de vez. O dado mais
+        // antigo continua garantido na nuvem, só não fica no navegador.
+        try {
+            podado = podarMovimentacoesAntigas(obj, 30);
+            localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify(podado));
+            showToast('<i class="fas fa-triangle-exclamation"></i> Espaço do navegador ficou apertado — mantidos só os últimos 30 dias localmente (o resto já está salvo na nuvem, publique antes de limpar se ainda não publicou).', true);
+        } catch (e2) {
+            console.error('Falha ao salvar movimentações de KPI mesmo após podar:', e2);
+            alert("❌ Não foi possível salvar as movimentações — o armazenamento do navegador está cheio.\n\nUse o botão LIMPAR DADOS (escolhendo um setor específico ou 'Todos') pra liberar espaço. Se ainda não publicou na nuvem recentemente, publique antes de limpar.");
+        }
+    }
 }
 
 // A nuvem trabalha com linhas, não com o objeto aninhado que usamos aqui —
