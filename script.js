@@ -4454,6 +4454,25 @@ function renderizarSequenciamentoCostura() {
         const situacaoCor = op.situacaoCostura === 'Em andamento' ? 'var(--cor-despacho)' : 'var(--texto-secundario)';
         const dataFinalizacaoTexto = op.dataFinalizacao ? formatarDataBR(op.dataFinalizacao) : '—';
 
+        // Vermelho = a data de finalização já passou de verdade (hoje já
+        // é depois dela). Laranja = ainda não passou, mas pela posição
+        // dessa OP na fila (calculada em calcularCronogramaCostura), ela
+        // só vai terminar de ser costurada DEPOIS da data prometida — ou
+        // seja, vai atrasar por causa do que vem antes dela, mesmo a data
+        // em si ainda não tendo vencido.
+        let corDataFinalizacao = '';
+        if (op.dataFinalizacao) {
+            const dataFinal = new Date(op.dataFinalizacao); dataFinal.setHours(0, 0, 0, 0);
+            if (dataFinal < hoje) {
+                corDataFinalizacao = 'var(--cor-alerta)'; // vermelho — já atrasada
+            } else if (op.dataTerminoProducao && op.dataTerminoProducao > dataFinal) {
+                corDataFinalizacao = '#E07B39'; // laranja — vai atrasar por causa da fila
+            }
+        }
+        const dataFinalizacaoHtml = corDataFinalizacao
+            ? `<strong style="color:${corDataFinalizacao};">${dataFinalizacaoTexto}</strong>`
+            : dataFinalizacaoTexto;
+
         // "Previsão" mostra quando essa OP começa e termina de ser
         // costurada, de acordo com a fila — se levar mais de 1 dia, mostra
         // início → término; se cabe tudo no mesmo dia, mostra só a data.
@@ -4470,7 +4489,7 @@ function renderizarSequenciamentoCostura() {
             <td><strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
-            <td>${dataFinalizacaoTexto}</td>
+            <td>${dataFinalizacaoHtml}</td>
             <td>${op.descRef || ''}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${tempoTexto}</td>
