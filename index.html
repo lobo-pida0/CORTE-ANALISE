@@ -191,7 +191,7 @@
             <span class="divisor-header"></span>
 
             <!-- ANÁLISE: ferramentas de diagnóstico/sugestão -->
-            <div class="dropdown-container">
+            <div class="dropdown-container somente-admin">
                 <button id="btnMenuAnalise" class="btn" style="background:var(--cor-alerta); color:white; font-weight:bold;"><i
                         class="fas fa-chart-line"></i> ANÁLISE <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
                 <div id="menuAnalise" class="dropdown-menu">
@@ -214,12 +214,12 @@
             </div>
 
             <!-- IMPORTAR: planilhas complementares (a principal, Sincronizar, fica fora do menu) -->
-            <input type="file" id="inputExcel" accept=".xlsx, .xls" class="somente-admin tambem-usuario"
+            <input type="file" id="inputExcel" accept=".xlsx, .xls" class="somente-admin"
                 style="font-size:11px; color:white; width:150px; background:transparent; border:none;">
-            <button id="processarExcel" class="btn btn-primario somente-admin tambem-usuario"><i class="fas fa-sync-alt"></i>
+            <button id="processarExcel" class="btn btn-primario somente-admin"><i class="fas fa-sync-alt"></i>
                 SINCRONIZAR</button>
-            <span id="atualizacao-sincronizar" class="somente-admin tambem-usuario" title="Última vez que a planilha de OPs foi sincronizada" style="font-size:10px; color:rgba(255,255,255,0.75); white-space:nowrap;"></span>
-            <div class="dropdown-container somente-admin tambem-usuario">
+            <span id="atualizacao-sincronizar" class="somente-admin" title="Última vez que a planilha de OPs foi sincronizada" style="font-size:10px; color:rgba(255,255,255,0.75); white-space:nowrap;"></span>
+            <div class="dropdown-container somente-admin">
                 <button id="btnMenuImportar" class="btn" style="background:#2F8577; color:white;"><i
                         class="fas fa-file-import"></i> IMPORTAR <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
                 <div id="menuImportar" class="dropdown-menu">
@@ -239,7 +239,7 @@
             </div>
 
             <!-- SISTEMA: configurações e utilitários usados com menos frequência -->
-            <div class="dropdown-container">
+            <div class="dropdown-container somente-admin">
                 <button id="btnMenuSistema" class="btn" style="background:var(--cor-roxo); color:white;"><i
                         class="fas fa-cog"></i> SISTEMA <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
                 <div id="menuSistema" class="dropdown-menu">
@@ -549,7 +549,7 @@
             <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-scissors"></i> FILA DE CORTE</span><span
                     id="mediaCorteInfo">Sem dados de produção do Corte lançados ainda</span></div>
             <div id="botoes-acao-filacorte" style="display:flex; align-items:center; gap:var(--espaco-sm); padding:10px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
-                <label class="btn somente-admin tambem-usuario" style="background:var(--cor-fila); color:white; cursor:pointer; margin:0;"
+                <label class="btn somente-admin" style="background:var(--cor-fila); color:white; cursor:pointer; margin:0;"
                     title="Importar planilha geral (todos os setores, POR_OP) pra atualizar a fila"><i
                         class="fas fa-file-import"></i> IMPORTAR PLANILHA GERAL <input id="inputFilaCorte" type="file"
                         accept=".xlsx, .xls" style="display:none;"></label>
@@ -663,7 +663,7 @@
                     <input type="checkbox" id="capSoSemTempo"> só as sem tempo
                 </label>
                 <button id="capLimparSelecao" class="btn" style="padding:3px 10px; font-size:10px; background:transparent; color:var(--texto-secundario); border:1px dashed var(--borda-cor);">LIMPAR SELEÇÃO</button>
-                <label class="btn somente-admin tambem-usuario" style="background:#35505C; color:white; cursor:pointer; margin:0; padding:5px 10px; font-size:10px;" title="Tempo por peça de cada referência (Corte e Etiquetação) — usado no lugar do tempo que vinha da Sincronização"><i class="fas fa-clock"></i> IMPORTAR TEMPOS
+                <label class="btn somente-admin" style="background:#35505C; color:white; cursor:pointer; margin:0; padding:5px 10px; font-size:10px;" title="Tempo por peça de cada referência (Corte e Etiquetação) — usado no lugar do tempo que vinha da Sincronização"><i class="fas fa-clock"></i> IMPORTAR TEMPOS
                     <input id="inputTemposPorOperacao" type="file" accept=".xlsx, .xls" style="display:none;">
                 </label>
                 <span style="font-size:11px; color:var(--texto-secundario);">OPs sem tempo aparecem com o campo editável — o valor digitado fica salvo.</span>

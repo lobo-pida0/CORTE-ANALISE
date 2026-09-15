@@ -479,8 +479,11 @@ function atualizarIndicadorLogin() {
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
 const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi'];
+const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
 function abaLiberadaAgora(idAba) {
-    return !!sessaoAdminAtual || ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba);
+    if (papelUsuarioAtual === 'admin') return true;
+    if (papelUsuarioAtual === 'usuario') return ABAS_LIBERADAS_PARA_USUARIO.includes(idAba);
+    return ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba); // visitante — nem logado
 }
 function aplicarRestricaoDeAbaVisitante() {
     document.body.classList.toggle('modo-visitante', !sessaoAdminAtual);
@@ -1657,7 +1660,7 @@ function exigirBibliotecaExcel() {
 }
 
 function processarExcel() {
-    if (!exigirAdminOuUsuario('sincronizar a planilha')) return;
+    if (!exigirAdmin('sincronizar a planilha')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputExcel'); if (!input.files[0]) return alert("Selecione um arquivo!");
     const r = new FileReader();
@@ -1876,7 +1879,7 @@ function exibirBalancoSincronizacao(movimentacoes, entradas, saidas) {
 // não depende de estarem sempre na mesma ordem/coluna do Excel.
 // =========================================================================
 function processarGrades() {
-    if (!exigirAdminOuUsuario('importar a grade')) return;
+    if (!exigirAdmin('importar a grade')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputGrades'); if (!input.files[0]) return;
     const r = new FileReader();
@@ -1945,7 +1948,7 @@ function processarGrades() {
 // estoque físico e OPs existentes, então não recalculamos isso aqui.
 // =========================================================================
 function processarPedidos() {
-    if (!exigirAdminOuUsuario('importar os pedidos')) return;
+    if (!exigirAdmin('importar os pedidos')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputPedidos'); if (!input.files[0]) return;
     const r = new FileReader();
@@ -2033,7 +2036,7 @@ function processarPedidos() {
 // mesma OP, então basta olhar 1 linha por OP.
 // =========================================================================
 function processarDestino() {
-    if (!exigirAdminOuUsuario('importar o destino de produção')) return;
+    if (!exigirAdmin('importar o destino de produção')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputDestino'); if (!input.files[0]) return;
 
@@ -4006,7 +4009,7 @@ function renderizarPedidosPendentes() {
 // diária real do setor CORTE (já lançada na aba Gestão Mensal).
 // =========================================================================
 function processarFilaCorte() {
-    if (!exigirAdminOuUsuario('importar a fila de corte')) return;
+    if (!exigirAdmin('importar a fila de corte')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputFilaCorte'); if (!input.files[0]) return;
     const r = new FileReader();
@@ -4285,7 +4288,7 @@ function obterTemposPorReferenciaOperacao() {
 }
 
 function processarTemposPorOperacao() {
-    if (!exigirAdminOuUsuario('importar tempos por operação')) return;
+    if (!exigirAdmin('importar tempos por operação')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputTemposPorOperacao'); if (!input.files[0]) return;
 
