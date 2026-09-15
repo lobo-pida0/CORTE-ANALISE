@@ -2328,16 +2328,17 @@ function obterOPsPorLocalCostura(local, filtro) {
 // (que é o valor padrão, ninguém definiu manualmente), quem já tem uma
 // Data Finalização vem antes de quem não tem — e entre as que têm, a data
 // mais próxima vem primeiro (confirmado com o usuário).
+// Data Finalização é o critério PRINCIPAL agora (quem tem data vem antes
+// de quem não tem, e entre as que têm, a mais próxima primeiro) — só cai
+// pra prioridade quando a OP não tem data nenhuma cadastrada.
 function compararPrioridadeCostura(a, b) {
+    const temA = !!a.dataFinalizacao, temB = !!b.dataFinalizacao;
+    if (temA && temB) return new Date(a.dataFinalizacao) - new Date(b.dataFinalizacao);
+    if (temA && !temB) return -1;
+    if (!temA && temB) return 1;
+    // Nenhuma das duas tem data — aí sim usa a prioridade
     const prioA = a.prioridade ?? 99, prioB = b.prioridade ?? 99;
-    if (prioA !== prioB) return prioA - prioB;
-    if (prioA === 99) {
-        const temA = !!a.dataFinalizacao, temB = !!b.dataFinalizacao;
-        if (temA && !temB) return -1;
-        if (!temA && temB) return 1;
-        if (temA && temB) return new Date(a.dataFinalizacao) - new Date(b.dataFinalizacao);
-    }
-    return 0;
+    return prioA - prioB;
 }
 
 // Monta a fila de um grupo inteiro: primeiro tudo que já está "em
