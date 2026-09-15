@@ -4413,7 +4413,7 @@ function renderizarSequenciamentoCostura() {
     if ($('seqCostContOPs')) $('seqCostContOPs').textContent = `${filaComResultado.length} OP(s)`;
 
     if (!filaComResultado.length) {
-        $('seqCostListaOPs').innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
 
@@ -4425,10 +4425,12 @@ function renderizarSequenciamentoCostura() {
         const iconeCabe = op.cabeHoje
             ? '<i class="fas fa-check-circle" style="color:var(--cor-despacho);"></i>'
             : '<i class="fas fa-xmark" style="color:var(--texto-secundario);"></i>';
+        const dataFinalizacaoTexto = op.dataFinalizacao ? formatarDataBR(op.dataFinalizacao) : '—';
         return `<tr${op.cabeHoje ? '' : ' style="opacity:0.5;"'}>
             <td><strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
+            <td>${dataFinalizacaoTexto}</td>
             <td>${op.descRef || ''}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${tempoTexto}</td>
