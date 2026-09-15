@@ -4381,17 +4381,45 @@ function tempoCosturaOP(op) {
 // — uma vez que uma OP não cabe mais no tempo disponível, as que vêm depois
 // dela na fila também não contam como "hoje", mesmo que sejam menores
 // (não pula a fila, só porque uma OP menor caberia).
-function calcularOPsQueCabemHoje(fila, minutosDisponiveis) {
-    let acumulado = 0;
-    let pararAqui = false;
+// Avança pro próximo dia ÚTIL (pula sábado/domingo — confirmado com o
+// usuário, a fábrica não costura nesses dias).
+function proximoDiaUtilCostura(data) {
+    const nova = new Date(data);
+    do { nova.setDate(nova.getDate() + 1); } while (nova.getDay() === 0 || nova.getDay() === 6);
+    return nova;
+}
+
+// Em vez de um "cabe ou não cabe hoje" binário, monta um CRONOGRAMA de
+// verdade: percorre a fila NA ORDEM e vai "gastando" os minutos
+// disponíveis por dia — quando uma OP não termina de cair no dia, o resto
+// dela continua no próximo dia útil (sem deixar o pessoal "parado" depois
+// que uma OP grande não coube inteira num dia só, como o usuário
+// descreveu). Cada OP recebe uma data de início e uma de término.
+function calcularCronogramaCostura(fila, minutosDisponiveisPorDia) {
+    let diaAtual = new Date(); diaAtual.setHours(0, 0, 0, 0);
+    while (diaAtual.getDay() === 0 || diaAtual.getDay() === 6) diaAtual = proximoDiaUtilCostura(diaAtual);
+    let minutosUsadosHoje = 0;
+
     return fila.map(op => {
         const tempo = tempoCosturaOP(op);
-        if (pararAqui || tempo === null) {
-            return { ...op, tempoCostura: tempo, cabeHoje: false };
+        if (tempo === null || minutosDisponiveisPorDia <= 0) {
+            return { ...op, tempoCostura: tempo, dataInicioProducao: null, dataTerminoProducao: null };
         }
-        const cabe = (acumulado + tempo) <= minutosDisponiveis;
-        if (cabe) acumulado += tempo; else pararAqui = true;
-        return { ...op, tempoCostura: tempo, cabeHoje: cabe };
+
+        const dataInicioProducao = new Date(diaAtual);
+        const sobraHoje = minutosDisponiveisPorDia - minutosUsadosHoje;
+
+        if (tempo <= sobraHoje) {
+            minutosUsadosHoje += tempo;
+        } else {
+            const restanteAposHoje = tempo - sobraHoje;
+            const diasAdicionais = Math.ceil(restanteAposHoje / minutosDisponiveisPorDia);
+            for (let i = 0; i < diasAdicionais; i++) diaAtual = proximoDiaUtilCostura(diaAtual);
+            minutosUsadosHoje = restanteAposHoje - (diasAdicionais - 1) * minutosDisponiveisPorDia;
+        }
+
+        const dataTerminoProducao = new Date(diaAtual);
+        return { ...op, tempoCostura: tempo, dataInicioProducao, dataTerminoProducao };
     });
 }
 
@@ -4407,7 +4435,7 @@ function renderizarSequenciamentoCostura() {
     const grupo = $('seqCostGrupo') ? $('seqCostGrupo').value : 'CALCA';
     const fila = montarFilaSequenciamentoCostura(grupo);
     const minutosDisponiveis = minutosDisponiveisDiaCostura();
-    const filaComResultado = calcularOPsQueCabemHoje(fila, minutosDisponiveis);
+    const filaComResultado = calcularCronogramaCostura(fila, minutosDisponiveis);
 
     if ($('seqCostDisponivel')) $('seqCostDisponivel').textContent = Math.round(minutosDisponiveis).toLocaleString('pt-BR');
     if ($('seqCostContOPs')) $('seqCostContOPs').textContent = `${filaComResultado.length} OP(s)`;
@@ -4417,16 +4445,28 @@ function renderizarSequenciamentoCostura() {
         return;
     }
 
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+
     $('seqCostListaOPs').innerHTML = filaComResultado.map(op => {
         const tempoTexto = op.tempoCostura === null
             ? `<span style="color:var(--cor-alerta);" title="Essa linha não trouxe Minutos Costura na planilha importada">sem tempo</span>`
             : op.tempoCostura.toFixed(1).replace('.', ',');
         const situacaoCor = op.situacaoCostura === 'Em andamento' ? 'var(--cor-despacho)' : 'var(--texto-secundario)';
-        const iconeCabe = op.cabeHoje
-            ? '<i class="fas fa-check-circle" style="color:var(--cor-despacho);"></i>'
-            : '<i class="fas fa-xmark" style="color:var(--texto-secundario);"></i>';
         const dataFinalizacaoTexto = op.dataFinalizacao ? formatarDataBR(op.dataFinalizacao) : '—';
-        return `<tr${op.cabeHoje ? '' : ' style="opacity:0.5;"'}>
+
+        // "Previsão" mostra quando essa OP começa e termina de ser
+        // costurada, de acordo com a fila — se levar mais de 1 dia, mostra
+        // início → término; se cabe tudo no mesmo dia, mostra só a data.
+        let previsaoTexto = '—';
+        let comecaHoje = false;
+        if (op.dataInicioProducao && op.dataTerminoProducao) {
+            const inicioTxt = formatarDataBR(op.dataInicioProducao);
+            const terminoTxt = formatarDataBR(op.dataTerminoProducao);
+            previsaoTexto = inicioTxt === terminoTxt ? inicioTxt : `${inicioTxt} → ${terminoTxt}`;
+            comecaHoje = op.dataInicioProducao.getTime() === hoje.getTime();
+        }
+
+        return `<tr${comecaHoje ? '' : ' style="opacity:0.6;"'}>
             <td><strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
@@ -4434,7 +4474,7 @@ function renderizarSequenciamentoCostura() {
             <td>${op.descRef || ''}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${tempoTexto}</td>
-            <td style="text-align:center;">${iconeCabe}</td>
+            <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
         </tr>`;
     }).join('');
 }
