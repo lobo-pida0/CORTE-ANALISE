@@ -2155,6 +2155,73 @@ function obterOpsDestinoAutomaticas() {
 }
 
 // =========================================================================
+// 🧵 SEQUENCIAMENTO DE COSTURA — 4 grupos, cada um lendo de dois dos 7
+// locais já aprovados na aba Prioridades. Alguns locais são compartilhados
+// entre grupos no sistema original (ex: jaqueta/gandola/parka aparecem
+// junto com camisa em "PNP COST SUP CAMISA", e malha/camisa dividem a
+// mesma fila de espera "PNP AGUARD DEFINICAO COST SUP") — confirmado com o
+// usuário, separado por palavra-chave na descrição quando precisa.
+// =========================================================================
+
+const GRUPOS_SEQUENCIAMENTO_COSTURA = {
+    CALCA: {
+        rotulo: 'Calça',
+        emAndamento: 'PNP COST INF CALCA',
+        aguardando: 'PNP AGUARD DEFINICAO COST INF',
+        filtroDescricao: null, // local já é exclusivo, não precisa filtrar
+    },
+    MALHA: {
+        rotulo: 'Malha',
+        emAndamento: 'PNP COST SUP MALHA',
+        aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada com camisa/jaqueta
+        filtroDescricao: (desc) => /MALHA/i.test(desc || ''),
+    },
+    JAQUETA_GANDOLA_PARKA: {
+        rotulo: 'Jaqueta/Gandola/Parka',
+        emAndamento: 'PNP COST SUP CAMISA', // compartilhado com camisa
+        aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada
+        filtroDescricao: (desc) => /JAQUETA|GANDOLA|PARKA/i.test(desc || ''),
+    },
+    CAMISA: {
+        rotulo: 'Camisa',
+        emAndamento: 'PNP COST SUP CAMISA', // compartilhado com jaqueta/gandola/parka
+        aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada
+        filtroDescricao: (desc) => !/MALHA|JAQUETA|GANDOLA|PARKA/i.test(desc || ''), // sobra tudo que não é dos outros grupos
+    },
+};
+
+// Junta OPs manuais + automáticas do Destino (as duas fontes que têm
+// localDestinoDetalhado preenchido) que batem com um local específico —
+// com filtro de descrição opcional, pra separar o que está misturado no
+// mesmo local no sistema original.
+function obterOPsPorLocalCostura(local, filtroDescricao) {
+    const resultado = [];
+    obterOpsManuaisPrioridade().forEach(op => {
+        if (op.localDestinoDetalhado === local && (!filtroDescricao || filtroDescricao(op.desc))) resultado.push(op);
+    });
+    Object.values(obterOpsDestinoAutomaticas()).forEach(op => {
+        if (op.localDestinoDetalhado === local && (!filtroDescricao || filtroDescricao(op.desc))) resultado.push(op);
+    });
+    return resultado;
+}
+
+// Monta a fila de um grupo inteiro: primeiro tudo que já está "em
+// andamento" (ordenado por prioridade), depois tudo "aguardando definição"
+// (também por prioridade) — confirmado com o usuário, essa é a ordem.
+function montarFilaSequenciamentoCostura(chaveGrupo) {
+    const grupo = GRUPOS_SEQUENCIAMENTO_COSTURA[chaveGrupo];
+    if (!grupo) return [];
+    const porPrioridade = (a, b) => (a.numeroPrioridade ?? 99) - (b.numeroPrioridade ?? 99);
+    const emAndamento = obterOPsPorLocalCostura(grupo.emAndamento, grupo.filtroDescricao)
+        .map(op => ({ ...op, situacaoCostura: 'Em andamento' }))
+        .sort(porPrioridade);
+    const aguardando = obterOPsPorLocalCostura(grupo.aguardando, grupo.filtroDescricao)
+        .map(op => ({ ...op, situacaoCostura: 'Aguardando' }))
+        .sort(porPrioridade);
+    return [...emAndamento, ...aguardando];
+}
+
+// =========================================================================
 // 📊 KPI — MOVIMENTAÇÃO POR SETOR (novo KPI, sendo construído com o
 // usuário). Cada um dos 7 setores rastreados (Análise de Medidas, CAD, PCP
 // Programação-Corte, Almox Tecido, Enfesto, Corte, Etiquetação) tem seu
@@ -4164,6 +4231,91 @@ function tempoEfetivoOP(op) {
     return parseFloat(capTemposManuais[op.id]) || 0;
 }
 
+// As OPs de Prioridades (manuais e automáticas do Destino) não guardam um
+// campo de referência separado — só a descrição. A referência é sempre a
+// última palavra da descrição (confirmado com o usuário), então extrai
+// daí quando não tem o campo direto.
+function extrairReferenciaDaDescricao(desc) {
+    if (!desc) return '';
+    const palavras = String(desc).trim().split(/\s+/);
+    return palavras[palavras.length - 1].toUpperCase();
+}
+
+// Tempo de COSTURA (coluna diferente da usada em Montar Produção, que usa
+// "Corte e Etiquetação") — usado no sequenciamento de costura.
+function tempoCosturaOP(op) {
+    const referencia = op.referencia
+        ? String(op.referencia).trim().toUpperCase()
+        : extrairReferenciaDaDescricao(op.desc);
+    const temposPorReferencia = obterTemposPorReferenciaOperacao();
+    const tempoRef = temposPorReferencia[referencia];
+    if (tempoRef && tempoRef['COSTURA'] !== undefined && !isNaN(tempoRef['COSTURA'])) {
+        return tempoRef['COSTURA'] * (parseInt(op.qtd) || 0);
+    }
+    return null; // sem tempo cadastrado pra essa referência
+}
+
+// Percorre a fila NA ORDEM (prioridade já aplicada em montarFilaSequenciamentoCostura)
+// e marca cada OP como "cabe hoje" ou não, respeitando a ordem estritamente
+// — uma vez que uma OP não cabe mais no tempo disponível, as que vêm depois
+// dela na fila também não contam como "hoje", mesmo que sejam menores
+// (não pula a fila, só porque uma OP menor caberia).
+function calcularOPsQueCabemHoje(fila, minutosDisponiveis) {
+    let acumulado = 0;
+    let pararAqui = false;
+    return fila.map(op => {
+        const tempo = tempoCosturaOP(op);
+        if (pararAqui || tempo === null) {
+            return { ...op, tempoCostura: tempo, cabeHoje: false };
+        }
+        const cabe = (acumulado + tempo) <= minutosDisponiveis;
+        if (cabe) acumulado += tempo; else pararAqui = true;
+        return { ...op, tempoCostura: tempo, cabeHoje: cabe };
+    });
+}
+
+function minutosDisponiveisDiaCostura() {
+    const pessoas = parseFloat($('seqCostPessoas')?.value) || 0;
+    const horas = parseFloat($('seqCostHoras')?.value) || 0;
+    const ef = parseFloat($('seqCostEficiencia')?.value) || 0;
+    return pessoas * horas * 60 * (ef / 100);
+}
+
+function renderizarSequenciamentoCostura() {
+    if (!$('seqCostListaOPs')) return;
+    const grupo = $('seqCostGrupo') ? $('seqCostGrupo').value : 'CALCA';
+    const fila = montarFilaSequenciamentoCostura(grupo);
+    const minutosDisponiveis = minutosDisponiveisDiaCostura();
+    const filaComResultado = calcularOPsQueCabemHoje(fila, minutosDisponiveis);
+
+    if ($('seqCostDisponivel')) $('seqCostDisponivel').textContent = Math.round(minutosDisponiveis).toLocaleString('pt-BR');
+    if ($('seqCostContOPs')) $('seqCostContOPs').textContent = `${filaComResultado.length} OP(s)`;
+
+    if (!filaComResultado.length) {
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        return;
+    }
+
+    $('seqCostListaOPs').innerHTML = filaComResultado.map(op => {
+        const tempoTexto = op.tempoCostura === null
+            ? `<span style="color:var(--cor-alerta);" title="Não achei essa referência na planilha de tempos importada">sem tempo</span>`
+            : op.tempoCostura.toFixed(1).replace('.', ',');
+        const situacaoCor = op.situacaoCostura === 'Em andamento' ? 'var(--cor-despacho)' : 'var(--texto-secundario)';
+        const iconeCabe = op.cabeHoje
+            ? '<i class="fas fa-check-circle" style="color:var(--cor-despacho);"></i>'
+            : '<i class="fas fa-xmark" style="color:var(--texto-secundario);"></i>';
+        return `<tr${op.cabeHoje ? '' : ' style="opacity:0.5;"'}>
+            <td><strong>${op.id}</strong></td>
+            <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
+            <td>${op.numeroPrioridade ?? '—'}</td>
+            <td>${op.desc || ''}</td>
+            <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
+            <td style="text-align:right;">${tempoTexto}</td>
+            <td style="text-align:center;">${iconeCabe}</td>
+        </tr>`;
+    }).join('');
+}
+
 function minutosDisponiveisDia() {
     const maq = parseFloat($('capMaquinas')?.value) || 0;
     const horas = parseFloat($('capHoras')?.value) || 0;
@@ -6049,6 +6201,11 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
+        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); });
+        wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
+        wireEvento('seqCostPessoas', 'input', () => { renderizarSequenciamentoCostura(); });
+        wireEvento('seqCostHoras', 'input', () => { renderizarSequenciamentoCostura(); });
+        wireEvento('seqCostEficiencia', 'input', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seletorSetorKPI', 'change', () => { renderizarGraficoKPI(); });
         wireEvento('seletorMesKPI', 'change', () => { renderizarGraficoKPI(); });
         wireEvento('seletorParAcertividadeKPI', 'change', () => { renderizarGraficoAcertividadeKPI(); });

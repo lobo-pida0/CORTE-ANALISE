@@ -280,6 +280,7 @@
         <button id="abrirAba-aba-necessidade" class="tab-btn">LEVANTAMENTO</button>
         <button id="abrirAba-aba-prioridades" class="tab-btn">PRIORIDADES</button>
         <button id="abrirAba-aba-kpi" class="tab-btn">KPI</button>
+        <button id="abrirAba-aba-seq-costura" class="tab-btn">SEQ. COSTURA</button>
     </div>
 
     <div id="aba-programacao" class="aba-conteudo integra ativa">
@@ -831,6 +832,44 @@
                 <span style="font-size:11px; color:var(--texto-secundario);">O caminho contrário: parte de uma OP e mostra quais pedidos ainda em aberto ela ajuda a fechar.</span>
             </div>
             <div id="resultadoSequenciamentoOP"></div>
+        </div>
+    </div>
+
+    <div id="aba-seq-costura" class="aba-conteudo">
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-shirt"></i> SEQUENCIAMENTO DE COSTURA</span></div>
+            <div style="display:flex; align-items:flex-end; gap:var(--espaco-md); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
+                <div class="campo-meta" style="width:220px;"><label>GRUPO</label>
+                    <select id="seqCostGrupo">
+                        <option value="CALCA">Calça</option>
+                        <option value="CAMISA">Camisa</option>
+                        <option value="MALHA">Malha</option>
+                        <option value="JAQUETA_GANDOLA_PARKA">Jaqueta/Gandola/Parka</option>
+                    </select>
+                </div>
+                <div class="campo-meta" style="width:110px;"><label>Nº DE PESSOAS</label><input type="number" id="seqCostPessoas" min="1" step="1" value="5"></div>
+                <div class="campo-meta" style="width:110px;"><label>HORAS POR DIA</label><input type="number" id="seqCostHoras" min="0.5" step="0.5" value="8"></div>
+                <div class="campo-meta" style="width:110px;"><label>EFICIÊNCIA (%)</label><input type="number" id="seqCostEficiencia" min="1" max="100" step="1" value="85"></div>
+                <div style="flex:1; min-width:260px; background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:8px; padding:12px 16px;">
+                    <div style="font-size:11px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">Minutos disponíveis no dia</div>
+                    <div id="seqCostDisponivel" style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">—</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-list-ol"></i> FILA (em andamento primeiro, depois aguardando — cada parte por prioridade)</span><span id="seqCostContOPs">0 OP(s)</span></div>
+            <div class="secao-corpo" style="padding:0; overflow-x:auto;">
+                <table class="tabela-padrao" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>OP</th><th>SITUAÇÃO</th><th>Nº PRIORIDADE</th><th>DESCRIÇÃO</th>
+                            <th>PEÇAS</th><th>TEMPO (MIN)</th><th>CABE HOJE?</th>
+                        </tr>
+                    </thead>
+                    <tbody id="seqCostListaOPs"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
