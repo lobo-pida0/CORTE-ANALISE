@@ -364,6 +364,13 @@ body.modo-visitante .somente-admin {
     display: none !important;
 }
 
+/* Papel "usuario" (login próprio, mas acesso restrito — só importar
+   planilha): esconde tudo que é somente-admin, IGUAL o visitante, exceto
+   os poucos botões marcados com .tambem-usuario (os de importar). */
+body.modo-usuario .somente-admin:not(.tambem-usuario) {
+    display: none !important;
+}
+
 .tab-btn {
     background: var(--bg-card);
     border: 1px solid var(--borda-cor);

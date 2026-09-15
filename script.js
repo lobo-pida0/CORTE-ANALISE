@@ -380,6 +380,7 @@ try {
 registrarLogDebug('log', ['[NUVEM v2] window.supabase = ' + (typeof window.supabase) + ' | cliente montado = ' + (supabaseClient ? 'SIM' : 'NÃO')]);
 
 let sessaoAdminAtual = null; // guarda a sessão do usuário logado (null = visitante)
+let papelUsuarioAtual = null; // 'admin' ou 'usuario' — só tem valor quando sessaoAdminAtual existe
 
 // Converte uma OP do formato usado no sistema (bancoDadosOPs) pro formato de
 // colunas da tabela "ops" no Supabase (snake_case)
@@ -430,18 +431,40 @@ async function verificarSessaoSupabase() {
     try {
         const { data } = await supabaseClient.auth.getSession();
         sessaoAdminAtual = data && data.session ? data.session : null;
+        await verificarPapelUsuario();
         atualizarIndicadorLogin();
     } catch (e) {
         registrarLogDebug('error', ['Erro ao verificar sessão do Supabase: ' + e.message]);
     }
 }
 
+// Depois de logado, descobre se a pessoa é admin ou só "usuario" (acesso
+// restrito, só pra importar planilha) — consultando a tabela
+// papeis_usuario pelo e-mail de quem entrou. Quem não estiver cadastrado
+// lá é tratado como admin, de propósito — assim o acesso do admin original
+// nunca quebra só por essa tabela não ter uma linha pra ele.
+async function verificarPapelUsuario() {
+    papelUsuarioAtual = null;
+    if (!sessaoAdminAtual || !supabaseClient) return;
+    try {
+        const email = sessaoAdminAtual.user.email;
+        const { data, error } = await supabaseClient.from('papeis_usuario').select('papel').eq('email', email).maybeSingle();
+        if (error) throw error;
+        papelUsuarioAtual = data && data.papel === 'usuario' ? 'usuario' : 'admin';
+    } catch (e) {
+        registrarLogDebug('error', ['Não consegui checar o papel do usuário, tratando como admin: ' + e.message]);
+        papelUsuarioAtual = 'admin'; // mesma lógica de segurança: se der erro, não bloqueia o admin original
+    }
+}
+
 function atualizarIndicadorLogin() {
     const txt = $('txtLoginAdmin');
     if (!txt) return;
+    document.body.classList.toggle('modo-usuario', papelUsuarioAtual === 'usuario');
     if (sessaoAdminAtual) {
-        txt.innerText = sessaoAdminAtual.user.email.split('@')[0].toUpperCase();
-        $('btnLoginAdmin').title = 'Logado como admin — clique pra sair';
+        const nome = sessaoAdminAtual.user.email.split('@')[0].toUpperCase();
+        txt.innerText = papelUsuarioAtual === 'usuario' ? `${nome} (USUÁRIO)` : nome;
+        $('btnLoginAdmin').title = papelUsuarioAtual === 'usuario' ? 'Logado — só pode importar planilhas. Clique pra sair.' : 'Logado como admin — clique pra sair';
         if ($('indicadorUltimaPublicacao')) $('indicadorUltimaPublicacao').innerText = ''; // não faz sentido pro admin, ele usa o dado local ao vivo
     } else {
         txt.innerText = 'VISITANTE';
@@ -490,15 +513,19 @@ async function fazerLoginAdmin(email, senha) {
         return;
     }
     sessaoAdminAtual = data.session;
+    await verificarPapelUsuario();
     atualizarIndicadorLogin();
     fecharModais();
-    showToast("<i class='fas fa-check'></i> Login feito — você é admin agora.");
+    showToast(papelUsuarioAtual === 'usuario'
+        ? "<i class='fas fa-check'></i> Login feito — você pode importar planilhas."
+        : "<i class='fas fa-check'></i> Login feito — você é admin agora.");
 }
 
 async function fazerLogoutAdmin() {
     if (!supabaseClient) return;
     await supabaseClient.auth.signOut();
     sessaoAdminAtual = null;
+    papelUsuarioAtual = null;
     atualizarIndicadorLogin();
     showToast("Saiu do modo admin.");
 }
@@ -1038,8 +1065,21 @@ async function restaurarBackupNuvem(e) {
 // muda pros outros) — por isso passa a bloquear aqui, na origem da ação,
 // e não só na hora de publicar.
 function exigirAdmin(oQueIaFazer) {
-    if (sessaoAdminAtual) return true;
+    if (sessaoAdminAtual && papelUsuarioAtual === 'admin') return true;
+    if (sessaoAdminAtual && papelUsuarioAtual === 'usuario') {
+        showToast(`<i class="fas fa-lock"></i> Seu acesso é só pra importar planilhas — entre como admin pra ${oQueIaFazer || 'fazer isso'}.`, true);
+        return false;
+    }
     showToast(`<i class="fas fa-lock"></i> Modo visitante — entre como admin pra ${oQueIaFazer || 'fazer isso'}.`, true);
+    return false;
+}
+
+// Igual exigirAdmin, mas também libera pra quem está logado com o papel
+// "usuario" (acesso restrito) — usado só nas ações de IMPORTAR planilha,
+// que foi a única coisa que esse papel tem permissão de fazer.
+function exigirAdminOuUsuario(oQueIaFazer) {
+    if (sessaoAdminAtual) return true;
+    showToast(`<i class="fas fa-lock"></i> Modo visitante — entre com login pra ${oQueIaFazer || 'fazer isso'}.`, true);
     return false;
 }
 
@@ -1617,7 +1657,7 @@ function exigirBibliotecaExcel() {
 }
 
 function processarExcel() {
-    if (!exigirAdmin('sincronizar a planilha')) return;
+    if (!exigirAdminOuUsuario('sincronizar a planilha')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputExcel'); if (!input.files[0]) return alert("Selecione um arquivo!");
     const r = new FileReader();
@@ -1836,7 +1876,7 @@ function exibirBalancoSincronizacao(movimentacoes, entradas, saidas) {
 // não depende de estarem sempre na mesma ordem/coluna do Excel.
 // =========================================================================
 function processarGrades() {
-    if (!exigirAdmin('importar a grade')) return;
+    if (!exigirAdminOuUsuario('importar a grade')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputGrades'); if (!input.files[0]) return;
     const r = new FileReader();
@@ -1905,7 +1945,7 @@ function processarGrades() {
 // estoque físico e OPs existentes, então não recalculamos isso aqui.
 // =========================================================================
 function processarPedidos() {
-    if (!exigirAdmin('importar os pedidos')) return;
+    if (!exigirAdminOuUsuario('importar os pedidos')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputPedidos'); if (!input.files[0]) return;
     const r = new FileReader();
@@ -1993,7 +2033,7 @@ function processarPedidos() {
 // mesma OP, então basta olhar 1 linha por OP.
 // =========================================================================
 function processarDestino() {
-    if (!exigirAdmin('importar o destino de produção')) return;
+    if (!exigirAdminOuUsuario('importar o destino de produção')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputDestino'); if (!input.files[0]) return;
 
@@ -2202,7 +2242,7 @@ function obterPorOPCosturaDetalhado() {
 // duas, mesmo lendo o mesmo tipo de arquivo). Captura toda linha com OP,
 // com os campos que o sequenciamento de costura precisa.
 function processarPorOPCostura() {
-    if (!exigirAdmin('importar a planilha do Seq. Costura')) return;
+    if (!exigirAdminOuUsuario('importar a planilha do Seq. Costura')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputPorOPCostura'); if (!input.files[0]) return;
     const r = new FileReader();
@@ -2459,7 +2499,7 @@ function limparMovimentacoesKPI() {
 }
 
 function processarMovimentacaoSetor() {
-    if (!exigirAdmin('importar movimentação de setor')) return;
+    if (!exigirAdminOuUsuario('importar movimentação de setor')) return;
     const input = $('inputMovimentacaoKPI'); if (!input.files[0]) return;
 
     const r = new FileReader();
@@ -3966,7 +4006,7 @@ function renderizarPedidosPendentes() {
 // diária real do setor CORTE (já lançada na aba Gestão Mensal).
 // =========================================================================
 function processarFilaCorte() {
-    if (!exigirAdmin('importar a fila de corte')) return;
+    if (!exigirAdminOuUsuario('importar a fila de corte')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputFilaCorte'); if (!input.files[0]) return;
     const r = new FileReader();
@@ -4245,7 +4285,7 @@ function obterTemposPorReferenciaOperacao() {
 }
 
 function processarTemposPorOperacao() {
-    if (!exigirAdmin('importar tempos por operação')) return;
+    if (!exigirAdminOuUsuario('importar tempos por operação')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputTemposPorOperacao'); if (!input.files[0]) return;
 
