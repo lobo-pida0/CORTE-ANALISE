@@ -939,7 +939,7 @@ async function carregarLocalProducaoDaNuvemParaVisitante() {
 // aba KPI ainda é só-admin, mas já deixa o dado pronto na nuvem — se um
 // dia o usuário decidir liberar essa aba pro visitante, é só isso).
 async function carregarMovimentacoesKPIDaNuvemParaVisitante() {
-    if (!supabaseClient || sessaoAdminAtual) return;
+    if (!supabaseClient || papelUsuarioAtual === 'admin') return; // libera visitante E o papel "usuario" — só o admin de verdade usa o dado local
     try {
         const data = await buscarTodasLinhasSupabase('movimentacoes_kpi');
         registrarLogDebug('log', [`[NUVEM] Busca de movimentações de KPI concluída: ${data ? data.length : 0} itens encontrados.`]);
@@ -2502,7 +2502,7 @@ function limparMovimentacoesKPI() {
 }
 
 function processarMovimentacaoSetor() {
-    if (!exigirAdminOuUsuario('importar movimentação de setor')) return;
+    if (!exigirAdmin('importar movimentação de setor')) return;
     const input = $('inputMovimentacaoKPI'); if (!input.files[0]) return;
 
     const r = new FileReader();
@@ -6451,7 +6451,7 @@ window.onload = function () {
         // Visitante atualiza sozinho a cada 3 minutos — sem precisar recarregar
         // a página na mão pra ver publicação nova. Admin não precisa disso (usa
         // o dado local, ao vivo).
-        setInterval(() => { if (!sessaoAdminAtual) carregarTudoDaNuvemParaVisitante(); }, 3 * 60 * 1000);
+        setInterval(() => { if (papelUsuarioAtual !== 'admin') carregarTudoDaNuvemParaVisitante(); }, 3 * 60 * 1000);
     });
     atualizarBadgeConsoleDebug();
 };
