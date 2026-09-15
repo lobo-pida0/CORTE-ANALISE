@@ -2229,13 +2229,25 @@ function processarPorOPCostura() {
             if (idxOP === -1) faltando.push('OP');
             if (faltando.length) throw new Error("Não encontrei as colunas: " + faltando.join(', ') + " no cabeçalho da planilha.");
 
+            // A planilha inteira cobre a fábrica toda (quase 2 mil linhas),
+            // mas o Seq. Costura só usa 5 locais específicos — guardar só
+            // esses reduz o tamanho em muitas vezes e evita estourar o
+            // limite de armazenamento do navegador (aconteceu na prática:
+            // guardar tudo passava do limite; só os locais relevantes cabe
+            // numa fração do espaço).
+            const locaisRelevantes = new Set(
+                Object.values(GRUPOS_SEQUENCIAMENTO_COSTURA).flatMap(g => [g.emAndamento, g.aguardando])
+            );
+
             const porOPCosturaDetalhado = [];
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || row[idxOP] === undefined || row[idxOP] === null || row[idxOP] === '') continue;
+                const local = idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : '';
+                if (!locaisRelevantes.has(local)) continue;
                 porOPCosturaDetalhado.push({
                     op: String(row[idxOP]).trim(),
                     ciclo: idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '',
-                    local: idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : '',
+                    local: local,
                     ref: idxRef !== -1 && row[idxRef] ? String(row[idxRef]).trim().toUpperCase() : '',
                     descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '',
                     tipoProduto: idxTipo !== -1 && row[idxTipo] ? String(row[idxTipo]).trim().toUpperCase() : '',
@@ -2245,12 +2257,12 @@ function processarPorOPCostura() {
                     dataFinalizacao: idxDataFinalizacao !== -1 ? extrairDataExcel(row[idxDataFinalizacao]) : null,
                 });
             }
-            if (!porOPCosturaDetalhado.length) throw new Error("Nenhuma linha válida encontrada (confira se a coluna OP está preenchida).");
+            if (!porOPCosturaDetalhado.length) throw new Error("Nenhuma linha nos locais de costura conhecidos foi encontrada (confira se a planilha realmente cobre esses locais).");
 
             localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(porOPCosturaDetalhado));
             input.value = '';
             renderizarSequenciamentoCostura();
-            showToast(`<i class="fas fa-check-double"></i> ${porOPCosturaDetalhado.length} linhas importadas pro Seq. Costura!`);
+            showToast(`<i class="fas fa-check-double"></i> ${porOPCosturaDetalhado.length} linhas de costura importadas!`);
         } catch (err) {
             console.error('Erro ao processar planilha do Seq. Costura:', err);
             alert("❌ Não foi possível processar a planilha.\n\nVerifique se ela tem as colunas Descrição Local e OP no cabeçalho.\n\nDetalhe técnico: " + err.message);
