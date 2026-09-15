@@ -2155,12 +2155,15 @@ function obterOpsDestinoAutomaticas() {
 }
 
 // =========================================================================
-// 🧵 SEQUENCIAMENTO DE COSTURA — 4 grupos, cada um lendo de dois dos 7
-// locais já aprovados na aba Prioridades. Alguns locais são compartilhados
-// entre grupos no sistema original (ex: jaqueta/gandola/parka aparecem
-// junto com camisa em "PNP COST SUP CAMISA", e malha/camisa dividem a
-// mesma fila de espera "PNP AGUARD DEFINICAO COST SUP") — confirmado com o
-// usuário, separado por palavra-chave na descrição quando precisa.
+// 🧵 SEQUENCIAMENTO DE COSTURA — 4 grupos, lendo da planilha POR_OP
+// (importada junto com a Fila de Corte, cobre a fábrica inteira, não só a
+// aba Prioridades). Alguns locais são compartilhados entre grupos no
+// sistema original (ex: jaqueta/gandola/parka aparecem junto com camisa em
+// "PNP COST SUP CAMISA", e malha/camisa dividem a mesma fila de espera
+// "PNP AGUARD DEFINICAO COST SUP") — confirmado com o usuário, separado
+// por Tipo Produto (jaqueta/gandola/parka, já vem certinho na planilha) ou
+// por palavra-chave na descrição da referência (malha, que não tem um
+// Tipo Produto próprio e limpo).
 // =========================================================================
 
 const GRUPOS_SEQUENCIAMENTO_COSTURA = {
@@ -2168,41 +2171,118 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
         rotulo: 'Calça',
         emAndamento: 'PNP COST INF CALCA',
         aguardando: 'PNP AGUARD DEFINICAO COST INF',
-        filtroDescricao: null, // local já é exclusivo, não precisa filtrar
+        filtro: null, // local já é exclusivo, não precisa filtrar
     },
     MALHA: {
         rotulo: 'Malha',
         emAndamento: 'PNP COST SUP MALHA',
         aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada com camisa/jaqueta
-        filtroDescricao: (desc) => /MALHA/i.test(desc || ''),
+        filtro: (op) => /MALHA/i.test(op.descRef || ''),
     },
     JAQUETA_GANDOLA_PARKA: {
         rotulo: 'Jaqueta/Gandola/Parka',
         emAndamento: 'PNP COST SUP CAMISA', // compartilhado com camisa
         aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada
-        filtroDescricao: (desc) => /JAQUETA|GANDOLA|PARKA/i.test(desc || ''),
+        filtro: (op) => ['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto),
     },
     CAMISA: {
         rotulo: 'Camisa',
         emAndamento: 'PNP COST SUP CAMISA', // compartilhado com jaqueta/gandola/parka
         aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada
-        filtroDescricao: (desc) => !/MALHA|JAQUETA|GANDOLA|PARKA/i.test(desc || ''), // sobra tudo que não é dos outros grupos
+        filtro: (op) => !/MALHA/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // sobra tudo que não é dos outros grupos
     },
 };
 
-// Junta OPs manuais + automáticas do Destino (as duas fontes que têm
-// localDestinoDetalhado preenchido) que batem com um local específico —
-// com filtro de descrição opcional, pra separar o que está misturado no
-// mesmo local no sistema original.
-function obterOPsPorLocalCostura(local, filtroDescricao) {
-    const resultado = [];
-    obterOpsManuaisPrioridade().forEach(op => {
-        if (op.localDestinoDetalhado === local && (!filtroDescricao || filtroDescricao(op.desc))) resultado.push(op);
-    });
-    Object.values(obterOpsDestinoAutomaticas()).forEach(op => {
-        if (op.localDestinoDetalhado === local && (!filtroDescricao || filtroDescricao(op.desc))) resultado.push(op);
-    });
-    return resultado;
+function obterPorOPCosturaDetalhado() {
+    try { return JSON.parse(localStorage.getItem('porOPCosturaDetalhado') || '[]'); } catch (e) { return []; }
+}
+
+// Importação PRÓPRIA da planilha POR_OP pro Seq. Costura — separada da
+// importação de Fila de Corte de propósito (o usuário quis desacoplar as
+// duas, mesmo lendo o mesmo tipo de arquivo). Captura toda linha com OP,
+// com os campos que o sequenciamento de costura precisa.
+function processarPorOPCostura() {
+    if (!exigirAdmin('importar a planilha do Seq. Costura')) return;
+    if (!exigirBibliotecaExcel()) return;
+    const input = $('inputPorOPCostura'); if (!input.files[0]) return;
+    const r = new FileReader();
+    r.onload = function (e) {
+        try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            if (!rows.length) throw new Error("Planilha vazia.");
+
+            const cab = rows[0].map(c => String(c || '').trim().toUpperCase());
+            const idxDescLocal = cab.findIndex(c => c === 'DESCRIÇÃO LOCAL' || c.includes('DESCRICAO LOCAL'));
+            const idxOP = cab.findIndex(c => c === 'OP');
+            const idxQtd = cab.findIndex(c => c.includes('QT') && c.includes('LOCAL'));
+            const idxRef = cab.findIndex(c => c.includes('REFER') && !c.includes('DESCRI'));
+            const idxDescRef = cab.findIndex(c => c.includes('DESCRI') && c.includes('REFER'));
+            const idxTipo = cab.findIndex(c => c.includes('TIPO') && c.includes('PRODUTO'));
+            const idxPrioridade = cab.findIndex(c => c === 'PRIORIDADE');
+            const idxMinutosCostura = cab.findIndex(c => c.includes('MINUTOS') && c.includes('COSTURA'));
+            const idxDataFinalizacao = cab.findIndex(c => c.includes('DATA') && c.includes('FINALIZ'));
+            const idxCiclo = cab.findIndex(c => c === 'CICLO');
+
+            const faltando = [];
+            if (idxDescLocal === -1) faltando.push('Descrição Local');
+            if (idxOP === -1) faltando.push('OP');
+            if (faltando.length) throw new Error("Não encontrei as colunas: " + faltando.join(', ') + " no cabeçalho da planilha.");
+
+            const porOPCosturaDetalhado = [];
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i]; if (!row || row[idxOP] === undefined || row[idxOP] === null || row[idxOP] === '') continue;
+                porOPCosturaDetalhado.push({
+                    op: String(row[idxOP]).trim(),
+                    ciclo: idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '',
+                    local: idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : '',
+                    ref: idxRef !== -1 && row[idxRef] ? String(row[idxRef]).trim().toUpperCase() : '',
+                    descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '',
+                    tipoProduto: idxTipo !== -1 && row[idxTipo] ? String(row[idxTipo]).trim().toUpperCase() : '',
+                    prioridade: idxPrioridade !== -1 && row[idxPrioridade] !== null && row[idxPrioridade] !== undefined ? parseInt(row[idxPrioridade]) : null,
+                    qtd: idxQtd !== -1 ? (parseFloat(row[idxQtd]) || 0) : 0,
+                    minutosCostura: idxMinutosCostura !== -1 && row[idxMinutosCostura] !== null && row[idxMinutosCostura] !== undefined ? parseFloat(row[idxMinutosCostura]) : null,
+                    dataFinalizacao: idxDataFinalizacao !== -1 ? extrairDataExcel(row[idxDataFinalizacao]) : null,
+                });
+            }
+            if (!porOPCosturaDetalhado.length) throw new Error("Nenhuma linha válida encontrada (confira se a coluna OP está preenchida).");
+
+            localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(porOPCosturaDetalhado));
+            input.value = '';
+            renderizarSequenciamentoCostura();
+            showToast(`<i class="fas fa-check-double"></i> ${porOPCosturaDetalhado.length} linhas importadas pro Seq. Costura!`);
+        } catch (err) {
+            console.error('Erro ao processar planilha do Seq. Costura:', err);
+            alert("❌ Não foi possível processar a planilha.\n\nVerifique se ela tem as colunas Descrição Local e OP no cabeçalho.\n\nDetalhe técnico: " + err.message);
+            input.value = '';
+        }
+    };
+    r.readAsArrayBuffer(input.files[0]);
+}
+
+// Junta as linhas da planilha POR_OP (importada junto com a Fila de Corte)
+// que batem com um local específico — com filtro opcional, pra separar o
+// que está misturado no mesmo local no sistema original (o filtro recebe
+// a linha inteira, não só a descrição, já que agora também temos Tipo
+// Produto disponível).
+function obterOPsPorLocalCostura(local, filtro) {
+    return obterPorOPCosturaDetalhado().filter(op => op.local === local && (!filtro || filtro(op)));
+}
+
+// Prioridade 1-98 = ordem normal, menor primeiro. Dentro da prioridade 99
+// (que é o valor padrão, ninguém definiu manualmente), quem já tem uma
+// Data Finalização vem antes de quem não tem — e entre as que têm, a data
+// mais próxima vem primeiro (confirmado com o usuário).
+function compararPrioridadeCostura(a, b) {
+    const prioA = a.prioridade ?? 99, prioB = b.prioridade ?? 99;
+    if (prioA !== prioB) return prioA - prioB;
+    if (prioA === 99) {
+        const temA = !!a.dataFinalizacao, temB = !!b.dataFinalizacao;
+        if (temA && !temB) return -1;
+        if (!temA && temB) return 1;
+        if (temA && temB) return new Date(a.dataFinalizacao) - new Date(b.dataFinalizacao);
+    }
+    return 0;
 }
 
 // Monta a fila de um grupo inteiro: primeiro tudo que já está "em
@@ -2211,13 +2291,12 @@ function obterOPsPorLocalCostura(local, filtroDescricao) {
 function montarFilaSequenciamentoCostura(chaveGrupo) {
     const grupo = GRUPOS_SEQUENCIAMENTO_COSTURA[chaveGrupo];
     if (!grupo) return [];
-    const porPrioridade = (a, b) => (a.numeroPrioridade ?? 99) - (b.numeroPrioridade ?? 99);
-    const emAndamento = obterOPsPorLocalCostura(grupo.emAndamento, grupo.filtroDescricao)
+    const emAndamento = obterOPsPorLocalCostura(grupo.emAndamento, grupo.filtro)
         .map(op => ({ ...op, situacaoCostura: 'Em andamento' }))
-        .sort(porPrioridade);
-    const aguardando = obterOPsPorLocalCostura(grupo.aguardando, grupo.filtroDescricao)
+        .sort(compararPrioridadeCostura);
+    const aguardando = obterOPsPorLocalCostura(grupo.aguardando, grupo.filtro)
         .map(op => ({ ...op, situacaoCostura: 'Aguardando' }))
-        .sort(porPrioridade);
+        .sort(compararPrioridadeCostura);
     return [...emAndamento, ...aguardando];
 }
 
@@ -4231,28 +4310,14 @@ function tempoEfetivoOP(op) {
     return parseFloat(capTemposManuais[op.id]) || 0;
 }
 
-// As OPs de Prioridades (manuais e automáticas do Destino) não guardam um
-// campo de referência separado — só a descrição. A referência é sempre a
-// última palavra da descrição (confirmado com o usuário), então extrai
-// daí quando não tem o campo direto.
-function extrairReferenciaDaDescricao(desc) {
-    if (!desc) return '';
-    const palavras = String(desc).trim().split(/\s+/);
-    return palavras[palavras.length - 1].toUpperCase();
-}
-
-// Tempo de COSTURA (coluna diferente da usada em Montar Produção, que usa
-// "Corte e Etiquetação") — usado no sequenciamento de costura.
+// Tempo de COSTURA já vem pronto na própria planilha POR_OP ("Minutos
+// Costura", já é o total pra quantidade daquela linha, não por peça) — bem
+// mais simples que cruzar com a planilha de tempos por operação (usada só
+// em Montar Produção, que precisa do tempo de Corte e Etiquetação).
 function tempoCosturaOP(op) {
-    const referencia = op.referencia
-        ? String(op.referencia).trim().toUpperCase()
-        : extrairReferenciaDaDescricao(op.desc);
-    const temposPorReferencia = obterTemposPorReferenciaOperacao();
-    const tempoRef = temposPorReferencia[referencia];
-    if (tempoRef && tempoRef['COSTURA'] !== undefined && !isNaN(tempoRef['COSTURA'])) {
-        return tempoRef['COSTURA'] * (parseInt(op.qtd) || 0);
-    }
-    return null; // sem tempo cadastrado pra essa referência
+    return (op.minutosCostura !== null && op.minutosCostura !== undefined && !isNaN(op.minutosCostura))
+        ? op.minutosCostura
+        : null;
 }
 
 // Percorre a fila NA ORDEM (prioridade já aplicada em montarFilaSequenciamentoCostura)
@@ -4298,17 +4363,17 @@ function renderizarSequenciamentoCostura() {
 
     $('seqCostListaOPs').innerHTML = filaComResultado.map(op => {
         const tempoTexto = op.tempoCostura === null
-            ? `<span style="color:var(--cor-alerta);" title="Não achei essa referência na planilha de tempos importada">sem tempo</span>`
+            ? `<span style="color:var(--cor-alerta);" title="Essa linha não trouxe Minutos Costura na planilha importada">sem tempo</span>`
             : op.tempoCostura.toFixed(1).replace('.', ',');
         const situacaoCor = op.situacaoCostura === 'Em andamento' ? 'var(--cor-despacho)' : 'var(--texto-secundario)';
         const iconeCabe = op.cabeHoje
             ? '<i class="fas fa-check-circle" style="color:var(--cor-despacho);"></i>'
             : '<i class="fas fa-xmark" style="color:var(--texto-secundario);"></i>';
         return `<tr${op.cabeHoje ? '' : ' style="opacity:0.5;"'}>
-            <td><strong>${op.id}</strong></td>
+            <td><strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
-            <td>${op.numeroPrioridade ?? '—'}</td>
-            <td>${op.desc || ''}</td>
+            <td>${op.prioridade ?? '—'}</td>
+            <td>${op.descRef || ''}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${tempoTexto}</td>
             <td style="text-align:center;">${iconeCabe}</td>
@@ -6202,6 +6267,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); });
+        wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seqCostPessoas', 'input', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seqCostHoras', 'input', () => { renderizarSequenciamentoCostura(); });

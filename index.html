@@ -839,6 +839,9 @@
         <div class="secao" style="margin-bottom:var(--espaco-md);">
             <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-shirt"></i> SEQUENCIAMENTO DE COSTURA</span></div>
             <div style="display:flex; align-items:flex-end; gap:var(--espaco-md); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
+                <label class="btn somente-admin" style="background:var(--cor-primaria); color:white; cursor:pointer; margin:0;" title="Planilha POR_OP — importação própria dessa aba, separada da Fila de Corte"><i class="fas fa-file-import"></i> IMPORTAR PLANILHA
+                    <input id="inputPorOPCostura" type="file" accept=".xlsx, .xls" style="display:none;">
+                </label>
                 <div class="campo-meta" style="width:220px;"><label>GRUPO</label>
                     <select id="seqCostGrupo">
                         <option value="CALCA">Calça</option>
