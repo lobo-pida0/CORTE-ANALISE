@@ -2212,27 +2212,27 @@ function obterOpsDestinoAutomaticas() {
 const GRUPOS_SEQUENCIAMENTO_COSTURA = {
     CALCA: {
         rotulo: 'Calça',
-        emAndamento: 'PNP COST INF CALCA',
-        aguardando: 'PNP AGUARD DEFINICAO COST INF',
-        filtro: null, // local já é exclusivo, não precisa filtrar
+        emAndamento: 'PNP COST INF CALCA', filtroEmAndamento: null, // local já é exclusivo
+        aguardando: 'PNP AGUARD DEFINICAO COST INF', filtroAguardando: null, // também exclusivo
     },
     MALHA: {
         rotulo: 'Malha',
-        emAndamento: 'PNP COST SUP MALHA',
-        aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada com camisa/jaqueta
-        filtro: (op) => /MALHA/i.test(op.descRef || ''),
+        // "PNP COST SUP MALHA" já é exclusivo de malha — uma OP lá é malha
+        // por definição, não precisa (e não deve) checar a descrição pra
+        // confirmar (bug real: uma OP sem a palavra "MALHA" escrita mas já
+        // fisicamente nesse local sumia da sequência por engano).
+        emAndamento: 'PNP COST SUP MALHA', filtroEmAndamento: null,
+        aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => /MALHA/i.test(op.descRef || ''), // aqui sim precisa, é fila compartilhada
     },
     JAQUETA_GANDOLA_PARKA: {
         rotulo: 'Jaqueta/Gandola/Parka',
-        emAndamento: 'PNP COST SUP CAMISA', // compartilhado com camisa
-        aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada
-        filtro: (op) => ['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto),
+        emAndamento: 'PNP COST SUP CAMISA', filtroEmAndamento: (op) => ['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // compartilhado com camisa
+        aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => ['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // fila compartilhada
     },
     CAMISA: {
         rotulo: 'Camisa',
-        emAndamento: 'PNP COST SUP CAMISA', // compartilhado com jaqueta/gandola/parka
-        aguardando: 'PNP AGUARD DEFINICAO COST SUP', // fila compartilhada
-        filtro: (op) => !/MALHA/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // sobra tudo que não é dos outros grupos
+        emAndamento: 'PNP COST SUP CAMISA', filtroEmAndamento: (op) => !/MALHA/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // compartilhado com jaqueta/gandola/parka
+        aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => !/MALHA/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // fila compartilhada — sobra tudo que não é dos outros grupos
     },
 };
 
@@ -2441,10 +2441,10 @@ function compararPrioridadeCostura(a, b) {
 function montarFilaSequenciamentoCostura(chaveGrupo) {
     const grupo = GRUPOS_SEQUENCIAMENTO_COSTURA[chaveGrupo];
     if (!grupo) return [];
-    const emAndamento = obterOPsPorLocalCostura(grupo.emAndamento, grupo.filtro)
+    const emAndamento = obterOPsPorLocalCostura(grupo.emAndamento, grupo.filtroEmAndamento)
         .map(op => ({ ...op, situacaoCostura: 'Em andamento' }))
         .sort(compararPrioridadeCostura);
-    const aguardando = obterOPsPorLocalCostura(grupo.aguardando, grupo.filtro)
+    const aguardando = obterOPsPorLocalCostura(grupo.aguardando, grupo.filtroAguardando)
         .map(op => ({ ...op, situacaoCostura: 'Aguardando' }))
         .sort(compararPrioridadeCostura);
     return [...emAndamento, ...aguardando];
