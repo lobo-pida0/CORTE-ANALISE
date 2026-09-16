@@ -1144,6 +1144,16 @@ body.modo-tv #controles-tv {
         overflow: visible !important;
     }
 
+    /* .tabela-dados usa "position:sticky" no cabeçalho/rodapé pra ficar
+       grudado durante a rolagem NA TELA — isso não faz sentido numa folha
+       impressa, e em vários navegadores deixa um espaço em branco esquisito
+       no topo da página (o navegador calcula a posição "grudada" como se
+       ainda existisse rolagem, mesmo sem ter). Desliga só na impressão. */
+    .imprimir-isolado th,
+    .imprimir-isolado tfoot td {
+        position: static !important;
+    }
+
     /* a coluna de ações (botão de remover, etc) não faz sentido impressa —
        é clicável, não tem função no papel */
     .imprimir-isolado th:last-child,
