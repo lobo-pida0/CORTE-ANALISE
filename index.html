@@ -858,10 +858,11 @@
                     <div style="font-size:11px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">Minutos disponíveis no dia</div>
                     <div id="seqCostDisponivel" style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">—</div>
                 </div>
+                <button id="btnImprimirSeqCostura" class="btn" style="background:var(--cor-historico); color:white;" title="Imprime só a fila da tela, sem o resto do sistema"><i class="fas fa-print"></i> IMPRIMIR</button>
             </div>
         </div>
 
-        <div class="secao">
+        <div class="secao" id="secaoImprimirSeqCostura">
             <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-list-ol"></i> FILA (em andamento primeiro, depois aguardando — cada parte por prioridade)</span><span id="seqCostContOPs">0 OP(s)</span></div>
             <div class="secao-corpo" style="padding:0; overflow-x:auto;">
                 <table class="tabela-dados" style="width:100%;">

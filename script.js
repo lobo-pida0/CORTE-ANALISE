@@ -6117,6 +6117,20 @@ function exportarBackup() { const a = document.createElement('a'); a.href = URL.
 // página, e não corta tabela grande.
 function imprimirTela() { window.print(); }
 
+// Imprime só UMA seção da tela, isolando ela do resto — genérico, dá pra
+// usar em qualquer aba futura, só passando o id do elemento (não precisa
+// de uma função nova nem de CSS novo pra cada caso).
+function imprimirSecao(idElemento) {
+    const el = document.getElementById(idElemento);
+    if (!el) return;
+    el.classList.add('imprimir-isolado');
+    window.print();
+    // 'afterprint' cobre tanto imprimir de verdade quanto cancelar a
+    // caixa de diálogo — os dois disparam esse evento.
+    const limpar = () => { el.classList.remove('imprimir-isolado'); window.removeEventListener('afterprint', limpar); };
+    window.addEventListener('afterprint', limpar);
+}
+
 // Na hora de imprimir, esconde as OPs que NÃO estão marcadas (só imprime o
 // que foi selecionado) — e some também com a barra "LOTE MATÉRIA-PRIMA" de
 // um bloco inteiro se nenhuma OP dele estiver marcada. Se nada estiver
@@ -6502,6 +6516,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
+        wireEvento('btnImprimirSeqCostura', 'click', () => { imprimirSecao('secaoImprimirSeqCostura'); });
         wireEvento('seqCostPessoas', 'input', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seqCostHoras', 'input', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seqCostEficiencia', 'input', () => { renderizarSequenciamentoCostura(); });

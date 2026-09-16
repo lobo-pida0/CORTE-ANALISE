@@ -1123,6 +1123,34 @@ body.modo-tv #controles-tv {
         overflow: visible !important;
     }
 
+    /* Mecanismo GENÉRICO pra imprimir qualquer seção isolada — em vez de
+       repetir esse bloco pra cada aba nova, é só chamar imprimirSecao(id)
+       (JS), que adiciona essa classe na hora e tira depois. Usado hoje no
+       Seq. Costura, mas serve pra qualquer seção futura. */
+    .imprimir-isolado,
+    .imprimir-isolado * {
+        visibility: visible;
+    }
+
+    .imprimir-isolado {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+
+    .imprimir-isolado .secao-corpo {
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    /* a coluna de ações (botão de remover, etc) não faz sentido impressa —
+       é clicável, não tem função no papel */
+    .imprimir-isolado th:last-child,
+    .imprimir-isolado td:last-child {
+        display: none;
+    }
+
     /* barra "LOTE MATÉRIA-PRIMA" vira branca — repete muito numa lista
        grande, e a cor dela não carrega nenhum significado (diferente do
        selo de pedido, por exemplo) */
