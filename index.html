@@ -867,10 +867,24 @@
                     <thead>
                         <tr>
                             <th>OP</th><th>SITUAÇÃO</th><th>Nº PRIORIDADE</th><th>DATA FINALIZAÇÃO</th><th>DESCRIÇÃO</th>
-                            <th>PEÇAS</th><th>TEMPO (MIN)</th><th>PREVISÃO</th>
+                            <th>PEÇAS</th><th>TEMPO (MIN)</th><th>PREVISÃO</th><th></th>
                         </tr>
                     </thead>
                     <tbody id="seqCostListaOPs"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="secao somente-admin tambem-usuario">
+            <div class="secao-header" style="background:var(--cor-historico);"><span><i class="fas fa-clock-rotate-left"></i> OPs REMOVIDAS DA SEQUÊNCIA</span><span id="seqCostContRemovidas">0</span></div>
+            <div class="secao-corpo" style="padding:0; overflow-x:auto;">
+                <table class="tabela-padrao" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>OP</th><th>CICLO</th><th>DESCRIÇÃO</th><th>REMOVIDO POR</th><th>QUANDO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="seqCostListaRemovidas"></tbody>
                 </table>
             </div>
         </div>

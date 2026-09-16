@@ -2240,6 +2240,90 @@ function obterPorOPCosturaDetalhado() {
     try { return JSON.parse(localStorage.getItem('porOPCosturaDetalhado') || '[]'); } catch (e) { return []; }
 }
 
+// Chave usada pra identificar uma OP de forma única nas duas listas abaixo
+// — "op|ciclo", não só "op", porque o mesmo número de OP já apareceu
+// reaproveitado em ciclos diferentes (avental num ciclo, calçado noutro).
+function chaveOPCostura(op, ciclo) { return `${op}|${ciclo || ''}`; }
+
+// Lista de exclusão permanente: uma vez removida, a OP não volta a
+// aparecer nem numa importação nova (o filtro roda na hora de importar).
+function obterOpsRemovidasSeqCostura() {
+    try { return JSON.parse(localStorage.getItem('opsRemovidasSeqCostura') || '{}'); } catch (e) { return {}; }
+}
+function salvarOpsRemovidasSeqCostura(obj) {
+    localStorage.setItem('opsRemovidasSeqCostura', JSON.stringify(obj));
+}
+
+// Remove uma OP da sequência agora (tira do que está na tela) E pra sempre
+// (fica na lista de exclusão, então nem reimportando ela volta) — guarda
+// quem removeu e quando, pro histórico.
+function removerOPDaSequenciaCostura(op, ciclo) {
+    if (!exigirAdminOuUsuario('remover uma OP da sequência')) return;
+    const todas = obterPorOPCosturaDetalhado();
+    const item = todas.find(o => o.op === op && (o.ciclo || '') === (ciclo || ''));
+    if (!item) return;
+    if (!confirm(`Remover a OP ${op} da sequência?\n\n"${item.descRef || ''}"\n\nEla não vai aparecer de novo, mesmo reimportando a planilha — mas fica guardada na lista de removidas, com um botão de restaurar se for engano.`)) return;
+
+    const chave = chaveOPCostura(op, ciclo);
+    const removidas = obterOpsRemovidasSeqCostura();
+    removidas[chave] = {
+        op, ciclo: ciclo || '', descRef: item.descRef || '',
+        removidoPor: sessaoAdminAtual && sessaoAdminAtual.user ? sessaoAdminAtual.user.email : 'desconhecido',
+        removidoEm: new Date().toISOString(),
+    };
+    salvarOpsRemovidasSeqCostura(removidas);
+
+    const restantes = todas.filter(o => !(o.op === op && (o.ciclo || '') === (ciclo || '')));
+    localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(restantes));
+
+    renderizarSequenciamentoCostura();
+    renderizarOpsRemovidasSeqCostura();
+    showToast(`<i class="fas fa-trash"></i> OP ${op} removida da sequência.`);
+}
+
+// Tira a OP da lista de exclusão — ela não volta sozinha pra tela agora
+// (não tem mais o dado dela em porOPCosturaDetalhado, já que foi removida
+// de lá também), mas a próxima importação da planilha volta a trazer ela
+// normalmente, já que não está mais bloqueada.
+function restaurarOPRemovidaSeqCostura(chave) {
+    if (!exigirAdminOuUsuario('restaurar uma OP removida')) return;
+    const removidas = obterOpsRemovidasSeqCostura();
+    const item = removidas[chave];
+    if (!item) return;
+    if (!confirm(`Restaurar a OP ${item.op}?\n\nEla não aparece na hora — só depois da próxima vez que a planilha for importada de novo.`)) return;
+    delete removidas[chave];
+    salvarOpsRemovidasSeqCostura(removidas);
+    renderizarOpsRemovidasSeqCostura();
+    showToast(`<i class="fas fa-check"></i> OP ${item.op} liberada — reimporte a planilha pra ela voltar.`);
+}
+
+function renderizarOpsRemovidasSeqCostura() {
+    if (!$('seqCostListaRemovidas')) return;
+    const removidas = obterOpsRemovidasSeqCostura();
+    const lista = Object.entries(removidas).sort((a, b) => new Date(b[1].removidoEm) - new Date(a[1].removidoEm));
+
+    if ($('seqCostContRemovidas')) $('seqCostContRemovidas').textContent = lista.length;
+
+    if (!lista.length) {
+        $('seqCostListaRemovidas').innerHTML = `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--texto-secundario);">Nenhuma OP removida ainda.</td></tr>`;
+        return;
+    }
+
+    $('seqCostListaRemovidas').innerHTML = lista.map(([chave, item]) => {
+        const quandoTexto = new Date(item.removidoEm).toLocaleString('pt-BR');
+        const quemTexto = item.removidoPor ? item.removidoPor.split('@')[0].toUpperCase() : '—';
+        return `<tr>
+            <td><strong>${item.op}</strong></td>
+            <td>${item.ciclo || '—'}</td>
+            <td>${item.descRef || ''}</td>
+            <td>${quemTexto}</td>
+            <td style="white-space:nowrap;">${quandoTexto}
+                <button class="btn somente-admin tambem-usuario" style="padding:2px 8px; margin-left:8px; background:var(--cor-despacho); font-size:10px;" onclick="restaurarOPRemovidaSeqCostura('${chave}')" title="Restaurar essa OP (volta a aparecer na próxima importação)"><i class="fas fa-rotate-left"></i> RESTAURAR</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
 // Importação PRÓPRIA da planilha POR_OP pro Seq. Costura — separada da
 // importação de Fila de Corte de propósito (o usuário quis desacoplar as
 // duas, mesmo lendo o mesmo tipo de arquivo). Captura toda linha com OP,
@@ -2281,15 +2365,23 @@ function processarPorOPCostura() {
             const locaisRelevantes = new Set(
                 Object.values(GRUPOS_SEQUENCIAMENTO_COSTURA).flatMap(g => [g.emAndamento, g.aguardando])
             );
+            // OPs removidas ficam de fora pra sempre, mesmo reimportando —
+            // é assim que se limpa o "lixo" (OP que não existe mais, ou
+            // que virou ruído) sem ela voltar toda vez.
+            const removidas = obterOpsRemovidasSeqCostura();
 
+            let puladasPorRemocao = 0;
             const porOPCosturaDetalhado = [];
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || row[idxOP] === undefined || row[idxOP] === null || row[idxOP] === '') continue;
                 const local = idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : '';
                 if (!locaisRelevantes.has(local)) continue;
+                const opId = String(row[idxOP]).trim();
+                const cicloId = idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '';
+                if (removidas[chaveOPCostura(opId, cicloId)]) { puladasPorRemocao++; continue; }
                 porOPCosturaDetalhado.push({
-                    op: String(row[idxOP]).trim(),
-                    ciclo: idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '',
+                    op: opId,
+                    ciclo: cicloId,
                     local: local,
                     ref: idxRef !== -1 && row[idxRef] ? String(row[idxRef]).trim().toUpperCase() : '',
                     descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '',
@@ -2305,7 +2397,9 @@ function processarPorOPCostura() {
             localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(porOPCosturaDetalhado));
             input.value = '';
             renderizarSequenciamentoCostura();
-            showToast(`<i class="fas fa-check-double"></i> ${porOPCosturaDetalhado.length} linhas de costura importadas!`);
+            let msgImportacao = `<i class="fas fa-check-double"></i> ${porOPCosturaDetalhado.length} linhas de costura importadas!`;
+            if (puladasPorRemocao > 0) msgImportacao += ` (${puladasPorRemocao} ficaram de fora por já terem sido removidas antes.)`;
+            showToast(msgImportacao);
         } catch (err) {
             console.error('Erro ao processar planilha do Seq. Costura:', err);
             alert("❌ Não foi possível processar a planilha.\n\nVerifique se ela tem as colunas Descrição Local e OP no cabeçalho.\n\nDetalhe técnico: " + err.message);
@@ -4441,7 +4535,7 @@ function renderizarSequenciamentoCostura() {
     if ($('seqCostContOPs')) $('seqCostContOPs').textContent = `${filaComResultado.length} OP(s)`;
 
     if (!filaComResultado.length) {
-        $('seqCostListaOPs').innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
 
@@ -4494,6 +4588,7 @@ function renderizarSequenciamentoCostura() {
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${tempoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
+            <td style="text-align:center;"><button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Remover essa OP da sequência (não volta nem reimportando)"><i class="fas fa-trash"></i></button></td>
         </tr>`;
     }).join('');
 }
@@ -6383,7 +6478,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
-        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); });
+        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seqCostPessoas', 'input', () => { renderizarSequenciamentoCostura(); });
