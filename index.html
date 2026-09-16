@@ -848,6 +848,7 @@
                         <option value="CAMISA">Camisa</option>
                         <option value="MALHA">Malha</option>
                         <option value="JAQUETA_GANDOLA_PARKA">Jaqueta/Gandola/Parka</option>
+                        <option value="ACABAMENTO">Acabamento</option>
                     </select>
                 </div>
                 <div class="campo-meta" style="width:110px;"><label>Nº DE PESSOAS</label><input type="number" id="seqCostPessoas" min="1" step="1" value="5"></div>
@@ -863,7 +864,7 @@
         <div class="secao">
             <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-list-ol"></i> FILA (em andamento primeiro, depois aguardando — cada parte por prioridade)</span><span id="seqCostContOPs">0 OP(s)</span></div>
             <div class="secao-corpo" style="padding:0; overflow-x:auto;">
-                <table class="tabela-padrao" style="width:100%;">
+                <table class="tabela-dados" style="width:100%;">
                     <thead>
                         <tr>
                             <th>OP</th><th>SITUAÇÃO</th><th>Nº PRIORIDADE</th><th>DATA FINALIZAÇÃO</th><th>DESCRIÇÃO</th>
@@ -878,7 +879,7 @@
         <div class="secao somente-admin tambem-usuario">
             <div class="secao-header" style="background:var(--cor-historico);"><span><i class="fas fa-clock-rotate-left"></i> OPs REMOVIDAS DA SEQUÊNCIA</span><span id="seqCostContRemovidas">0</span></div>
             <div class="secao-corpo" style="padding:0; overflow-x:auto;">
-                <table class="tabela-padrao" style="width:100%;">
+                <table class="tabela-dados" style="width:100%;">
                     <thead>
                         <tr>
                             <th>OP</th><th>CICLO</th><th>DESCRIÇÃO</th><th>REMOVIDO POR</th><th>QUANDO</th>

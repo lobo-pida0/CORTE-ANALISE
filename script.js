@@ -2214,6 +2214,7 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
         rotulo: 'Calça',
         emAndamento: 'PNP COST INF CALCA', filtroEmAndamento: null, // local já é exclusivo
         aguardando: 'PNP AGUARD DEFINICAO COST INF', filtroAguardando: null, // também exclusivo
+        campoTempo: 'minutosCostura',
     },
     MALHA: {
         rotulo: 'Malha',
@@ -2223,16 +2224,27 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
         // fisicamente nesse local sumia da sequência por engano).
         emAndamento: 'PNP COST SUP MALHA', filtroEmAndamento: null,
         aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => /MALHA/i.test(op.descRef || ''), // aqui sim precisa, é fila compartilhada
+        campoTempo: 'minutosCostura',
     },
     JAQUETA_GANDOLA_PARKA: {
         rotulo: 'Jaqueta/Gandola/Parka',
         emAndamento: 'PNP COST SUP CAMISA', filtroEmAndamento: (op) => ['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // compartilhado com camisa
         aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => ['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // fila compartilhada
+        campoTempo: 'minutosCostura',
     },
     CAMISA: {
         rotulo: 'Camisa',
         emAndamento: 'PNP COST SUP CAMISA', filtroEmAndamento: (op) => !/MALHA/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // compartilhado com jaqueta/gandola/parka
         aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => !/MALHA/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // fila compartilhada — sobra tudo que não é dos outros grupos
+        campoTempo: 'minutosCostura',
+    },
+    ACABAMENTO: {
+        rotulo: 'Acabamento',
+        // Setor mais simples — um local só, sem fila de espera separada
+        // (confirmado com o usuário) e sem subdivisão por tipo de peça.
+        emAndamento: 'PNP ACABAMENTO', filtroEmAndamento: null,
+        aguardando: null, filtroAguardando: null,
+        campoTempo: 'minutosAcabamento',
     },
 };
 
@@ -2348,6 +2360,7 @@ function processarPorOPCostura() {
             const idxTipo = cab.findIndex(c => c.includes('TIPO') && c.includes('PRODUTO'));
             const idxPrioridade = cab.findIndex(c => c === 'PRIORIDADE');
             const idxMinutosCostura = cab.findIndex(c => c.includes('MINUTOS') && c.includes('COSTURA'));
+            const idxMinutosAcabamento = cab.findIndex(c => c.includes('MINUTOS') && c.includes('ACABAMENTO'));
             const idxDataFinalizacao = cab.findIndex(c => c.includes('DATA') && c.includes('FINALIZ'));
             const idxCiclo = cab.findIndex(c => c === 'CICLO');
 
@@ -2363,7 +2376,7 @@ function processarPorOPCostura() {
             // guardar tudo passava do limite; só os locais relevantes cabe
             // numa fração do espaço).
             const locaisRelevantes = new Set(
-                Object.values(GRUPOS_SEQUENCIAMENTO_COSTURA).flatMap(g => [g.emAndamento, g.aguardando])
+                Object.values(GRUPOS_SEQUENCIAMENTO_COSTURA).flatMap(g => [g.emAndamento, g.aguardando]).filter(Boolean)
             );
             // OPs removidas ficam de fora pra sempre, mesmo reimportando —
             // é assim que se limpa o "lixo" (OP que não existe mais, ou
@@ -2389,6 +2402,7 @@ function processarPorOPCostura() {
                     prioridade: idxPrioridade !== -1 && row[idxPrioridade] !== null && row[idxPrioridade] !== undefined ? parseInt(row[idxPrioridade]) : null,
                     qtd: idxQtd !== -1 ? (parseFloat(row[idxQtd]) || 0) : 0,
                     minutosCostura: idxMinutosCostura !== -1 && row[idxMinutosCostura] !== null && row[idxMinutosCostura] !== undefined ? parseFloat(row[idxMinutosCostura]) : null,
+                    minutosAcabamento: idxMinutosAcabamento !== -1 && row[idxMinutosAcabamento] !== null && row[idxMinutosAcabamento] !== undefined ? parseFloat(row[idxMinutosAcabamento]) : null,
                     dataFinalizacao: idxDataFinalizacao !== -1 ? extrairDataExcel(row[idxDataFinalizacao]) : null,
                 });
             }
@@ -2442,11 +2456,16 @@ function montarFilaSequenciamentoCostura(chaveGrupo) {
     const grupo = GRUPOS_SEQUENCIAMENTO_COSTURA[chaveGrupo];
     if (!grupo) return [];
     const emAndamento = obterOPsPorLocalCostura(grupo.emAndamento, grupo.filtroEmAndamento)
-        .map(op => ({ ...op, situacaoCostura: 'Em andamento' }))
+        .map(op => ({ ...op, situacaoCostura: 'Em andamento', campoTempo: grupo.campoTempo }))
         .sort(compararPrioridadeCostura);
-    const aguardando = obterOPsPorLocalCostura(grupo.aguardando, grupo.filtroAguardando)
-        .map(op => ({ ...op, situacaoCostura: 'Aguardando' }))
-        .sort(compararPrioridadeCostura);
+    // Acabamento não tem fila de espera separada (confirmado com o
+    // usuário) — só pula essa parte quando o grupo não tiver um local de
+    // "aguardando" definido.
+    const aguardando = grupo.aguardando
+        ? obterOPsPorLocalCostura(grupo.aguardando, grupo.filtroAguardando)
+            .map(op => ({ ...op, situacaoCostura: 'Aguardando', campoTempo: grupo.campoTempo }))
+            .sort(compararPrioridadeCostura)
+        : [];
     return [...emAndamento, ...aguardando];
 }
 
@@ -4464,10 +4483,12 @@ function tempoEfetivoOP(op) {
 // Costura", já é o total pra quantidade daquela linha, não por peça) — bem
 // mais simples que cruzar com a planilha de tempos por operação (usada só
 // em Montar Produção, que precisa do tempo de Corte e Etiquetação).
+// Cada grupo diz qual campo usar (campoTempo, anexado em cada OP por
+// montarFilaSequenciamentoCostura) — "minutosCostura" pros 4 grupos de
+// costura, "minutosAcabamento" pro Acabamento.
 function tempoCosturaOP(op) {
-    return (op.minutosCostura !== null && op.minutosCostura !== undefined && !isNaN(op.minutosCostura))
-        ? op.minutosCostura
-        : null;
+    const valor = op[op.campoTempo || 'minutosCostura'];
+    return (valor !== null && valor !== undefined && !isNaN(valor)) ? valor : null;
 }
 
 // Percorre a fila NA ORDEM (prioridade já aplicada em montarFilaSequenciamentoCostura)
