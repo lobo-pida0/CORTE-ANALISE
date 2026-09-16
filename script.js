@@ -2275,11 +2275,12 @@ function removerOPDaSequenciaCostura(op, ciclo) {
     const item = todas.find(o => o.op === op && (o.ciclo || '') === (ciclo || ''));
     if (!item) return;
     if (!confirm(`Remover a OP ${op} da sequência?\n\n"${item.descRef || ''}"\n\nEla não vai aparecer de novo, mesmo reimportando a planilha — mas fica guardada na lista de removidas, com um botão de restaurar se for engano.`)) return;
+    const motivo = (prompt('Motivo da remoção (opcional — ajuda a lembrar depois por que ela saiu):', '') || '').trim();
 
     const chave = chaveOPCostura(op, ciclo);
     const removidas = obterOpsRemovidasSeqCostura();
     removidas[chave] = {
-        op, ciclo: ciclo || '', descRef: item.descRef || '',
+        op, ciclo: ciclo || '', descRef: item.descRef || '', motivo,
         removidoPor: sessaoAdminAtual && sessaoAdminAtual.user ? sessaoAdminAtual.user.email : 'desconhecido',
         removidoEm: new Date().toISOString(),
     };
@@ -2317,7 +2318,7 @@ function renderizarOpsRemovidasSeqCostura() {
     if ($('seqCostContRemovidas')) $('seqCostContRemovidas').textContent = lista.length;
 
     if (!lista.length) {
-        $('seqCostListaRemovidas').innerHTML = `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--texto-secundario);">Nenhuma OP removida ainda.</td></tr>`;
+        $('seqCostListaRemovidas').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:16px; color:var(--texto-secundario);">Nenhuma OP removida ainda.</td></tr>`;
         return;
     }
 
@@ -2328,6 +2329,7 @@ function renderizarOpsRemovidasSeqCostura() {
             <td><strong>${item.op}</strong></td>
             <td>${item.ciclo || '—'}</td>
             <td>${item.descRef || ''}</td>
+            <td>${item.motivo || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${quemTexto}</td>
             <td style="white-space:nowrap;">${quandoTexto}
                 <button class="btn somente-admin tambem-usuario" style="padding:2px 8px; margin-left:8px; background:var(--cor-despacho); font-size:10px;" onclick="restaurarOPRemovidaSeqCostura('${chave}')" title="Restaurar essa OP (volta a aparecer na próxima importação)"><i class="fas fa-rotate-left"></i> RESTAURAR</button>
