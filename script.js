@@ -2266,6 +2266,62 @@ function salvarOpsRemovidasSeqCostura(obj) {
     localStorage.setItem('opsRemovidasSeqCostura', JSON.stringify(obj));
 }
 
+// Publica UMA remoção/restauração na hora, sem esperar o botão geral de
+// "PUBLICAR NA NUVEM" — é isso que faz outra pessoa, em outro computador,
+// ver a mudança rapidamente. Se falhar (sem internet, etc), avisa mas não
+// desfaz a ação local — ela só fica sem sincronizar até a próxima tentativa.
+async function publicarRemocaoSeqCosturaNaNuvem(chave, item) {
+    if (!supabaseClient) return;
+    try {
+        const { error } = await supabaseClient.from('ops_removidas_seq_costura').upsert({
+            id: chave, op: item.op, ciclo: item.ciclo || '', desc_ref: item.descRef || '', motivo: item.motivo || '',
+            removido_por: item.removidoPor || '', removido_em: item.removidoEm,
+            restaurado_por: item.restauradoPor || null, restaurado_em: item.restauradoEm || null,
+        }, { onConflict: 'id' });
+        if (error) throw error;
+        registrarLogDebug('log', [`[NUVEM] Remoção/restauração de "${item.op}" (Seq. Costura) publicada.`]);
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao publicar remoção do Seq. Costura na nuvem: ' + e.message]);
+        showToast('<i class="fas fa-triangle-exclamation"></i> Salvou aqui, mas não consegui avisar a nuvem — outras pessoas podem não ver essa mudança ainda.', true);
+    }
+}
+
+// Busca a lista inteira da nuvem — pra TODO MUNDO, admin incluído (essa
+// lista precisa ser igual em qualquer computador, diferente da maioria dos
+// outros dados, onde só o visitante/usuario carrega da nuvem e o admin usa
+// o que está local). Também reaplica a exclusão nas OPs já visíveis na
+// tela, caso alguém em outro computador tenha removido algo depois da
+// última importação local — sem isso, a OP ficaria visível até a próxima
+// reimportação.
+async function carregarOpsRemovidasSeqCosturaDaNuvem() {
+    if (!supabaseClient) return;
+    try {
+        const { data, error } = await supabaseClient.from('ops_removidas_seq_costura').select('*');
+        if (error) throw error;
+        const removidas = {};
+        (data || []).forEach(l => {
+            removidas[l.id] = {
+                op: l.op, ciclo: l.ciclo || '', descRef: l.desc_ref || '', motivo: l.motivo || '',
+                removidoPor: l.removido_por || '', removidoEm: l.removido_em,
+                restauradoPor: l.restaurado_por || null, restauradoEm: l.restaurado_em || null,
+            };
+        });
+        salvarOpsRemovidasSeqCostura(removidas);
+
+        const todas = obterPorOPCosturaDetalhado();
+        const restantes = todas.filter(o => {
+            const r = removidas[chaveOPCostura(o.op, o.ciclo)];
+            return !(r && !r.restauradoEm);
+        });
+        if (restantes.length !== todas.length) localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(restantes));
+
+        renderizarSequenciamentoCostura();
+        renderizarOpsRemovidasSeqCostura();
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao carregar remoções do Seq. Costura da nuvem: ' + e.message]);
+    }
+}
+
 // Remove uma OP da sequência agora (tira do que está na tela) E pra sempre
 // (fica na lista de exclusão, então nem reimportando ela volta) — guarda
 // quem removeu e quando, pro histórico.
@@ -2283,8 +2339,10 @@ function removerOPDaSequenciaCostura(op, ciclo) {
         op, ciclo: ciclo || '', descRef: item.descRef || '', motivo,
         removidoPor: sessaoAdminAtual && sessaoAdminAtual.user ? sessaoAdminAtual.user.email : 'desconhecido',
         removidoEm: new Date().toISOString(),
+        restauradoPor: null, restauradoEm: null,
     };
     salvarOpsRemovidasSeqCostura(removidas);
+    publicarRemocaoSeqCosturaNaNuvem(chave, removidas[chave]);
 
     const restantes = todas.filter(o => !(o.op === op && (o.ciclo || '') === (ciclo || '')));
     localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(restantes));
@@ -2294,18 +2352,22 @@ function removerOPDaSequenciaCostura(op, ciclo) {
     showToast(`<i class="fas fa-trash"></i> OP ${op} removida da sequência.`);
 }
 
-// Tira a OP da lista de exclusão — ela não volta sozinha pra tela agora
-// (não tem mais o dado dela em porOPCosturaDetalhado, já que foi removida
-// de lá também), mas a próxima importação da planilha volta a trazer ela
-// normalmente, já que não está mais bloqueada.
+// Marca como restaurada (não apaga o registro) — assim o histórico
+// continua mostrando que ela foi removida e depois voltou, em vez de
+// simplesmente sumir a linha. Ela não volta sozinha pra tela agora (não
+// tem mais o dado dela em porOPCosturaDetalhado), mas a próxima
+// importação da planilha volta a trazer ela normalmente, já que a checagem
+// de exclusão passa a ignorar registros restaurados.
 function restaurarOPRemovidaSeqCostura(chave) {
     if (!exigirAdminOuUsuario('restaurar uma OP removida')) return;
     const removidas = obterOpsRemovidasSeqCostura();
     const item = removidas[chave];
-    if (!item) return;
+    if (!item || item.restauradoEm) return;
     if (!confirm(`Restaurar a OP ${item.op}?\n\nEla não aparece na hora — só depois da próxima vez que a planilha for importada de novo.`)) return;
-    delete removidas[chave];
+    item.restauradoPor = sessaoAdminAtual && sessaoAdminAtual.user ? sessaoAdminAtual.user.email : 'desconhecido';
+    item.restauradoEm = new Date().toISOString();
     salvarOpsRemovidasSeqCostura(removidas);
+    publicarRemocaoSeqCosturaNaNuvem(chave, item);
     renderizarOpsRemovidasSeqCostura();
     showToast(`<i class="fas fa-check"></i> OP ${item.op} liberada — reimporte a planilha pra ela voltar.`);
 }
@@ -2393,7 +2455,8 @@ function processarPorOPCostura() {
                 if (!locaisRelevantes.has(local)) continue;
                 const opId = String(row[idxOP]).trim();
                 const cicloId = idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '';
-                if (removidas[chaveOPCostura(opId, cicloId)]) { puladasPorRemocao++; continue; }
+                const registroRemocao = removidas[chaveOPCostura(opId, cicloId)];
+                if (registroRemocao && !registroRemocao.restauradoEm) { puladasPorRemocao++; continue; }
                 porOPCosturaDetalhado.push({
                     op: opId,
                     ciclo: cicloId,
@@ -6515,7 +6578,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
-        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); });
+        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnImprimirSeqCostura', 'click', () => { imprimirSecao('secaoImprimirSeqCostura'); });
@@ -6647,6 +6710,11 @@ window.onload = function () {
         // a página na mão pra ver publicação nova. Admin não precisa disso (usa
         // o dado local, ao vivo).
         setInterval(() => { if (papelUsuarioAtual !== 'admin') carregarTudoDaNuvemParaVisitante(); }, 3 * 60 * 1000);
+        // Remoções do Seq. Costura são diferentes — precisam ficar iguais em
+        // QUALQUER computador, admin incluído, já que o objetivo é o admin
+        // conseguir ver o que outra pessoa removeu de outro lugar.
+        carregarOpsRemovidasSeqCosturaDaNuvem();
+        setInterval(carregarOpsRemovidasSeqCosturaDaNuvem, 3 * 60 * 1000);
     });
     atualizarBadgeConsoleDebug();
 };
