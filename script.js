@@ -2643,14 +2643,17 @@ function salvarMovimentacoesPorSetor(obj) {
 
 // A nuvem trabalha com linhas, não com o objeto aninhado que usamos aqui —
 // essas duas funções convertem de um formato pro outro. Chave da linha:
-// "setor|op" (uma OP só tem UMA entrada por setor, então essa combinação
-// já é única sozinha).
+// "setor|op|data" — precisa da DATA também, senão a mesma OP passando 2x
+// pelo mesmo setor em dias diferentes colide na mesma linha da nuvem e
+// uma sobrescreve a outra (mesmo bug que existia no armazenamento local,
+// corrigido junto).
 function movimentacoesParaLinhasSupabase() {
     const todas = obterMovimentacoesPorSetor();
     const linhas = [];
     Object.entries(todas).forEach(([setor, porOP]) => {
-        Object.entries(porOP).forEach(([opId, m]) => {
-            linhas.push({ id: `${setor}|${opId}`, setor, op: opId, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, atualizado_em: new Date().toISOString() });
+        Object.values(porOP).forEach(m => {
+            const dataSlice = m.data ? new Date(m.data).toISOString().slice(0, 10) : 'semdata';
+            linhas.push({ id: `${setor}|${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, atualizado_em: new Date().toISOString() });
         });
     });
     return linhas;
@@ -2660,7 +2663,9 @@ function linhasSupabaseParaMovimentacoes(linhas) {
     (linhas || []).forEach(l => {
         if (!l.setor || !l.op) return;
         if (!todas[l.setor]) todas[l.setor] = {};
-        todas[l.setor][l.op] = { ciclo: l.ciclo || '', data: l.data, qtd: l.qtd || 0 };
+        const dataSlice = l.data ? String(l.data).slice(0, 10) : 'semdata';
+        const chaveMovimento = `${l.op}|${dataSlice}`;
+        todas[l.setor][chaveMovimento] = { op: l.op, ciclo: l.ciclo || '', data: l.data, qtd: l.qtd || 0 };
     });
     return todas;
 }
@@ -2716,7 +2721,7 @@ function processarMovimentacaoSetor() {
             const idxLocalDestino = cabecalho.findIndex(c => c === 'DS. LOCALDESTINO');
             // Não sabemos o nome exato dessa coluna nessa planilha — busca
             // tolerante por qualquer cabeçalho que tenha "DESCRI" nele.
-            const idxDescricao = cabecalho.findIndex(c => c.includes('DESCRI'));
+            const idxDescricao = cabecalho.findIndex(c => c.includes('DESCRI') || (c.includes('PRODUTO') && c.startsWith('DS')));
             if (idxOP === -1 || idxData === -1 || idxQtd === -1 || idxLocalOrigem === -1) {
                 throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localorigem) no cabeçalho da primeira linha.");
             }
@@ -2770,7 +2775,14 @@ function processarMovimentacaoSetor() {
                 const qtd = qtdBase * vezes;
                 if (vezes > 1) linhasComMultiplicador++;
                 if (!todas[setor]) todas[setor] = {};
-                todas[setor][opId] = { ciclo, data: data.toISOString(), qtd };
+                // Chave inclui a DATA (não só o OP) — sem isso, quando a
+                // mesma OP passa pelo mesmo setor 2x em dias diferentes
+                // (retrabalho, correção), a segunda ocorrência processada
+                // apagava a primeira silenciosamente (bug real encontrado
+                // pelo usuário: OP 3612 no Corte em 04/09 E 11/09, só a
+                // segunda sobrevivia).
+                const chaveMovimento = `${opId}|${data.toISOString().slice(0, 10)}`;
+                todas[setor][chaveMovimento] = { op: opId, ciclo, data: data.toISOString(), qtd };
                 setoresEncontrados.add(setor);
                 linhasLidas++;
             }
@@ -2841,7 +2853,7 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
 
     const totalPorDia = {};
     const opsPorDia = {}; // quais OPs tiveram movimento em cada dia, pra contar distintas por semana
-    Object.entries(movimentos).forEach(([opId, m]) => {
+    Object.values(movimentos).forEach(m => {
         if (!m.data) return;
         const data = new Date(m.data);
         const chaveDoMes = data.toISOString().slice(0, 7);
@@ -2858,7 +2870,7 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
         const dia = data.getUTCDate();
         totalPorDia[dia] = (totalPorDia[dia] || 0) + m.qtd;
         if (!opsPorDia[dia]) opsPorDia[dia] = new Set();
-        opsPorDia[dia].add(opId);
+        opsPorDia[dia].add(m.op);
     });
 
     // Agrupa os dias úteis do mês em semanas de segunda a sexta — a chave
@@ -2901,11 +2913,20 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
 // todas as OPs que têm os dois dados disponíveis.
 function calcularLeadTimeSetor(setor) {
     const movimentos = obterMovimentacoesPorSetor()[setor] || {};
+    // Uma OP pode ter mais de um movimento no mesmo setor (revisita,
+    // retrabalho) — pra lead time, importa só a PRIMEIRA vez que ela
+    // chegou lá, não cada revisita (diferente do total de peças/OPs do
+    // gráfico, onde toda revisita conta como trabalho de verdade).
+    const primeiraChegadaPorOP = {};
+    Object.values(movimentos).forEach(m => {
+        if (!m.data) return;
+        if (!primeiraChegadaPorOP[m.op] || m.data < primeiraChegadaPorOP[m.op]) primeiraChegadaPorOP[m.op] = m.data;
+    });
     const leadTimes = [];
-    Object.keys(movimentos).forEach(opId => {
+    Object.entries(primeiraChegadaPorOP).forEach(([opId, dataChegada]) => {
         const op = bancoDadosOPs.find(o => o.id === opId);
         if (!op || !op.dataInclusao) return;
-        const dataEntradaSetor = new Date(movimentos[opId].data);
+        const dataEntradaSetor = new Date(dataChegada);
         const dataInclusao = new Date(op.dataInclusao);
         const dias = Math.round((dataEntradaSetor - dataInclusao) / 86400000);
         if (dias >= 0) leadTimes.push(dias); // datas invertidas = dado inconsistente, ignora
@@ -2929,23 +2950,23 @@ function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
 
     // Agrupa as OPs de origem por dia (só do mês escolhido)
     const opsPorDiaOrigem = {};
-    Object.entries(movsOrigem).forEach(([opId, m]) => {
+    Object.values(movsOrigem).forEach(m => {
         if (!m.data) return;
         const dia = new Date(m.data).toISOString().slice(0, 10);
         if (!dia.startsWith(anoMes)) return;
         if (!opsPorDiaOrigem[dia]) opsPorDiaOrigem[dia] = new Set();
-        opsPorDiaOrigem[dia].add(opId);
+        opsPorDiaOrigem[dia].add(m.op);
     });
 
     // Pra cada OP, todas as datas em que ela aparece no destino (uma OP
     // pode, em tese, ter passado por reprocessamento e aparecer mais de
-    // uma vez, embora o armazenamento normal só guarde a mais recente)
+    // uma vez — e agora isso é guardado de verdade, não só "em tese")
     const datasDestinoPorOP = {};
-    Object.entries(movsDestino).forEach(([opId, m]) => {
+    Object.values(movsDestino).forEach(m => {
         if (!m.data) return;
         const dia = new Date(m.data).toISOString().slice(0, 10);
-        if (!datasDestinoPorOP[opId]) datasDestinoPorOP[opId] = new Set();
-        datasDestinoPorOP[opId].add(dia);
+        if (!datasDestinoPorOP[m.op]) datasDestinoPorOP[m.op] = new Set();
+        datasDestinoPorOP[m.op].add(dia);
     });
 
     const resultado = [];
@@ -3066,13 +3087,13 @@ function renderizarGraficoKPI() {
         const movs = todasMovimentacoes[setor] || {};
         totalPorSetorPorDia[setor] = {};
         opsPorSetorPorDia[setor] = {};
-        Object.entries(movs).forEach(([opId, m]) => {
+        Object.values(movs).forEach(m => {
             if (!m.data) return;
             const dia = new Date(m.data).toISOString().slice(0, 10);
             if (mesSelecionado && !dia.startsWith(mesSelecionado)) return;
             totalPorSetorPorDia[setor][dia] = (totalPorSetorPorDia[setor][dia] || 0) + m.qtd;
             if (!opsPorSetorPorDia[setor][dia]) opsPorSetorPorDia[setor][dia] = new Set();
-            opsPorSetorPorDia[setor][dia].add(opId);
+            opsPorSetorPorDia[setor][dia].add(m.op);
             todasDatas.add(dia);
         });
     });
