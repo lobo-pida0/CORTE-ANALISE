@@ -2572,6 +2572,23 @@ const MAPEAMENTO_LOCAL_DESTINO_KPI = {
     'PNP PPCP - PROGRAMACAO': 'PCP PROGRAMACAO-CORTE',
 };
 
+// Algumas peças passam mais de uma vez pelo Corte/Enfesto de verdade
+// (tecido principal, forro, dublada como camadas separadas) — confirmado
+// com o usuário: Paletó e Blazer = 3x, Jaqueta = 2x, resto (inclusive
+// Calça) fica 1x, sem multiplicar. Só vale pra esses 2 setores, onde o
+// trabalho de fato se repete por camada — nos outros 5, a peça passa uma
+// vez só, independente do tipo.
+const SETORES_COM_MULTIPLICADOR_CAMADAS_KPI = new Set(['CORTE', 'ENFESTO']);
+const MULTIPLICADOR_CAMADAS_KPI = [
+    { termo: /PALET[OÓ]/i, vezes: 3 },
+    { termo: /BLAZER/i, vezes: 3 },
+    { termo: /JAQUETA/i, vezes: 2 },
+];
+function multiplicadorDeCamadas(descricao) {
+    const encontrado = MULTIPLICADOR_CAMADAS_KPI.find(m => m.termo.test(descricao || ''));
+    return encontrado ? encontrado.vezes : 1;
+}
+
 function obterMovimentacoesPorSetor() {
     try { return JSON.parse(localStorage.getItem('movimentacoesPorSetorKPI') || '{}'); } catch (e) { return {}; }
 }
@@ -2697,6 +2714,9 @@ function processarMovimentacaoSetor() {
             const idxQtd = cabecalho.findIndex(c => c === 'QT. MOVIMENTO');
             const idxLocalOrigem = cabecalho.findIndex(c => c === 'DS. LOCALORIGEM');
             const idxLocalDestino = cabecalho.findIndex(c => c === 'DS. LOCALDESTINO');
+            // Não sabemos o nome exato dessa coluna nessa planilha — busca
+            // tolerante por qualquer cabeçalho que tenha "DESCRI" nele.
+            const idxDescricao = cabecalho.findIndex(c => c.includes('DESCRI'));
             if (idxOP === -1 || idxData === -1 || idxQtd === -1 || idxLocalOrigem === -1) {
                 throw new Error("Não encontrei as colunas esperadas (Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localorigem) no cabeçalho da primeira linha.");
             }
@@ -2715,7 +2735,7 @@ function processarMovimentacaoSetor() {
             // não produção nova).
             const todas = obterMovimentacoesPorSetor();
             const setoresEncontrados = new Set();
-            let linhasLidas = 0, linhasComLocalDesconhecido = 0, linhasSemDestino = 0, linhasRetrocedendo = 0;
+            let linhasLidas = 0, linhasComLocalDesconhecido = 0, linhasSemDestino = 0, linhasRetrocedendo = 0, linhasComMultiplicador = 0;
 
             for (let i = 1; i < linhas.length; i++) {
                 const campos = linhas[i].split(';');
@@ -2744,7 +2764,11 @@ function processarMovimentacaoSetor() {
                 // entre os 7 que já mapeamos.
 
                 const ciclo = idxCiclo !== -1 && campos[idxCiclo] ? String(campos[idxCiclo]).trim() : '';
-                const qtd = parseInt(campos[idxQtd]) || 0;
+                const qtdBase = parseInt(campos[idxQtd]) || 0;
+                const descricao = idxDescricao !== -1 && campos[idxDescricao] ? String(campos[idxDescricao]).trim() : '';
+                const vezes = SETORES_COM_MULTIPLICADOR_CAMADAS_KPI.has(setor) ? multiplicadorDeCamadas(descricao) : 1;
+                const qtd = qtdBase * vezes;
+                if (vezes > 1) linhasComMultiplicador++;
                 if (!todas[setor]) todas[setor] = {};
                 todas[setor][opId] = { ciclo, data: data.toISOString(), qtd };
                 setoresEncontrados.add(setor);
@@ -2758,6 +2782,8 @@ function processarMovimentacaoSetor() {
             if (linhasComLocalDesconhecido > 0) msg += ` ${linhasComLocalDesconhecido} com local de origem desconhecido.`;
             if (linhasSemDestino > 0) msg += ` ${linhasSemDestino} sem destino (não contadas como produção).`;
             if (linhasRetrocedendo > 0) msg += ` ${linhasRetrocedendo} voltando pra trás na esteira (não contadas como produção).`;
+            if (linhasComMultiplicador > 0) msg += ` ${linhasComMultiplicador} com quantidade multiplicada por camada (Paletó/Blazer/Jaqueta).`;
+            else if (idxDescricao === -1) msg += ' Não achei a coluna de descrição da peça — o multiplicador de camadas (Paletó/Blazer/Jaqueta) não foi aplicado nessa importação.';
             showToast(msg);
             renderizarGraficoKPI();
         } catch (err) {
