@@ -3199,6 +3199,7 @@ function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
         const todasSemanas = calcularMediaPorSemanaDoMes(setor, mesSelecionado);
         const semanas = todasSemanas.filter(s => s.diasComMovimento > 0); // esconde semana sem dado nenhum, em vez de repetir "0 peças/dia" várias vezes
         const lead = calcularLeadTimeSetor(setor);
+        const totalMovimentado = semanas.reduce((acc, s) => acc + s.totalSemana, 0);
         const linhasSemanas = semanas.length
             ? semanas.map(s => `
             <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px; padding:4px 0; border-bottom:1px solid var(--borda-cor);">
@@ -3213,8 +3214,16 @@ function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
         <div class="kpi-card" style="flex:1; min-width:240px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px;">
             <div style="font-weight:700; margin-bottom:8px; font-size:12px;">${setor}</div>
             ${linhasSemanas}
-            <div style="font-size:11px; color:var(--texto-secundario); margin-top:8px;">Lead time médio</div>
-            <div style="font-size:18px; font-weight:900;">${lead.mediaLeadTime !== null ? lead.mediaLeadTime + ' dias' : '—'}</div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:8px;">
+                <div>
+                    <div style="font-size:11px; color:var(--texto-secundario);">Lead time médio</div>
+                    <div style="font-size:18px; font-weight:900;">${lead.mediaLeadTime !== null ? lead.mediaLeadTime + ' dias' : '—'}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:11px; color:var(--texto-secundario);">Total no mês</div>
+                    <div style="font-size:18px; font-weight:900;">${totalMovimentado.toLocaleString('pt-BR')}</div>
+                </div>
+            </div>
         </div>`;
     }).join('');
 }
