@@ -2582,6 +2582,7 @@ const SETORES_COM_MULTIPLICADOR_CAMADAS_KPI = new Set(['CORTE', 'ENFESTO']);
 const MULTIPLICADOR_CAMADAS_KPI = [
     { termo: /PALET[OÓ]/i, vezes: 3 },
     { termo: /BLAZER/i, vezes: 3 },
+    { termo: /SOBRETUDO/i, vezes: 3 },
     { termo: /JAQUETA/i, vezes: 2 },
 ];
 function multiplicadorDeCamadas(descricao) {
