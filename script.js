@@ -2246,6 +2246,21 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
         aguardando: null, filtroAguardando: null,
         campoTempo: 'minutosAcabamento',
     },
+    ENFESTO: {
+        rotulo: 'Enfesto',
+        // Também um local só, sem fila de espera separada. Diferente dos
+        // outros grupos: não existe tempo confiável pra esse setor (o que
+        // tem hoje é baseado na metragem dos esquemas, sem como levar pra
+        // planilha) — confirmado com o usuário, que prefere só a fila
+        // ORDENADA (por data/prioridade), sem tentar simular um
+        // cronograma sem dado de verdade por trás. "minutosEnfesto" nunca
+        // é preenchido na importação de propósito — isso já faz o
+        // tempo/previsão aparecerem como "sem tempo"/"—" sozinhos, sem
+        // precisar de nenhuma lógica especial pra esse grupo.
+        emAndamento: 'PNP ENFESTO', filtroEmAndamento: null,
+        aguardando: null, filtroAguardando: null,
+        campoTempo: 'minutosEnfesto',
+    },
 };
 
 function obterPorOPCosturaDetalhado() {
