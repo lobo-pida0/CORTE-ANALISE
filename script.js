@@ -3257,40 +3257,31 @@ function renderizarGraficoAcertividadeKPI() {
     if (graficoAcertividadeKPIInstance) { graficoAcertividadeKPIInstance.destroy(); graficoAcertividadeKPIInstance = null; }
     if (!mesSelecionado) return;
 
-    const paresParaMostrar = valorSelecionado === 'TODOS'
-        ? PARES_ADJACENTES_KPI.map((par, idx) => ({ par, idx }))
-        : [{ par: PARES_ADJACENTES_KPI[parseInt(valorSelecionado)], idx: parseInt(valorSelecionado) }];
+    // Só um par por vez agora — porcentagem permitia comparar vários pares
+    // na mesma escala (0-100%), mas isso escondia o problema real (1 OP
+    // batendo já vira 100%, igual 28 de 30 batendo — informações bem
+    // diferentes de confiabilidade, aparentando ser a mesma coisa no
+    // gráfico). Quantidade não tem essa mesma escala comum entre pares
+    // diferentes, então "Todos os pares" foi removido — usuário confirmou
+    // preferir só o modo de um par.
+    const par = PARES_ADJACENTES_KPI[parseInt(valorSelecionado)];
+    const dados = calcularAcertividadeSetores(par[0], par[1], mesSelecionado);
+    if (!dados.length) return; // par não teve OP saindo da origem nesse mês
 
-    // Calcula a acertividade de cada par sendo mostrado, e monta um mapa
-    // dia -> resultado, pra poder alinhar todos os pares no mesmo eixo X.
-    const resultadosPorPar = paresParaMostrar.map(({ par }) => {
-        const [origem, destino] = par;
-        const dados = calcularAcertividadeSetores(origem, destino, mesSelecionado);
-        const porDia = {};
-        dados.forEach(d => { porDia[d.dia] = d; });
-        return { par, dados, porDia };
-    });
-
-    // União de todas as datas que aparecem em QUALQUER par mostrado
-    const todasDatas = new Set();
-    resultadosPorPar.forEach(r => r.dados.forEach(d => todasDatas.add(d.dia)));
-    const datasOrdenadas = [...todasDatas].sort();
-    if (!datasOrdenadas.length) return; // nenhum dos pares tem OP saindo da origem nesse mês
-
-    const cores = ['#4C8C4A', '#B8862A', '#3D6B87', '#7A4B8C', '#C0504D', '#4472C4'];
-    const coresOriginaisAcertividade = resultadosPorPar.map((r, i) => cores[i % cores.length]);
-    const datasets = resultadosPorPar.map((r, i) => ({
-        label: `${r.par[0]} → ${r.par[1]}`,
-        // null pros dias que esse par específico não teve OP saindo da
-        // origem — deixa uma frestinha na linha em vez de fingir 0%, que
-        // seria enganoso (0% de acerto é diferente de "não teve OP saindo
-        // nesse dia").
-        data: datasOrdenadas.map(dia => r.porDia[dia] ? r.porDia[dia].percentual : null),
-        borderColor: coresOriginaisAcertividade[i],
-        backgroundColor: coresOriginaisAcertividade[i],
-        tension: 0.25,
-        fill: false,
-    }));
+    const datasOrdenadas = dados.map(d => d.dia);
+    const cores = ['#4C8C4A', '#C0504D']; // verde = total, vermelho = quantos bateram
+    const datasets = [
+        {
+            label: 'Total que saiu da origem',
+            data: dados.map(d => d.totalOrigem),
+            borderColor: cores[0], backgroundColor: cores[0], tension: 0.25, fill: false,
+        },
+        {
+            label: 'Bateram no destino em até 2 dias',
+            data: dados.map(d => d.acertos),
+            borderColor: cores[1], backgroundColor: cores[1], tension: 0.25, fill: false,
+        },
+    ];
 
     graficoAcertividadeKPIInstance = new Chart(canvas, {
         type: 'line',
@@ -3298,28 +3289,26 @@ function renderizarGraficoAcertividadeKPI() {
         options: {
             responsive: true, maintainAspectRatio: false,
             onHover: (event, activeElements, chart) => {
-                destacarLinhaGrafico(chart, activeElements.length ? activeElements[0].datasetIndex : null, coresOriginaisAcertividade);
+                destacarLinhaGrafico(chart, activeElements.length ? activeElements[0].datasetIndex : null, cores);
             },
             plugins: {
                 legend: {
-                    display: paresParaMostrar.length > 1,
-                    onHover: (event, legendItem, legend) => destacarLinhaGrafico(legend.chart, legendItem.datasetIndex, coresOriginaisAcertividade),
-                    onLeave: (event, legendItem, legend) => destacarLinhaGrafico(legend.chart, null, coresOriginaisAcertividade),
+                    display: true,
+                    onHover: (event, legendItem, legend) => destacarLinhaGrafico(legend.chart, legendItem.datasetIndex, cores),
+                    onLeave: (event, legendItem, legend) => destacarLinhaGrafico(legend.chart, null, cores),
                 },
-                datalabels: { display: false }, // mesmo motivo do gráfico principal — sem isso, poluía a tela
+                datalabels: { display: false },
                 tooltip: {
                     callbacks: {
                         label: function (context) {
-                            const dia = datasOrdenadas[context.dataIndex];
-                            const r = resultadosPorPar[context.datasetIndex];
-                            const d = r.porDia[dia];
-                            if (!d) return `${r.par.join(' → ')}: sem OP saindo nesse dia`;
-                            return `${r.par.join(' → ')}: ${d.percentual}% (${d.acertos} de ${d.totalOrigem} OPs bateram em até 2 dias)`;
+                            const d = dados[context.dataIndex];
+                            if (context.datasetIndex === 0) return `Total que saiu de ${par[0]}: ${d.totalOrigem} OP(s)`;
+                            return `Bateram em ${par[1]} em até 2 dias: ${d.acertos} de ${d.totalOrigem} OP(s)`;
                         }
                     }
                 }
             },
-            scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: '% de OPs que bateram' } } }
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'OPs' } } }
         }
     });
 }
