@@ -2272,6 +2272,21 @@ function obterPorOPCosturaDetalhado() {
 // reaproveitado em ciclos diferentes (avental num ciclo, calçado noutro).
 function chaveOPCostura(op, ciclo) { return `${op}|${ciclo || ''}`; }
 
+// Cruza uma OP do Sequenciamento da Produção com o dado de Prioridades
+// (fonte totalmente separada — vem de uma importação diferente) só pra
+// puxar o Mês Destino, quando existir. Confere as 3 fontes que Prioridades
+// já usa, na mesma ordem de prioridade que a tela de lá usa.
+function obterMesDestinoDaOP(opId) {
+    const doSincronizado = bancoDadosOPs.find(o => o.id === opId);
+    if (doSincronizado && doSincronizado.mesDestino) return doSincronizado.mesDestino;
+    const manuais = obterOpsManuaisPrioridade();
+    const daManual = manuais.find(o => o.id === opId);
+    if (daManual && daManual.mesDestino) return daManual.mesDestino;
+    const automaticas = obterOpsDestinoAutomaticas();
+    if (automaticas[opId] && automaticas[opId].mesDestino) return automaticas[opId].mesDestino;
+    return null;
+}
+
 // Lista de exclusão permanente: uma vez removida, a OP não volta a
 // aparecer nem numa importação nova (o filtro roda na hora de importar).
 function obterOpsRemovidasSeqCostura() {
@@ -4752,7 +4767,7 @@ function renderizarSequenciamentoCostura() {
     if ($('seqCostContOPs')) $('seqCostContOPs').textContent = `${filaComResultado.length} OP(s)`;
 
     if (!filaComResultado.length) {
-        $('seqCostListaOPs').innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
 
@@ -4809,6 +4824,7 @@ function renderizarSequenciamentoCostura() {
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
             <td>${dataFinalizacaoHtml}</td>
+            <td>${obterMesDestinoDaOP(op.op) || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.descRef || ''}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${tempoTexto}</td>
