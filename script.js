@@ -4799,7 +4799,7 @@ function renderizarSequenciamentoCostura() {
         const chaveLinha = chaveOPCostura(op.op, op.ciclo);
         const arrastavel = grupo === 'ENFESTO';
         const atributosArrastar = arrastavel ? `draggable="true" data-chave-arrastar="${chaveLinha}"` : '';
-        const cursorArrastar = arrastavel ? ' cursor:grab;' : '';
+        const cursorArrastar = arrastavel ? ' cursor:grab; user-select:none;' : '';
         return `<tr${atributosArrastar} style="${comecaHoje ? '' : 'opacity:0.6;'}${cursorArrastar}">
             <td>${arrastavel ? '<i class="fas fa-grip-vertical" style="color:var(--texto-secundario); margin-right:6px;" title="Arraste pra reordenar"></i>' : ''}<strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
@@ -4828,9 +4828,17 @@ function wireArrastarSoltarEnfesto() {
     if (!tbody) return;
     let linhaArrastada = null;
     tbody.querySelectorAll('tr[draggable="true"]').forEach(tr => {
-        tr.addEventListener('dragstart', () => { linhaArrastada = tr; tr.style.opacity = '0.4'; });
+        tr.addEventListener('dragstart', (e) => {
+            linhaArrastada = tr;
+            // Sem isso, vários navegadores simplesmente não disparam o
+            // evento de soltar depois — o valor em si não importa, só
+            // precisa chamar setData pra "validar" o arrasto.
+            e.dataTransfer.setData('text/plain', tr.getAttribute('data-chave-arrastar') || '');
+            e.dataTransfer.effectAllowed = 'move';
+            tr.style.opacity = '0.4';
+        });
         tr.addEventListener('dragend', () => { tr.style.opacity = ''; });
-        tr.addEventListener('dragover', (e) => e.preventDefault());
+        tr.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
         tr.addEventListener('drop', (e) => {
             e.preventDefault();
             if (!linhaArrastada || linhaArrastada === tr) return;
