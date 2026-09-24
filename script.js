@@ -3031,9 +3031,9 @@ function calcularLeadTimeSetor(setor) {
 const PARES_ADJACENTES_KPI = SETORES_KPI.slice(0, -1).map((s, i) => [s, SETORES_KPI[i + 1]]);
 
 // "Acertividade": pra cada dia que teve OPs saindo do setor de ORIGEM,
-// quantas dessas MESMAS OPs também aparecem no setor de DESTINO dentro de
-// uma janela de até 2 dias depois (confirmado com o usuário — nem toda OP
-// anda tão rápido assim pra aparecer já no dia seguinte).
+// quantas dessas MESMAS OPs também aparecem no setor de DESTINO no dia
+// SEGUINTE (janela reduzida de 2 dias pra 1 depois de o usuário achar o
+// resultado de 2 dias "estranho" — 1 dia dá um retrato mais rigoroso).
 function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
     const movsOrigem = obterMovimentacoesPorSetor()[setorOrigem] || {};
     const movsDestino = obterMovimentacoesPorSetor()[setorDestino] || {};
@@ -3066,7 +3066,7 @@ function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
         opsDoDia.forEach(opId => {
             const datasNoDestino = datasDestinoPorOP[opId];
             if (!datasNoDestino) return;
-            for (let deslocamento = 1; deslocamento <= 2; deslocamento++) {
+            for (let deslocamento = 1; deslocamento <= 1; deslocamento++) {
                 if (datasNoDestino.has(somarDiasChaveData(diaOrigem, deslocamento))) { acertos++; break; }
             }
         });
@@ -3247,7 +3247,7 @@ let graficoAcertividadeKPIInstance = null;
 // Gráfico próprio de "acertividade" entre dois setores adjacentes — mostra
 // dia a dia, dentro do mês escolhido no seletor principal, quantas OPs que
 // saíram do setor de origem apareceram no setor seguinte da esteira
-// (dentro de até 2 dias depois, que é a janela combinada com o usuário).
+// (no dia seguinte — janela ajustada de 2 pra 1 dia a pedido do usuário).
 function renderizarGraficoAcertividadeKPI() {
     const canvas = $('graficoAcertividadeKPI');
     if (!canvas) return;
@@ -3277,7 +3277,7 @@ function renderizarGraficoAcertividadeKPI() {
             borderColor: cores[0], backgroundColor: cores[0], tension: 0.25, fill: false,
         },
         {
-            label: 'Bateram no destino em até 2 dias',
+            label: 'Bateram no destino no dia seguinte',
             data: dados.map(d => d.acertos),
             borderColor: cores[1], backgroundColor: cores[1], tension: 0.25, fill: false,
         },
@@ -3303,7 +3303,7 @@ function renderizarGraficoAcertividadeKPI() {
                         label: function (context) {
                             const d = dados[context.dataIndex];
                             if (context.datasetIndex === 0) return `Total que saiu de ${par[0]}: ${d.totalOrigem} OP(s)`;
-                            return `Bateram em ${par[1]} em até 2 dias: ${d.acertos} de ${d.totalOrigem} OP(s)`;
+                            return `Bateram em ${par[1]} no dia seguinte: ${d.acertos} de ${d.totalOrigem} OP(s)`;
                         }
                     }
                 }
