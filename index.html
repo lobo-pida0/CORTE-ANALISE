@@ -860,11 +860,12 @@
                     <div id="seqCostDisponivel" style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">—</div>
                 </div>
                 <button id="btnImprimirSeqCostura" class="btn" style="background:var(--cor-historico); color:white;" title="Imprime só a fila da tela, sem o resto do sistema"><i class="fas fa-print"></i> IMPRIMIR</button>
+                <button id="btnOrdemAutomaticaEnfesto" class="btn somente-admin tambem-usuario" style="background:var(--cor-alerta); color:white; display:none;" title="Descarta a ordem que você arrastou na mão e volta a ordenar por data/prioridade"><i class="fas fa-rotate-left"></i> ORDEM AUTOMÁTICA</button>
             </div>
         </div>
 
         <div class="secao" id="secaoImprimirSeqCostura">
-            <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-list-ol"></i> SEQUÊNCIA</span><span id="seqCostContOPs">0 OP(s)</span></div>
+            <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-list-ol"></i> SEQUÊNCIA <span id="dicaArrastarEnfesto" style="font-weight:400; font-size:11px; opacity:0.8; display:none;">(arraste as linhas pra reordenar)</span></span><span id="seqCostContOPs">0 OP(s)</span></div>
             <div class="secao-corpo" style="padding:0; overflow-x:auto;">
                 <table class="tabela-dados" style="width:100%;">
                     <thead>

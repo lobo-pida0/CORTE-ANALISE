@@ -2532,6 +2532,64 @@ function compararPrioridadeCostura(a, b) {
 // Monta a fila de um grupo inteiro: primeiro tudo que já está "em
 // andamento" (ordenado por prioridade), depois tudo "aguardando definição"
 // (também por prioridade) — confirmado com o usuário, essa é a ordem.
+// Ordem manual do Enfesto (só esse grupo, sem tempo confiável — usuário
+// pediu pra poder reordenar na mão, já que o sistema não consegue dizer
+// quando cada OP começa/termina). Guardada como array de chaves "op|ciclo"
+// na ordem desejada — OP nova que aparecer numa reimportação entra no
+// FIM, na ordem automática entre si (não temos como saber onde ela
+// "deveria" ficar no meio de uma ordem que foi feita à mão).
+function obterOrdemManualEnfesto() {
+    try { return JSON.parse(localStorage.getItem('ordemManualEnfesto') || '[]'); } catch (e) { return []; }
+}
+function salvarOrdemManualEnfesto(ordem) {
+    localStorage.setItem('ordemManualEnfesto', JSON.stringify(ordem));
+}
+function aplicarOrdemManualEnfesto(fila) {
+    const ordemSalva = obterOrdemManualEnfesto();
+    if (!ordemSalva.length) return fila;
+    const porChave = new Map(fila.map(op => [chaveOPCostura(op.op, op.ciclo), op]));
+    const ordenados = [];
+    ordemSalva.forEach(chave => {
+        if (porChave.has(chave)) { ordenados.push(porChave.get(chave)); porChave.delete(chave); }
+    });
+    ordenados.push(...porChave.values()); // OPs novas, não estavam na ordem salva
+    return ordenados;
+}
+
+// Publica a ordem inteira na hora (1 linha só, id fixo 'enfesto') — sem
+// esperar o botão geral de publicar, senão outra pessoa só veria a ordem
+// nova bem depois.
+async function publicarOrdemManualEnfestoNaNuvem(ordem) {
+    if (!supabaseClient) return;
+    try {
+        const { error } = await supabaseClient.from('ordem_manual_enfesto').upsert({
+            id: 'enfesto', ordem,
+            atualizado_por: sessaoAdminAtual && sessaoAdminAtual.user ? sessaoAdminAtual.user.email : 'desconhecido',
+            atualizado_em: new Date().toISOString(),
+        }, { onConflict: 'id' });
+        if (error) throw error;
+        registrarLogDebug('log', ['[NUVEM] Ordem manual do Enfesto publicada.']);
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao publicar ordem do Enfesto na nuvem: ' + e.message]);
+        showToast('<i class="fas fa-triangle-exclamation"></i> Salvou aqui, mas não consegui avisar a nuvem — outras pessoas podem não ver essa ordem nova ainda.', true);
+    }
+}
+
+// Busca a ordem da nuvem — TODO MUNDO carrega (mesmo padrão de
+// ops_removidas_seq_costura), já que o objetivo é sincronizar entre
+// qualquer computador, admin incluído.
+async function carregarOrdemManualEnfestoDaNuvem() {
+    if (!supabaseClient) return;
+    try {
+        const { data, error } = await supabaseClient.from('ordem_manual_enfesto').select('*').eq('id', 'enfesto').maybeSingle();
+        if (error) throw error;
+        salvarOrdemManualEnfesto(data && Array.isArray(data.ordem) ? data.ordem : []);
+        renderizarSequenciamentoCostura();
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao carregar ordem do Enfesto da nuvem: ' + e.message]);
+    }
+}
+
 function montarFilaSequenciamentoCostura(chaveGrupo) {
     const grupo = GRUPOS_SEQUENCIAMENTO_COSTURA[chaveGrupo];
     if (!grupo) return [];
@@ -2546,7 +2604,8 @@ function montarFilaSequenciamentoCostura(chaveGrupo) {
             .map(op => ({ ...op, situacaoCostura: 'Aguardando', campoTempo: grupo.campoTempo }))
             .sort(compararPrioridadeCostura)
         : [];
-    return [...emAndamento, ...aguardando];
+    const filaCompleta = [...emAndamento, ...aguardando];
+    return chaveGrupo === 'ENFESTO' ? aplicarOrdemManualEnfesto(filaCompleta) : filaCompleta;
 }
 
 // =========================================================================
@@ -4737,8 +4796,12 @@ function renderizarSequenciamentoCostura() {
             comecaHoje = op.dataInicioProducao.getTime() === hoje.getTime();
         }
 
-        return `<tr${comecaHoje ? '' : ' style="opacity:0.6;"'}>
-            <td><strong>${op.op}</strong></td>
+        const chaveLinha = chaveOPCostura(op.op, op.ciclo);
+        const arrastavel = grupo === 'ENFESTO';
+        const atributosArrastar = arrastavel ? `draggable="true" data-chave-arrastar="${chaveLinha}"` : '';
+        const cursorArrastar = arrastavel ? ' cursor:grab;' : '';
+        return `<tr${atributosArrastar} style="${comecaHoje ? '' : 'opacity:0.6;'}${cursorArrastar}">
+            <td>${arrastavel ? '<i class="fas fa-grip-vertical" style="color:var(--texto-secundario); margin-right:6px;" title="Arraste pra reordenar"></i>' : ''}<strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
             <td>${dataFinalizacaoHtml}</td>
@@ -4749,6 +4812,45 @@ function renderizarSequenciamentoCostura() {
             <td style="text-align:center;"><button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Remover essa OP da sequência (não volta nem reimportando)"><i class="fas fa-trash"></i></button></td>
         </tr>`;
     }).join('');
+
+    if (grupo === 'ENFESTO') wireArrastarSoltarEnfesto();
+    if ($('btnOrdemAutomaticaEnfesto')) $('btnOrdemAutomaticaEnfesto').style.display = (grupo === 'ENFESTO' && obterOrdemManualEnfesto().length) ? '' : 'none';
+    if ($('dicaArrastarEnfesto')) $('dicaArrastarEnfesto').style.display = (grupo === 'ENFESTO') ? '' : 'none';
+}
+
+// Arrastar-e-soltar só faz sentido no Enfesto (sem tempo confiável, ordem
+// manual é a única forma de indicar o que vem primeiro). HTML5 drag nativo
+// — ao soltar, recalcula a ordem inteira a partir do que ficou no DOM e
+// salva (local + nuvem), depois re-renderiza pra tudo (cronograma, cores)
+// refletir a ordem nova.
+function wireArrastarSoltarEnfesto() {
+    const tbody = $('seqCostListaOPs');
+    if (!tbody) return;
+    let linhaArrastada = null;
+    tbody.querySelectorAll('tr[draggable="true"]').forEach(tr => {
+        tr.addEventListener('dragstart', () => { linhaArrastada = tr; tr.style.opacity = '0.4'; });
+        tr.addEventListener('dragend', () => { tr.style.opacity = ''; });
+        tr.addEventListener('dragover', (e) => e.preventDefault());
+        tr.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (!linhaArrastada || linhaArrastada === tr) return;
+            const todas = [...tbody.querySelectorAll('tr[draggable="true"]')];
+            if (todas.indexOf(linhaArrastada) < todas.indexOf(tr)) tr.after(linhaArrastada); else tr.before(linhaArrastada);
+            const novaOrdem = [...tbody.querySelectorAll('tr[data-chave-arrastar]')].map(l => l.getAttribute('data-chave-arrastar'));
+            salvarOrdemManualEnfesto(novaOrdem);
+            publicarOrdemManualEnfestoNaNuvem(novaOrdem);
+            renderizarSequenciamentoCostura();
+        });
+    });
+}
+
+function resetarOrdemAutomaticaEnfesto() {
+    if (!exigirAdminOuUsuario('resetar a ordem do Enfesto')) return;
+    if (!confirm('Voltar o Enfesto pra ordem automática (por data de finalização/prioridade)? A ordem manual que você fez vai ser descartada.')) return;
+    salvarOrdemManualEnfesto([]);
+    publicarOrdemManualEnfestoNaNuvem([]);
+    renderizarSequenciamentoCostura();
+    showToast("<i class='fas fa-rotate-left'></i> Enfesto voltou pra ordem automática.");
 }
 
 function minutosDisponiveisDia() {
@@ -6650,10 +6752,11 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
-        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); });
+        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnImprimirSeqCostura', 'click', () => { imprimirSecao('secaoImprimirSeqCostura'); });
+        wireEvento('btnOrdemAutomaticaEnfesto', 'click', () => { resetarOrdemAutomaticaEnfesto(); });
         wireEvento('seqCostPessoas', 'input', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seqCostHoras', 'input', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seqCostEficiencia', 'input', () => { renderizarSequenciamentoCostura(); });
@@ -6787,6 +6890,9 @@ window.onload = function () {
         // conseguir ver o que outra pessoa removeu de outro lugar.
         carregarOpsRemovidasSeqCosturaDaNuvem();
         setInterval(carregarOpsRemovidasSeqCosturaDaNuvem, 3 * 60 * 1000);
+        // Mesma lógica pra ordem manual do Enfesto — todo mundo carrega.
+        carregarOrdemManualEnfestoDaNuvem();
+        setInterval(carregarOrdemManualEnfestoDaNuvem, 3 * 60 * 1000);
     });
     atualizarBadgeConsoleDebug();
 };
