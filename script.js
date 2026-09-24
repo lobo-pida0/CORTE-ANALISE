@@ -4758,7 +4758,7 @@ function renderizarSequenciamentoCostura() {
 
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
 
-    $('seqCostListaOPs').innerHTML = filaComResultado.map(op => {
+    $('seqCostListaOPs').innerHTML = filaComResultado.map((op, indice) => {
         const tempoTexto = op.tempoCostura === null
             ? `<span style="color:var(--cor-alerta);" title="Essa linha não trouxe Minutos Costura na planilha importada">sem tempo</span>`
             : op.tempoCostura.toFixed(1).replace('.', ',');
@@ -4797,11 +4797,15 @@ function renderizarSequenciamentoCostura() {
         }
 
         const chaveLinha = chaveOPCostura(op.op, op.ciclo);
-        const arrastavel = grupo === 'ENFESTO';
-        const atributosArrastar = arrastavel ? `draggable="true" data-chave-arrastar="${chaveLinha}"` : '';
-        const cursorArrastar = arrastavel ? ' cursor:grab; user-select:none;' : '';
-        return `<tr${atributosArrastar} style="${comecaHoje ? '' : 'opacity:0.6;'}${cursorArrastar}">
-            <td>${arrastavel ? '<i class="fas fa-grip-vertical" style="color:var(--texto-secundario); margin-right:6px;" title="Arraste pra reordenar"></i>' : ''}<strong>${op.op}</strong></td>
+        const isEnfesto = grupo === 'ENFESTO';
+        const podeSubir = indice > 0;
+        const podeDescer = indice < filaComResultado.length - 1;
+        const setasHtml = isEnfesto ? `<span style="display:inline-flex; flex-direction:column; gap:1px; margin-right:6px; vertical-align:middle;">
+            <button class="btn somente-admin tambem-usuario" style="padding:0 4px; font-size:9px; line-height:1.4; background:var(--cor-historico); ${podeSubir ? '' : 'opacity:0.25;'}" ${podeSubir ? '' : 'disabled'} onclick="moverOPEnfesto('${chaveLinha}', -1)" title="Mover pra cima"><i class="fas fa-caret-up"></i></button>
+            <button class="btn somente-admin tambem-usuario" style="padding:0 4px; font-size:9px; line-height:1.4; background:var(--cor-historico); ${podeDescer ? '' : 'opacity:0.25;'}" ${podeDescer ? '' : 'disabled'} onclick="moverOPEnfesto('${chaveLinha}', 1)" title="Mover pra baixo"><i class="fas fa-caret-down"></i></button>
+        </span>` : '';
+        return `<tr style="${comecaHoje ? '' : 'opacity:0.6;'}">
+            <td>${setasHtml}<strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
             <td>${dataFinalizacaoHtml}</td>
@@ -4813,43 +4817,25 @@ function renderizarSequenciamentoCostura() {
         </tr>`;
     }).join('');
 
-    if (grupo === 'ENFESTO') wireArrastarSoltarEnfesto();
     if ($('btnOrdemAutomaticaEnfesto')) $('btnOrdemAutomaticaEnfesto').style.display = (grupo === 'ENFESTO' && obterOrdemManualEnfesto().length) ? '' : 'none';
     if ($('dicaArrastarEnfesto')) $('dicaArrastarEnfesto').style.display = (grupo === 'ENFESTO') ? '' : 'none';
 }
 
-// Arrastar-e-soltar só faz sentido no Enfesto (sem tempo confiável, ordem
-// manual é a única forma de indicar o que vem primeiro). HTML5 drag nativo
-// — ao soltar, recalcula a ordem inteira a partir do que ficou no DOM e
-// salva (local + nuvem), depois re-renderiza pra tudo (cronograma, cores)
-// refletir a ordem nova.
-function wireArrastarSoltarEnfesto() {
-    const tbody = $('seqCostListaOPs');
-    if (!tbody) return;
-    let linhaArrastada = null;
-    tbody.querySelectorAll('tr[draggable="true"]').forEach(tr => {
-        tr.addEventListener('dragstart', (e) => {
-            linhaArrastada = tr;
-            // Sem isso, vários navegadores simplesmente não disparam o
-            // evento de soltar depois — o valor em si não importa, só
-            // precisa chamar setData pra "validar" o arrasto.
-            e.dataTransfer.setData('text/plain', tr.getAttribute('data-chave-arrastar') || '');
-            e.dataTransfer.effectAllowed = 'move';
-            tr.style.opacity = '0.4';
-        });
-        tr.addEventListener('dragend', () => { tr.style.opacity = ''; });
-        tr.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
-        tr.addEventListener('drop', (e) => {
-            e.preventDefault();
-            if (!linhaArrastada || linhaArrastada === tr) return;
-            const todas = [...tbody.querySelectorAll('tr[draggable="true"]')];
-            if (todas.indexOf(linhaArrastada) < todas.indexOf(tr)) tr.after(linhaArrastada); else tr.before(linhaArrastada);
-            const novaOrdem = [...tbody.querySelectorAll('tr[data-chave-arrastar]')].map(l => l.getAttribute('data-chave-arrastar'));
-            salvarOrdemManualEnfesto(novaOrdem);
-            publicarOrdemManualEnfestoNaNuvem(novaOrdem);
-            renderizarSequenciamentoCostura();
-        });
-    });
+// Setas de subir/descer pro Enfesto — trocado do arrastar-e-soltar
+// original a pedido do usuário (arrastar não funcionou bem no navegador
+// dele). Move a OP uma posição na fila (troca de lugar com a vizinha),
+// salva a ordem inteira resultante (local + nuvem) e re-renderiza.
+function moverOPEnfesto(chave, direcao) {
+    if (!exigirAdminOuUsuario('reordenar o Enfesto')) return;
+    const fila = montarFilaSequenciamentoCostura('ENFESTO');
+    const chaves = fila.map(op => chaveOPCostura(op.op, op.ciclo));
+    const indice = chaves.indexOf(chave);
+    const novoIndice = indice + direcao;
+    if (indice === -1 || novoIndice < 0 || novoIndice >= chaves.length) return;
+    [chaves[indice], chaves[novoIndice]] = [chaves[novoIndice], chaves[indice]];
+    salvarOrdemManualEnfesto(chaves);
+    publicarOrdemManualEnfestoNaNuvem(chaves);
+    renderizarSequenciamentoCostura();
 }
 
 function resetarOrdemAutomaticaEnfesto() {
