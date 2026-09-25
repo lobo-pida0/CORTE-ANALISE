@@ -524,6 +524,13 @@ button:active,
     border: 1px solid var(--borda-cor);
     border-radius: 8px;
     padding: var(--espaco-sm) var(--espaco-md);
+    /* Sem isso, um item flex "filho" de outro flex (.painel-montador) não
+       encolhe direito nem quebra linha quando devia — o navegador, por
+       padrão, tenta manter a largura "natural" do conteúdo mesmo com
+       flex-wrap ligado. É o que fazia o último campo (Mês Destino) sair
+       pra fora da caixa em telas mais estreitas, em vez de pular pra
+       linha de baixo como deveria. */
+    min-width: 0;
 }
 
 .grupo-montador.coluna {
