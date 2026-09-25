@@ -455,6 +455,10 @@ async function verificarPapelUsuario() {
         registrarLogDebug('error', ['Não consegui checar o papel do usuário, tratando como admin: ' + e.message]);
         papelUsuarioAtual = 'admin'; // mesma lógica de segurança: se der erro, não bloqueia o admin original
     }
+    // Checagem silenciosa do espaço da nuvem — só incomoda com um toast se
+    // estiver alto (80%+); senão não aparece nada, pra não virar barulho
+    // toda vez que o admin entra.
+    if (papelUsuarioAtual === 'admin') verificarEspacoNuvem(false);
 }
 
 function atualizarIndicadorLogin() {
@@ -1016,6 +1020,32 @@ const TABELAS_NUVEM = ['ops', 'pedidos', 'grade', 'prioridade_clientes', 'locali
 // pagos) — esse é o "seguro" caseiro pros dados compartilhados. Não mexe no
 // backup local de sexta-feira, que continua existindo separado (esse aqui é
 // dos dados PUBLICADOS, que todo mundo vê — coisas diferentes).
+// Plano gratuito do Supabase = 500MB, sem aviso nenhum quando está
+// chegando perto do limite — essa função consulta o tamanho real do banco
+// (via função obter_tamanho_banco(), criada no SQL) e mostra pro admin,
+// evitando a surpresa de "parou de funcionar do nada" um dia.
+const LIMITE_NUVEM_MB = 500;
+async function verificarEspacoNuvem(mostrarSempreQueOk) {
+    if (!exigirAdmin('verificar o espaço da nuvem')) return;
+    if (!supabaseClient) { showToast('Conexão com a nuvem não foi iniciada.', true); return; }
+    try {
+        const { data, error } = await supabaseClient.rpc('obter_tamanho_banco');
+        if (error) throw error;
+        const usadoMB = data / (1024 * 1024);
+        const percentual = Math.round((usadoMB / LIMITE_NUVEM_MB) * 1000) / 10;
+        const mensagem = `<i class="fas fa-database"></i> Nuvem: ${usadoMB.toFixed(1)} MB de ${LIMITE_NUVEM_MB} MB usados (${percentual}%)`;
+        if (percentual >= 80) {
+            showToast(mensagem + ' — chegando perto do limite do plano gratuito!', true);
+        } else if (mostrarSempreQueOk) {
+            showToast(mensagem);
+        }
+        return { usadoMB, percentual };
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao consultar o tamanho do banco: ' + e.message]);
+        if (mostrarSempreQueOk) showToast('<i class="fas fa-triangle-exclamation"></i> Não consegui consultar o espaço da nuvem — veja o console de depuração.', true);
+    }
+}
+
 async function baixarBackupNuvem() {
     if (!exigirAdmin('baixar o backup da nuvem')) return;
     if (!supabaseClient) { showToast('Conexão com a nuvem não foi iniciada.', true); return; }
@@ -6712,6 +6742,7 @@ function inicializarEventosUI() {
         wireEvento('btnMenuSistema', 'click', () => { toggleDropdown('menuSistema'); });
         wireEvento('btnMenuMaisOpcoes', 'click', () => { toggleDropdown('menuMaisOpcoes'); });
         wireEvento('analisarGargalo', 'click', () => { analisarGargalo(); });
+        wireEvento('verificarEspacoNuvemBtn', 'click', () => { verificarEspacoNuvem(true); });
         wireEvento('ativarModoTV', 'click', () => { ativarModoTV(); });
         wireEvento('toggleTema', 'click', () => { toggleTema(); });
         wireEvento('abrirBuscaGlobal', 'click', () => { abrirBuscaGlobal(); });
