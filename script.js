@@ -4033,7 +4033,7 @@ function renderizarAbaPrioridades() {
     if ($('totalPecasPrioridades')) $('totalPecasPrioridades').innerText = totalPecas.toLocaleString('pt-BR');
 
     if (!prioritarias.length) {
-        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
+        $('listaPrioridadesTab').innerHTML = `<tr><td colspan="9" class="tabela-vazia"><i class="fas fa-check-circle tabela-vazia-icone" style="color:var(--cor-despacho);"></i>Nenhuma OP prioritária com esse filtro.</td></tr>`;
         return;
     }
 
@@ -4077,7 +4077,7 @@ function renderizarNecessidadePorReferencia() {
     if ($('contNecessidade')) $('contNecessidade').innerText = `${linhas.length} referência(s)/tamanho(s)`;
 
     if (!linhas.length) {
-        $('listaNecessidade').innerHTML = `<tr><td colspan="5" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-inbox" style="font-size:20px; display:block; margin-bottom:8px;"></i>${termo ? 'Nada encontrado com esse filtro.' : `Nenhuma referência com ${rotulo.toLowerCase()} — sincronize os pedidos, ou essa coluna não veio na planilha.`}</td></tr>`;
+        $('listaNecessidade').innerHTML = `<tr><td colspan="5" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>${termo ? 'Nada encontrado com esse filtro.' : `Nenhuma referência com ${rotulo.toLowerCase()} — sincronize os pedidos, ou essa coluna não veio na planilha.`}</td></tr>`;
         return;
     }
 
@@ -4360,7 +4360,7 @@ function renderizarPedidosPendentes() {
     }
 
     if (pendentes.length === 0) {
-        $('listaPedidosPendentes').innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-check-circle" style="font-size:20px; display:block; margin-bottom:8px; color:var(--cor-despacho);"></i>Nenhum pedido pendente — ou a planilha de pedidos ainda não foi importada.</td></tr>`;
+        $('listaPedidosPendentes').innerHTML = `<tr><td colspan="7" class="tabela-vazia"><i class="fas fa-check-circle tabela-vazia-icone" style="color:var(--cor-despacho);"></i>Nenhum pedido pendente — ou a planilha de pedidos ainda não foi importada.</td></tr>`;
         return;
     }
 
@@ -4590,7 +4590,7 @@ function renderizarListaOPsFilaCorte(opsParam) {
     const ops = opsParam || obterOPsFilaCorte();
 
     if (!ops.length) {
-        corpo.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-file-import" style="font-size:20px; display:block; margin-bottom:8px;"></i>Importe a planilha geral de novo pra ver as OPs por trás dos números.</td></tr>`;
+        corpo.innerHTML = `<tr><td colspan="5" class="tabela-vazia"><i class="fas fa-file-import tabela-vazia-icone"></i>Importe a planilha geral de novo pra ver as OPs por trás dos números.</td></tr>`;
         if ($('contOPsFilaCorte')) $('contOPsFilaCorte').innerText = '0 OPs';
         return;
     }
@@ -4613,7 +4613,7 @@ function renderizarListaOPsFilaCorte(opsParam) {
     if ($('contOPsFilaCorte')) $('contOPsFilaCorte').innerText = `${filtradas.length} linhas · ${totalPecas.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} pçs`;
 
     if (!filtradas.length) {
-        corpo.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-inbox" style="font-size:20px; display:block; margin-bottom:8px;"></i>Nenhuma OP com os filtros atuais.</td></tr>`;
+        corpo.innerHTML = `<tr><td colspan="5" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP com os filtros atuais.</td></tr>`;
         return;
     }
 
@@ -5010,7 +5010,7 @@ function renderizarCapacidade() {
     if ($('capContOPs')) $('capContOPs').innerText = `${visiveis.length} OPs · ${qtdSelecionadas} marcadas`;
 
     if (!visiveis.length) {
-        $('capListaOPs').innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-inbox" style="font-size:20px; display:block; margin-bottom:8px;"></i>Nenhuma OP com os filtros atuais.</td></tr>`;
+        $('capListaOPs').innerHTML = `<tr><td colspan="7" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP com os filtros atuais.</td></tr>`;
         return;
     }
 
@@ -5088,7 +5088,7 @@ function renderizarFilaCorte() {
         // agregados de sempre, sem filtro — melhor que mostrar a tela zerada.
         const salvo = localStorage.getItem('filaCorteDados');
         if (!salvo) {
-            $('listaFilaCorte').innerHTML = `<tr><td colspan="5" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-file-import" style="font-size:20px; display:block; margin-bottom:8px;"></i>Importe a planilha geral (POR_OP) pra ver a fila de corte.</td></tr>`;
+            $('listaFilaCorte').innerHTML = `<tr><td colspan="5" class="tabela-vazia"><i class="fas fa-file-import tabela-vazia-icone"></i>Importe a planilha geral (POR_OP) pra ver a fila de corte.</td></tr>`;
             return;
         }
         let dados; try { dados = JSON.parse(salvo); } catch (e) { return; }
@@ -5413,7 +5413,7 @@ function renderizarTabelaFilaGeral() {
     if (filaOrdenacaoCol !== 'padrao' && $('seta-' + filaOrdenacaoCol)) $('seta-' + filaOrdenacaoCol).innerText = filaOrdenacaoAsc ? " ▲" : " ▼";
     d.sort((a, b) => { if (a.op.prioridade !== b.op.prioridade) return b.op.prioridade - a.op.prioridade; if (filaOrdenacaoCol === 'padrao') return (a.peso - b.peso) || (a.dMeta - b.dMeta); let vA = ['dMeta', 'sTxt'].includes(filaOrdenacaoCol) ? a[filaOrdenacaoCol] : a.op[filaOrdenacaoCol], vB = ['dMeta', 'sTxt'].includes(filaOrdenacaoCol) ? b[filaOrdenacaoCol] : b.op[filaOrdenacaoCol]; return filaOrdenacaoAsc ? String(vA || '').localeCompare(String(vB || ''), undefined, { numeric: true }) : -String(vA || '').localeCompare(String(vB || ''), undefined, { numeric: true }); });
     $('listaFilaGeral').innerHTML = d.length === 0
-        ? `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-inbox" style="font-size:20px; display:block; margin-bottom:8px;"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
+        ? `<tr><td colspan="9" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
         : d.map(i => `<tr oncontextmenu="mostrarMenuContexto(event, '${i.op.id}')" style="${i.op.prioridade ? 'background:rgba(107, 76, 122, 0.05);' : (i.sCls === 'pill-atraso' ? 'background:rgba(193, 68, 78, 0.06);' : '')}"><td>${i.op.prioridade ? '<i class="fas fa-star" style="color:var(--cor-selecao);"></i>' : '<span class="status-mov">●</span>'}</td><td>${i.op.ciclo}</td><td><strong>${i.op.id}</strong></td><td>${i.op.localDestino}</td><td>${i.op.localExcel}</td><td><span class="pill" style="background:${i.op.temDublado ? 'var(--cor-sugestao)' : '#ccc'};">${i.op.temDublado ? 'SIM' : 'NÃO'}</span></td><td>${i.op.tempoCorte} min</td><td style="color:var(--cor-alerta); font-weight:bold;">${i.metaTxt}</td><td><span class="pill ${i.sCls}">${i.sTxt}</span></td></tr>`).join('');
 }
 
@@ -5640,7 +5640,7 @@ function renderizarTudoImediato() {
     });
 
     if ($('listaDespacho')) $('listaDespacho').innerHTML = dDados.length === 0
-        ? `<tr><td colspan="14" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-inbox" style="font-size:20px; display:block; margin-bottom:8px;"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
+        ? `<tr><td colspan="14" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
         : htmlTabela;
     // =========================================================================
     filaGeralDadosGlobais = fDados; renderizarTabelaFilaGeral();
@@ -5694,7 +5694,7 @@ function renderizarOPsVinculadas(pendentesPorReferenciaParam) {
     }
 
     if (vinculadas.length === 0) {
-        $('listaOPsVinculadas').innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--texto-secundario);"><i class="fas fa-link" style="font-size:20px; display:block; margin-bottom:8px;"></i>Nenhuma OP em produção está vinculada a um pedido pendente no momento.</td></tr>`;
+        $('listaOPsVinculadas').innerHTML = `<tr><td colspan="9" class="tabela-vazia"><i class="fas fa-link tabela-vazia-icone"></i>Nenhuma OP em produção está vinculada a um pedido pendente no momento.</td></tr>`;
         return;
     }
 
@@ -5976,7 +5976,7 @@ function gerarSequenciamentoFifo() {
         : 'ordenadas por dias parado, com matéria-prima repetida já agrupada.';
 
     $('resultadoSequenciamentoFifo').innerHTML = sequencia.length === 0
-        ? `<div style="text-align:center; padding:30px; color:var(--texto-secundario);">Nenhuma OP encontrada em <strong>${nomesEtapas[etapa]}</strong>.</div>`
+        ? `<div class="tabela-vazia">Nenhuma OP encontrada em <strong>${nomesEtapas[etapa]}</strong>.</div>`
         : `
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
             <span class="pill" style="background:var(--cor-sugestao); font-size:11px;">${nomesEtapas[etapa]}</span>
@@ -6233,7 +6233,7 @@ function renderizarAgrupamentoReferencia(grupos) {
                 Só mostra referências com 2 ou mais OPs entre PCP-Programação, Almox. Análise de Medidas e Aguardando Matéria Prima — referência com uma única OP não aparece aqui, e OPs sob medida (SBM) nunca entram, já que cada uma é única.
             </div>
             <div style="overflow-y:auto; flex:1;">
-                ${grupos.length === 0 ? `<div style="text-align:center; padding:30px; color:var(--texto-secundario);">Nenhuma referência repetida entre esses dois setores no momento.</div>` : gruposHtml}
+                ${grupos.length === 0 ? `<div class="tabela-vazia">Nenhuma referência repetida entre esses dois setores no momento.</div>` : gruposHtml}
             </div>
             ${grupos.length > 0 ? `<button onclick="copiarAgrupamentoReferencia()" class="btn btn-acao" style="margin-top:12px;"><i class="fas fa-copy"></i> COPIAR LISTA</button>` : ''}
         </div>

@@ -170,12 +170,46 @@ h1, h2, h3 {
     flex-direction: column;
 }
 
+/* Fundo escuro atrás de qualquer modal — era repetido 11 vezes, idêntico,
+   direto no HTML (`style="..."` em cada `<div id="modalX">`). O JS
+   continua ligando/desligando com `.style.display = 'flex'/'none'` — isso
+   funciona normal por cima de uma classe, já que um estilo posto direto
+   pelo JS sempre vence a regra da classe pra essa mesma propriedade. */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+}
+
 .modal-fechar-btn {
     background: transparent;
     border: none;
     font-size: 18px;
     cursor: pointer;
     color: var(--texto-secundario);
+}
+
+/* Mensagem de "nada encontrado" dentro de uma tabela (célula única,
+   colspan variando por tabela) — repetido em ~12 lugares diferentes,
+   sempre com o mesmo visual (texto centralizado + ícone acima). */
+.tabela-vazia {
+    text-align: center;
+    padding: 30px;
+    color: var(--texto-secundario);
+}
+
+.tabela-vazia-icone {
+    font-size: 20px;
+    display: block;
+    margin-bottom: 8px;
 }
 
 /* Console de depuração — vive na borda direita da tela, sempre com uma
