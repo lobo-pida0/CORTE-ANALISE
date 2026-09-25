@@ -478,7 +478,7 @@ function atualizarIndicadorLogin() {
 // menu. Não é só estética: como as ações de edição já ficam bloqueadas de
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
-const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi'];
+const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
 const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
 function abaLiberadaAgora(idAba) {
     if (papelUsuarioAtual === 'admin') return true;
@@ -768,6 +768,19 @@ async function publicarTudoNoSupabase() {
             const r = await sincronizarTabelaSupabase('local_producao_por_op', linhasLocalProducao);
             resumo.push(`${r.publicados} locais de produção`);
         }
+        // Fila do Sequenciamento da Produção — visitante só VÊ (não importa
+        // nada), então precisa que o admin publique isso pra ele enxergar.
+        // sincronizarTabelaSupabase (não publicarSemApagar) de propósito:
+        // isso é ESTADO ATUAL da fila, não histórico — se uma OP saiu da
+        // fila localmente (foi embora, ou foi removida), precisa sumir da
+        // nuvem também.
+        const porOPCostura = obterPorOPCosturaDetalhado();
+        if (porOPCostura.length) {
+            const linhasPorOPCostura = porOPCostura.map(porOPCosturaParaLinhaSupabase);
+            if (status) status.innerText = `Publicando ${linhasPorOPCostura.length} linhas do Sequenciamento da Produção...`;
+            const r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura);
+            resumo.push(`${r.publicados} linhas do Sequenciamento da Produção`);
+        }
         const linhasMovimentacoesKPI = movimentacoesParaLinhasSupabase();
         registrarLogDebug('log', [`[NUVEM] Preparando publicação de movimentacoes_kpi: ${linhasMovimentacoesKPI.length} linha(s) encontrada(s) localmente.`]);
         if (linhasMovimentacoesKPI.length) {
@@ -991,6 +1004,7 @@ async function carregarTudoDaNuvemParaVisitante() {
         carregarOpsManuaisDaNuvemParaVisitante(),
         carregarLocalProducaoDaNuvemParaVisitante(),
         carregarMovimentacoesKPIDaNuvemParaVisitante(),
+        carregarPorOPCosturaDaNuvemParaVisitante(),
     ]);
     atualizarIndicadorUltimaPublicacao();
 }
@@ -2265,6 +2279,44 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
 
 function obterPorOPCosturaDetalhado() {
     try { return JSON.parse(localStorage.getItem('porOPCosturaDetalhado') || '[]'); } catch (e) { return []; }
+}
+
+// Conversão pra/da nuvem da fila do Sequenciamento da Produção. Chave da
+// linha é "op|ciclo" (mesmo esquema usado em todo esse recurso).
+function porOPCosturaParaLinhaSupabase(item) {
+    return {
+        id: chaveOPCostura(item.op, item.ciclo), op: item.op, ciclo: item.ciclo || '',
+        local: item.local || '', ref: item.ref || '', desc_ref: item.descRef || '',
+        tipo_produto: item.tipoProduto || '', prioridade: item.prioridade ?? null, qtd: item.qtd || 0,
+        minutos_costura: item.minutosCostura ?? null, minutos_acabamento: item.minutosAcabamento ?? null,
+        minutos_enfesto: item.minutosEnfesto ?? null, data_finalizacao: item.dataFinalizacao || null,
+        atualizado_em: new Date().toISOString(),
+    };
+}
+function linhaSupabaseParaPorOPCostura(l) {
+    return {
+        op: l.op, ciclo: l.ciclo || '', local: l.local || '', ref: l.ref || '', descRef: l.desc_ref || '',
+        tipoProduto: l.tipo_produto || '', prioridade: l.prioridade, qtd: l.qtd || 0,
+        minutosCostura: l.minutos_costura, minutosAcabamento: l.minutos_acabamento,
+        minutosEnfesto: l.minutos_enfesto, dataFinalizacao: l.data_finalizacao,
+    };
+}
+
+// Visitante NÃO importa nada aqui — só vê o que o admin publicou. Gate é
+// SÓ pra visitante de verdade (!!sessaoAdminAtual, não papelUsuarioAtual)
+// de propósito: o papel "usuario" já importa essa planilha sozinha, então
+// carregar da nuvem por cima apagaria o trabalho dela — diferente de KPI
+// e das remoções do Seq. Costura, que são pensados pra sincronizar com
+// TODO MUNDO.
+async function carregarPorOPCosturaDaNuvemParaVisitante() {
+    if (!supabaseClient || sessaoAdminAtual) return;
+    try {
+        const data = await buscarTodasLinhasSupabase('por_op_costura_detalhado');
+        localStorage.setItem('porOPCosturaDetalhado', JSON.stringify((data || []).map(linhaSupabaseParaPorOPCostura)));
+        if (typeof renderizarSequenciamentoCostura === 'function') renderizarSequenciamentoCostura();
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao carregar o Sequenciamento da Produção da nuvem: ' + e.message]);
+    }
 }
 
 // Chave usada pra identificar uma OP de forma única nas duas listas abaixo
