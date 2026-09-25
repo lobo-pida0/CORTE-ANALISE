@@ -555,6 +555,12 @@ button:active,
     display: flex;
     flex-direction: column;
     gap: 6px;
+    /* 180px é o valor que os campos SEM uma largura própria (via
+       style="width:...") sempre tiveram na prática, porque vinha do
+       dropdown de dentro (.multi-select-container). Movido pra cá agora
+       que aquele passou a se ajustar ao pai — qualquer style="width:Xpx"
+       direto no elemento continua vencendo essa regra normalmente. */
+    width: 180px;
 }
 
 .campo-meta label {
@@ -597,7 +603,15 @@ select:focus {
 
 .multi-select-container {
     position: relative;
-    width: 180px;
+    /* Antes era um valor fixo (180px) — se o campo de fora (.campo-meta)
+       pedisse uma largura menor (ex: 150px, comum em telas com muitos
+       filtros lado a lado), esse container por dentro continuava com
+       180px e vazava pra fora da caixa, sobrepondo o próximo elemento da
+       fileira (bug real: botão "ADICIONAR OP" ficando embaixo do campo
+       "Mês Destino" em Prioridades). Agora ele preenche o que o pai
+       oferecer — o padrão de 180px passou pra .campo-meta, que continua
+       valendo pros campos que não pedem uma largura específica. */
+    width: 100%;
     background: var(--bg-input);
     border: 1px solid var(--borda-cor);
     border-radius: 6px;
