@@ -491,10 +491,19 @@ function abaLiberadaAgora(idAba) {
 }
 function aplicarRestricaoDeAbaVisitante() {
     document.body.classList.toggle('modo-visitante', !sessaoAdminAtual);
-    $$('.tab-btn').forEach(btn => {
+    // Seletor por ID (não por classe .tab-btn) de propósito — algumas abas
+    // moraram pra dentro do menu "MAIS" e usam outra classe visual (.btn),
+    // mas ainda precisam ser escondidas certinho pra quem não é admin.
+    $$('[id^="abrirAba-"]').forEach(btn => {
         const idAba = btn.id.replace('abrirAba-', '');
         btn.style.display = abaLiberadaAgora(idAba) ? '' : 'none';
     });
+    // O botão "MAIS" em si só faz sentido aparecer se tiver pelo menos uma
+    // aba liberada lá dentro — senão abriria um menu vazio.
+    if ($('btnMenuMaisAbas')) {
+        const temAlgumaLiberada = ABAS_DENTRO_DO_MENU_MAIS.some(abaLiberadaAgora);
+        $('btnMenuMaisAbas').closest('.dropdown-container').style.display = temAlgumaLiberada ? '' : 'none';
+    }
     // Se a aba aberta agora não é mais permitida (ex: era admin e deslogou),
     // joga pra Prioridades em vez de deixar a tela numa aba escondida.
     const abaAtivaEl = document.querySelector('.aba-conteudo.ativa');
@@ -1614,6 +1623,33 @@ function toggleDropdown(id) {
     const jaAberto = menu.classList.contains('aberto');
     $$('.dropdown-menu.aberto').forEach(m => m.classList.remove('aberto'));
     if (!jaAberto) menu.classList.add('aberto');
+}
+
+// Igual toggleDropdown, mas pra menus que vivem dentro de um container com
+// overflow:auto (como .tabs-container, que faz a barra de abas rolar
+// horizontalmente quando não cabe tudo) — um dropdown position:absolute
+// normal ficaria CORTADO por esse overflow, mesmo com z-index alto (mesma
+// armadilha já documentada nos filtros multi-select). Resolve do mesmo
+// jeito: move o menu pra filho direto do <body> e calcula a posição via
+// JS (position:fixed), escapando do corte.
+function toggleDropdownFixo(idBotao, idMenu) {
+    const menu = $(idMenu);
+    if (!menu.dataset.movidoParaBody) {
+        document.body.appendChild(menu);
+        menu.dataset.movidoParaBody = '1';
+    }
+    const jaAberto = menu.classList.contains('aberto');
+    $$('.dropdown-menu.aberto').forEach(m => m.classList.remove('aberto'));
+    if (jaAberto) return;
+    const gatilho = $(idBotao);
+    if (gatilho) {
+        const rect = gatilho.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.left = Math.round(rect.left) + 'px';
+        menu.style.top = Math.round(rect.bottom + 6) + 'px';
+        menu.style.right = 'auto';
+    }
+    menu.classList.add('aberto');
 }
 
 function ctxAcao(acao) {
@@ -6534,7 +6570,20 @@ function importarBackup(e) {
     if (input) input.value = '';
 }
 
-function abrirAba(ev, id) { if (!abaLiberadaAgora(id)) { id = 'aba-prioridades'; ev = null; } $$('.aba-conteudo').forEach(a => a.classList.remove('ativa')); $$('.tab-btn').forEach(b => b.classList.remove('ativo')); $(id).classList.add('ativa'); if (ev) ev.currentTarget.classList.add('ativo'); else $('abrirAba-' + id)?.classList.add('ativo'); }
+const ABAS_DENTRO_DO_MENU_MAIS = ['aba-fila', 'aba-pedidos', 'aba-filacorte', 'aba-capacidade', 'aba-sequenciamento', 'aba-necessidade'];
+function abrirAba(ev, id) {
+    if (!abaLiberadaAgora(id)) { id = 'aba-prioridades'; ev = null; }
+    $$('.aba-conteudo').forEach(a => a.classList.remove('ativa'));
+    $$('.tab-btn').forEach(b => b.classList.remove('ativo'));
+    $(id).classList.add('ativa');
+    if (ev) ev.currentTarget.classList.add('ativo');
+    else $('abrirAba-' + id)?.classList.add('ativo');
+    // A aba pode estar escondida dentro do menu "MAIS" — nesse caso, quem
+    // fica destacado na barra é o próprio botão "MAIS", senão não sobra
+    // nenhuma indicação visual de qual aba está aberta.
+    if (ABAS_DENTRO_DO_MENU_MAIS.includes(id) && $('btnMenuMaisAbas')) $('btnMenuMaisAbas').classList.add('ativo');
+    $$('.dropdown-menu.aberto').forEach(m => m.classList.remove('aberto'));
+}
 // Abre/fecha um dropdown de filtro (multi-select), calculando a posição na
 // tela na hora de abrir — usado por TODOS os filtros desse tipo no sistema
 // (Etapa, Local, Data de Corte, Mês Destino, Local/Tipo de Produção, Setor e
@@ -6754,6 +6803,7 @@ function inicializarEventosUI() {
         wireEvento('btnMenuAnalise', 'click', () => { toggleDropdown('menuAnalise'); });
         wireEvento('btnMenuImportar', 'click', () => { toggleDropdown('menuImportar'); });
         wireEvento('btnMenuSistema', 'click', () => { toggleDropdown('menuSistema'); });
+        wireEvento('btnMenuMaisAbas', 'click', () => { toggleDropdownFixo('btnMenuMaisAbas', 'menuMaisAbas'); });
         wireEvento('btnMenuMaisOpcoes', 'click', () => { toggleDropdown('menuMaisOpcoes'); });
         wireEvento('analisarGargalo', 'click', () => { analisarGargalo(); });
         wireEvento('verificarEspacoNuvemBtn', 'click', () => { verificarEspacoNuvem(true); });
