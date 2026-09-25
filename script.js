@@ -4861,7 +4861,7 @@ function renderizarSequenciamentoCostura() {
         } else {
             const partes = [];
             if (jaAtrasadas > 0) partes.push(`<span style="color:var(--cor-alerta); font-weight:700;">${jaAtrasadas} já atrasada${jaAtrasadas === 1 ? '' : 's'}</span>`);
-            if (vaoAtrasar > 0) partes.push(`<span style="color:#E07B39; font-weight:700;">${vaoAtrasar} vai${vaoAtrasar === 1 ? '' : 'ão'} atrasar</span>`);
+            if (vaoAtrasar > 0) partes.push(`<span style="color:#E07B39; font-weight:700;">${vaoAtrasar} ${vaoAtrasar === 1 ? 'vai' : 'vão'} atrasar</span>`);
             $('seqCostResumoAtraso').innerHTML = partes.join(' · ');
         }
     }
