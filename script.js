@@ -4827,6 +4827,19 @@ function minutosDisponiveisDiaCostura() {
     return pessoas * horas * 60 * (ef / 100);
 }
 
+// Vermelho = a data de finalização já passou de verdade (hoje já é depois
+// dela). Laranja = ainda não passou, mas pela posição dessa OP na fila
+// (calculada em calcularCronogramaCostura), ela só vai terminar de ser
+// costurada DEPOIS da data prometida — ou seja, vai atrasar por causa do
+// que vem antes dela, mesmo a data em si ainda não tendo vencido.
+function classificarAtrasoOP(op, hoje) {
+    if (!op.dataFinalizacao) return null;
+    const dataFinal = new Date(op.dataFinalizacao); dataFinal.setHours(0, 0, 0, 0);
+    if (dataFinal < hoje) return 'vermelho';
+    if (op.dataTerminoProducao && op.dataTerminoProducao > dataFinal) return 'laranja';
+    return null;
+}
+
 function renderizarSequenciamentoCostura() {
     if (!$('seqCostListaOPs')) return;
     const grupo = $('seqCostGrupo') ? $('seqCostGrupo').value : 'CALCA';
@@ -4837,12 +4850,26 @@ function renderizarSequenciamentoCostura() {
     if ($('seqCostDisponivel')) $('seqCostDisponivel').textContent = Math.round(minutosDisponiveis).toLocaleString('pt-BR');
     if ($('seqCostContOPs')) $('seqCostContOPs').textContent = `${filaComResultado.length} OP(s)`;
 
+    // Resumo de atrasos — pra não precisar rolar a tabela toda só pra
+    // saber se hoje é um dia de se preocupar ou não.
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    if ($('seqCostResumoAtraso')) {
+        const jaAtrasadas = filaComResultado.filter(op => classificarAtrasoOP(op, hoje) === 'vermelho').length;
+        const vaoAtrasar = filaComResultado.filter(op => classificarAtrasoOP(op, hoje) === 'laranja').length;
+        if (jaAtrasadas === 0 && vaoAtrasar === 0) {
+            $('seqCostResumoAtraso').innerHTML = '';
+        } else {
+            const partes = [];
+            if (jaAtrasadas > 0) partes.push(`<span style="color:var(--cor-alerta); font-weight:700;">${jaAtrasadas} já atrasada${jaAtrasadas === 1 ? '' : 's'}</span>`);
+            if (vaoAtrasar > 0) partes.push(`<span style="color:#E07B39; font-weight:700;">${vaoAtrasar} vai${vaoAtrasar === 1 ? '' : 'ão'} atrasar</span>`);
+            $('seqCostResumoAtraso').innerHTML = partes.join(' · ');
+        }
+    }
+
     if (!filaComResultado.length) {
         $('seqCostListaOPs').innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
-
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
 
     $('seqCostListaOPs').innerHTML = filaComResultado.map((op, indice) => {
         const tempoTexto = op.tempoCostura === null
@@ -4851,21 +4878,8 @@ function renderizarSequenciamentoCostura() {
         const situacaoCor = op.situacaoCostura === 'Em andamento' ? 'var(--cor-despacho)' : 'var(--texto-secundario)';
         const dataFinalizacaoTexto = op.dataFinalizacao ? formatarDataBR(op.dataFinalizacao) : '—';
 
-        // Vermelho = a data de finalização já passou de verdade (hoje já
-        // é depois dela). Laranja = ainda não passou, mas pela posição
-        // dessa OP na fila (calculada em calcularCronogramaCostura), ela
-        // só vai terminar de ser costurada DEPOIS da data prometida — ou
-        // seja, vai atrasar por causa do que vem antes dela, mesmo a data
-        // em si ainda não tendo vencido.
-        let corDataFinalizacao = '';
-        if (op.dataFinalizacao) {
-            const dataFinal = new Date(op.dataFinalizacao); dataFinal.setHours(0, 0, 0, 0);
-            if (dataFinal < hoje) {
-                corDataFinalizacao = 'var(--cor-alerta)'; // vermelho — já atrasada
-            } else if (op.dataTerminoProducao && op.dataTerminoProducao > dataFinal) {
-                corDataFinalizacao = '#E07B39'; // laranja — vai atrasar por causa da fila
-            }
-        }
+        const classificacaoAtraso = classificarAtrasoOP(op, hoje);
+        const corDataFinalizacao = classificacaoAtraso === 'vermelho' ? 'var(--cor-alerta)' : classificacaoAtraso === 'laranja' ? '#E07B39' : '';
         const dataFinalizacaoHtml = corDataFinalizacao
             ? `<strong style="color:${corDataFinalizacao};">${dataFinalizacaoTexto}</strong>`
             : dataFinalizacaoTexto;
