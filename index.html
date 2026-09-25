@@ -634,7 +634,7 @@
         <div class="secao" style="margin-bottom:var(--espaco-md);">
             <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-gauge-high"></i> CAPACIDADE DO DIA</span><span id="capacidadeResumoTopo"></span></div>
             <div style="display:flex; align-items:flex-end; gap:var(--espaco-md); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
-                <div class="campo-meta" style="width:110px;"><label>Nº DE MÁQUINAS</label><input type="number" id="capMaquinas" min="1" step="1" value="2"></div>
+                <div class="campo-meta" style="width:135px;"><label>Nº DE MÁQUINAS</label><input type="number" id="capMaquinas" min="1" step="1" value="2"></div>
                 <div class="campo-meta" style="width:110px;"><label>HORAS POR DIA</label><input type="number" id="capHoras" min="0.5" step="0.5" value="8"></div>
                 <div class="campo-meta" style="width:110px;"><label>EFICIÊNCIA (%)</label><input type="number" id="capEficiencia" min="1" max="100" step="1" value="85"></div>
                 <div style="flex:1; min-width:260px; background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:8px; padding:12px 16px;">
@@ -840,9 +840,12 @@
         <div class="secao" style="margin-bottom:var(--espaco-md);">
             <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-shirt"></i> SEQUENCIAMENTO DA PRODUÇÃO</span></div>
             <div style="display:flex; align-items:flex-end; gap:var(--espaco-md); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
-                <label class="btn somente-admin tambem-usuario" style="background:var(--cor-primaria); color:white; cursor:pointer; margin:0;" title="Planilha POR_OP — importação própria dessa aba, separada da Fila de Corte"><i class="fas fa-file-import"></i> IMPORTAR PLANILHA
-                    <input id="inputPorOPCostura" type="file" accept=".xlsx, .xls" style="display:none;">
-                </label>
+                <div class="campo-meta" style="width:auto;">
+                    <label style="visibility:hidden;">.</label>
+                    <label class="btn somente-admin tambem-usuario" style="background:var(--cor-primaria); color:white; cursor:pointer; margin:0;" title="Planilha POR_OP — importação própria dessa aba, separada da Fila de Corte"><i class="fas fa-file-import"></i> IMPORTAR PLANILHA
+                        <input id="inputPorOPCostura" type="file" accept=".xlsx, .xls" style="display:none;">
+                    </label>
+                </div>
                 <div class="campo-meta" style="width:220px;"><label>GRUPO</label>
                     <select id="seqCostGrupo">
                         <option value="CALCA">Calça</option>
