@@ -5533,6 +5533,55 @@ function obterPendentesPorReferencia() {
     return mapa;
 }
 
+// Ordem da lista PROGRAMAR LOTE (aba Programação). Gira em torno da DATA DE
+// INCLUSÃO da OP (mais antiga primeiro), não da urgência de pedido — assim uma
+// OP de reposição que ninguém pediu ainda também vai subindo com o tempo, em
+// vez de ficar parada. Matéria-prima agrupa: quando uma OP entra na lista, as
+// outras OPs da MESMA MP vêm logo atrás dela (mesmo com inclusão mais nova),
+// então cada lote de MP fica na posição da OP mais antiga que ele tem.
+// Combinado com o usuário:
+//  - dentro do lote: da mais antiga pra mais nova; empate de data -> nº da OP
+//  - OP sem código de MP não forma lote: fica solta, na sua própria data
+//  - OP sem data de inclusão vai pro FINAL da lista (agrupadas por MP)
+//  - setinha do cabeçalho CORTE inverte: mais nova primeiro (o lote fica na
+//    posição da OP mais NOVA dele); as OPs sem data continuam no final
+//  - estrela de prioridade e vínculo com pedido NÃO mexem na ordem
+function ordenarProgramacaoPorInclusao(ops, maisAntigaPrimeiro) {
+    const dir = maisAntigaPrimeiro ? 1 : -1;
+    const tempo = op => { const t = op.dataInclusao ? new Date(op.dataInclusao).getTime() : NaN; return isNaN(t) ? null : t; };
+    const codigoMP = op => (op.codigoMP && op.codigoMP !== 'SEM CÓDIGO') ? op.codigoMP : null;
+    const cmpId = (a, b) => {
+        const na = parseInt(a.id), nb = parseInt(b.id);
+        if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+        return String(a.id).localeCompare(String(b.id));
+    };
+    const cmpOP = (a, b) => (tempo(a) - tempo(b)) * dir || cmpId(a, b) * dir;
+
+    const comData = ops.filter(op => tempo(op) !== null);
+    const semData = ops.filter(op => tempo(op) === null);
+
+    // Cada lote = lista de OPs da mesma MP. OP sem MP vira um lote de uma OP só.
+    const lotes = [];
+    const lotePorMP = new Map();
+    comData.forEach(op => {
+        const mp = codigoMP(op);
+        if (mp === null) { lotes.push([op]); return; }
+        if (!lotePorMP.has(mp)) { lotePorMP.set(mp, []); lotes.push(lotePorMP.get(mp)); }
+        lotePorMP.get(mp).push(op);
+    });
+    lotes.forEach(lote => lote.sort(cmpOP));
+    lotes.sort((la, lb) => cmpOP(la[0], lb[0]));
+
+    // Sem data de inclusão: final da lista, ainda agrupadas por MP (sem MP por último)
+    semData.sort((a, b) => {
+        const ma = codigoMP(a), mb = codigoMP(b);
+        if (ma !== mb) { if (ma === null) return 1; if (mb === null) return -1; return ma.localeCompare(mb); }
+        return cmpId(a, b);
+    });
+
+    return [...lotes.flat(), ...semData];
+}
+
 function renderizarTudoImediato() {
     const bCic = $('filtroCiclo').value.trim().toLowerCase(), bOP = $('filtroOP').value.trim().toLowerCase(), bMP = $('filtroMP').value.trim().toLowerCase();
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
@@ -5589,24 +5638,10 @@ function renderizarTudoImediato() {
         });
     });
 
-    // Ordenação das OPs
-    dDados.sort((a, b) => {
-        if (a.prioridade !== b.prioridade) return b.prioridade - a.prioridade;
-
-        // OPs COM STATUS DE ATRASO FURAM A FILA DENTRO DO MESMO NÍVEL DE PRIORIDADE
-        // (mesmo peso usado na Fila Geral: 1=ATRASO, 2=FIFO/sem data, 3=PRAZO em dia)
-        const pesoA = pesoUrgenciaPorOP.get(a.id) ?? 2, pesoB = pesoUrgenciaPorOP.get(b.id) ?? 2;
-        if (pesoA !== pesoB) return pesoA - pesoB;
-
-        // ORDENAÇÃO POR MATÉRIA-PRIMA PRIMEIRO
-        const mpA = a.codigoMP || "";
-        const mpB = b.codigoMP || "";
-        if (mpA !== mpB) return mpA.localeCompare(mpB);
-
-        // DEPOIS POR DATA DE CORTE
-        const dA = a.dataCorte ? new Date(a.dataCorte).getTime() : 0, dB = b.dataCorte ? new Date(b.dataCorte).getTime() : 0;
-        return ordemCorteAsc ? dA - dB : dB - dA;
-    });
+    // Ordenação das OPs: por data de inclusão, com as OPs de mesma matéria-prima
+    // coladas (regra completa em ordenarProgramacaoPorInclusao). Estrela de
+    // prioridade e vínculo com pedido não mexem mais na posição da OP.
+    dDados = ordenarProgramacaoPorInclusao(dDados, ordemCorteAsc);
 
     if ($('setaOrdenacao')) $('setaOrdenacao').innerText = ordemCorteAsc ? "▲" : "▼";
 
