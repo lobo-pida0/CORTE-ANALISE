@@ -3149,9 +3149,10 @@ function calcularLeadTimeSetor(setor) {
 const PARES_ADJACENTES_KPI = SETORES_KPI.slice(0, -1).map((s, i) => [s, SETORES_KPI[i + 1]]);
 
 // "Acertividade": pra cada dia que teve OPs saindo do setor de ORIGEM,
-// quantas dessas MESMAS OPs também aparecem no setor de DESTINO no dia
-// SEGUINTE (janela reduzida de 2 dias pra 1 depois de o usuário achar o
-// resultado de 2 dias "estranho" — 1 dia dá um retrato mais rigoroso).
+// quantas dessas MESMAS OPs também aparecem no setor de DESTINO no
+// PRÓXIMO DIA ÚTIL (janela reduzida de 2 dias pra 1 depois de o usuário
+// achar o resultado de 2 dias "estranho" — mas sexta+1 caindo no sábado
+// nunca bateria, então sexta/sábado pulam pra segunda de verdade).
 function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
     const movsOrigem = obterMovimentacoesPorSetor()[setorOrigem] || {};
     const movsDestino = obterMovimentacoesPorSetor()[setorDestino] || {};
@@ -3180,13 +3181,12 @@ function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
     const resultado = [];
     Object.keys(opsPorDiaOrigem).sort().forEach(diaOrigem => {
         const opsDoDia = [...opsPorDiaOrigem[diaOrigem]];
+        const deslocamento = deslocamentoProximoDiaUtil(diaOrigem);
         let acertos = 0;
         opsDoDia.forEach(opId => {
             const datasNoDestino = datasDestinoPorOP[opId];
             if (!datasNoDestino) return;
-            for (let deslocamento = 1; deslocamento <= 1; deslocamento++) {
-                if (datasNoDestino.has(somarDiasChaveData(diaOrigem, deslocamento))) { acertos++; break; }
-            }
+            if (datasNoDestino.has(somarDiasChaveData(diaOrigem, deslocamento))) acertos++;
         });
         resultado.push({
             dia: diaOrigem,
@@ -3250,6 +3250,18 @@ function somarDiasChaveData(chave, dias) {
     const data = new Date(Date.UTC(ano, mes - 1, dia));
     data.setUTCDate(data.getUTCDate() + dias);
     return data.toISOString().slice(0, 10);
+}
+
+// Quantos dias pra frente é o PRÓXIMO DIA ÚTIL de uma chave "AAAA-MM-DD"
+// (pula sábado/domingo). Sexta+1 caindo no sábado sempre daria "errado" na
+// acertividade do KPI, mesmo com a OP se movendo direitinho — corrigido
+// pra sexta pular pra segunda (+3) e sábado pular pra segunda (+2), só
+// domingo a quinta continuam +1 normal.
+function deslocamentoProximoDiaUtil(chave) {
+    const diaSemana = new Date(chave + 'T00:00:00Z').getUTCDay(); // 0=domingo ... 6=sábado
+    if (diaSemana === 5) return 3; // sexta -> segunda
+    if (diaSemana === 6) return 2; // sábado -> segunda
+    return 1;
 }
 
 function formatarMesLegivelKPI(anoMes) {
@@ -3364,8 +3376,8 @@ let graficoAcertividadeKPIInstance = null;
 
 // Gráfico próprio de "acertividade" entre dois setores adjacentes — mostra
 // dia a dia, dentro do mês escolhido no seletor principal, quantas OPs que
-// saíram do setor de origem apareceram no setor seguinte da esteira
-// (no dia seguinte — janela ajustada de 2 pra 1 dia a pedido do usuário).
+// saíram do setor de origem apareceram no setor seguinte da esteira, no
+// PRÓXIMO DIA ÚTIL (sexta/sábado pulam pra segunda, ver deslocamentoProximoDiaUtil).
 function renderizarGraficoAcertividadeKPI() {
     const canvas = $('graficoAcertividadeKPI');
     if (!canvas) return;
@@ -3395,7 +3407,7 @@ function renderizarGraficoAcertividadeKPI() {
             borderColor: cores[0], backgroundColor: cores[0], tension: 0.25, fill: false,
         },
         {
-            label: 'Bateram no destino no dia seguinte',
+            label: 'Bateram no destino no próximo dia útil',
             data: dados.map(d => d.acertos),
             borderColor: cores[1], backgroundColor: cores[1], tension: 0.25, fill: false,
         },
@@ -3421,7 +3433,7 @@ function renderizarGraficoAcertividadeKPI() {
                         label: function (context) {
                             const d = dados[context.dataIndex];
                             if (context.datasetIndex === 0) return `Total que saiu de ${par[0]}: ${d.totalOrigem} OP(s)`;
-                            return `Bateram em ${par[1]} no dia seguinte: ${d.acertos} de ${d.totalOrigem} OP(s)`;
+                            return `Bateram em ${par[1]} no próximo dia útil: ${d.acertos} de ${d.totalOrigem} OP(s)`;
                         }
                     }
                 }
