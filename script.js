@@ -3285,6 +3285,34 @@ function popularSeletorMesKPI() {
     else if (meses.length) sel.value = meses[meses.length - 1];
 }
 
+// Mesmo dado do gráfico principal (peças por setor, dia a dia), só que em
+// tabela — pra quem quer ver o número exato de cada dia sem precisar
+// passar o mouse ponto a ponto no gráfico, ou copiar pra outro lugar.
+function renderizarTabelaKPI(setoresParaMostrar, datasOrdenadas, totalPorSetorPorDia, opsPorSetorPorDia) {
+    const cabecalho = $('tabelaKPICabecalho');
+    const corpo = $('tabelaKPICorpo');
+    if (!cabecalho || !corpo) return;
+
+    if (!datasOrdenadas.length) {
+        cabecalho.innerHTML = '<th>DATA</th>';
+        corpo.innerHTML = `<tr><td class="tabela-vazia">Sem dados pra esse setor/mês.</td></tr>`;
+        return;
+    }
+
+    cabecalho.innerHTML = '<th>DATA</th>' + setoresParaMostrar.map(s => `<th style="text-align:right;">${s}</th>`).join('');
+    corpo.innerHTML = datasOrdenadas.map(dia => {
+        const celulas = setoresParaMostrar.map(setor => {
+            const peças = totalPorSetorPorDia[setor][dia] || 0;
+            const opsDoDia = opsPorSetorPorDia[setor][dia];
+            const qtdOPs = opsDoDia ? opsDoDia.size : 0;
+            return peças
+                ? `<td style="text-align:right;">${peças.toLocaleString('pt-BR')} <span style="color:var(--texto-secundario); font-size:11px;">(${qtdOPs} OP${qtdOPs === 1 ? '' : 's'})</span></td>`
+                : `<td style="text-align:right; color:var(--texto-secundario);">—</td>`;
+        }).join('');
+        return `<tr><td><strong>${formatarChaveDataBR(dia)}</strong></td>${celulas}</tr>`;
+    }).join('');
+}
+
 function renderizarGraficoKPI() {
     const canvas = $('graficoKPI');
     if (!canvas) return;
@@ -3369,6 +3397,7 @@ function renderizarGraficoKPI() {
     } // se não tiver dado nenhum pro mês/setor escolhido, só deixa o canvas vazio
 
     renderizarStatsKPI(setoresParaMostrar, mesSelecionado);
+    renderizarTabelaKPI(setoresParaMostrar, datasOrdenadas, totalPorSetorPorDia, opsPorSetorPorDia);
     renderizarGraficoAcertividadeKPI();
 }
 
