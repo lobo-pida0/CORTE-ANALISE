@@ -894,17 +894,33 @@
             </div>
         </div>
 
-        <div class="secao somente-admin tambem-usuario">
-            <div class="secao-header" style="background:var(--cor-historico);"><span><i class="fas fa-clock-rotate-left"></i> OPs REMOVIDAS DA SEQUÊNCIA</span><span id="seqCostContRemovidas">0</span></div>
-            <div class="secao-corpo" style="padding:0; overflow-x:auto;">
-                <table class="tabela-dados" style="width:100%;">
-                    <thead>
-                        <tr>
-                            <th>OP</th><th>CICLO</th><th>DESCRIÇÃO</th><th>MOTIVO</th><th>REMOVIDO POR</th><th>QUANDO</th>
-                        </tr>
-                    </thead>
-                    <tbody id="seqCostListaRemovidas"></tbody>
-                </table>
+        <div style="display:flex; gap:var(--espaco-md); align-items:flex-start; flex-wrap:wrap;">
+            <div class="secao somente-admin tambem-usuario" style="flex:1.3; min-width:320px;">
+                <div class="secao-header" style="background:var(--cor-historico);"><span><i class="fas fa-clock-rotate-left"></i> OPs REMOVIDAS</span><span id="seqCostContRemovidas">0</span></div>
+                <div class="secao-corpo" style="padding:0; max-height:220px;">
+                    <table class="tabela-dados" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>OP</th><th>CICLO</th><th>DESCRIÇÃO</th><th>MOTIVO</th><th>REMOVIDO POR</th><th>QUANDO</th>
+                            </tr>
+                        </thead>
+                        <tbody id="seqCostListaRemovidas"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="secao" style="flex:1; min-width:280px;" title="Mesma capacidade (Nº de pessoas/Horas/Eficiência) preenchida acima, aplicada nos 6 grupos">
+                <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-triangle-exclamation"></i> ATRASOS POR GRUPO</span></div>
+                <div class="secao-corpo" style="padding:0; max-height:220px;">
+                    <table class="tabela-dados" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>GRUPO</th><th style="text-align:center;">JÁ ATRASADAS</th><th style="text-align:center;">VÃO ATRASAR</th><th style="text-align:center;">TOTAL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="seqCostResumoGrupos"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

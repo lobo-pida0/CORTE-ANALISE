@@ -4960,6 +4960,38 @@ function classificarAtrasoOP(op, hoje) {
     return null;
 }
 
+// Resumo de atrasos dos 6 grupos DE UMA VEZ (não só o que está selecionado
+// no momento) — pra decidir rápido qual grupo precisa de atenção primeiro,
+// sem precisar clicar em cada um. Usa a MESMA capacidade (Nº de
+// pessoas/Horas/Eficiência) preenchida na tela pra todos os grupos — hoje
+// só existe um conjunto desses campos, não um por grupo.
+function calcularResumoAtrasosPorGrupo() {
+    const minutosDisponiveis = minutosDisponiveisDiaCostura();
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    return Object.keys(GRUPOS_SEQUENCIAMENTO_COSTURA).map(chave => {
+        const fila = montarFilaSequenciamentoCostura(chave);
+        const filaComResultado = calcularCronogramaCostura(fila, minutosDisponiveis);
+        let jaAtrasadas = 0, vaoAtrasar = 0;
+        filaComResultado.forEach(op => {
+            const c = classificarAtrasoOP(op, hoje);
+            if (c === 'vermelho') jaAtrasadas++; else if (c === 'laranja') vaoAtrasar++;
+        });
+        return { chave, rotulo: GRUPOS_SEQUENCIAMENTO_COSTURA[chave].rotulo, total: filaComResultado.length, jaAtrasadas, vaoAtrasar };
+    });
+}
+
+function renderizarResumoAtrasosPorGrupo() {
+    if (!$('seqCostResumoGrupos')) return;
+    const resumo = calcularResumoAtrasosPorGrupo();
+    $('seqCostResumoGrupos').innerHTML = resumo.map(g => `
+        <tr style="cursor:pointer;" onclick="$('seqCostGrupo').value='${g.chave}'; renderizarSequenciamentoCostura();" title="Clique pra ver a fila desse grupo">
+            <td><strong>${g.rotulo}</strong></td>
+            <td style="text-align:center; color:${g.jaAtrasadas ? 'var(--cor-alerta)' : 'var(--texto-secundario)'}; font-weight:${g.jaAtrasadas ? '700' : '400'};">${g.jaAtrasadas}</td>
+            <td style="text-align:center; color:${g.vaoAtrasar ? '#E07B39' : 'var(--texto-secundario)'}; font-weight:${g.vaoAtrasar ? '700' : '400'};">${g.vaoAtrasar}</td>
+            <td style="text-align:center; color:var(--texto-secundario);">${g.total}</td>
+        </tr>`).join('');
+}
+
 function renderizarSequenciamentoCostura() {
     if (!$('seqCostListaOPs')) return;
     const grupo = $('seqCostGrupo') ? $('seqCostGrupo').value : 'CALCA';
@@ -4985,6 +5017,8 @@ function renderizarSequenciamentoCostura() {
             $('seqCostResumoAtraso').innerHTML = partes.join(' · ');
         }
     }
+
+    renderizarResumoAtrasosPorGrupo();
 
     if (!filaComResultado.length) {
         $('seqCostListaOPs').innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
