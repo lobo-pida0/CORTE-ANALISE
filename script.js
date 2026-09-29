@@ -1466,7 +1466,7 @@ function mostrarTooltipOP(e, id) {
 function esconderTooltipOP() { const tt = $('tooltip-op'); if (!tt) return; tt.style.opacity = '0'; tt.style.display = 'none'; }
 
 // MODAIS E MENUS
-function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; }
+function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; }
 
 // =========================================================================
 // 👑 PRIORIDADE DE CLIENTES — lista editável, do mais pro menos prioritário.
@@ -4816,6 +4816,69 @@ function tempoEfetivoOP(op) {
 // Cada grupo diz qual campo usar (campoTempo, anexado em cada OP por
 // montarFilaSequenciamentoCostura) — "minutosCostura" pros 4 grupos de
 // costura, "minutosAcabamento" pro Acabamento.
+// Feriados cadastrados manualmente (datas "AAAA-MM-DD") — o cronograma da
+// Sequência da Produção assumia que TODO dia útil (seg-sex) tinha a mesma
+// capacidade, o que fazia a previsão "passar por cima" de um feriado como
+// se fosse um dia de trabalho normal. Guardado junto (não por grupo),
+// já que um feriado vale pra fábrica inteira.
+function obterFeriados() {
+    try { return JSON.parse(localStorage.getItem('feriadosSeqProducao') || '[]'); } catch (e) { return []; }
+}
+function salvarFeriados(lista) {
+    localStorage.setItem('feriadosSeqProducao', JSON.stringify([...new Set(lista)].sort()));
+}
+function adicionarFeriado(dataChave) {
+    if (!exigirAdminOuUsuario('cadastrar feriado')) return;
+    if (!dataChave) return;
+    const lista = obterFeriados();
+    if (!lista.includes(dataChave)) { lista.push(dataChave); salvarFeriados(lista); }
+    renderizarModalFeriados();
+    renderizarSequenciamentoCostura();
+}
+function removerFeriado(dataChave) {
+    if (!exigirAdminOuUsuario('remover feriado')) return;
+    salvarFeriados(obterFeriados().filter(d => d !== dataChave));
+    renderizarModalFeriados();
+    renderizarSequenciamentoCostura();
+}
+
+function renderizarModalFeriados() {
+    const lista = obterFeriados();
+    // Formata direto da string "AAAA-MM-DD" pra "DD/MM/AAAA" sem passar por
+    // new Date() — isso vira meia-noite UTC, que em fuso negativo (Brasil)
+    // pode mostrar o dia ANTERIOR (mesma armadilha já documentada noutros
+    // lugares do sistema com data-só-dia).
+    const formatarFeriado = d => { const [a, m, dia] = d.split('-'); return `${dia}/${m}/${a}`; };
+    const linhas = lista.length
+        ? lista.map(d => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--borda-cor);">
+                <span>${formatarFeriado(d)}</span>
+                <button onclick="removerFeriado('${d}')" class="btn btn-perigo somente-admin tambem-usuario" style="padding:3px 8px;" title="Remover"><i class="fas fa-trash"></i></button>
+            </div>`).join('')
+        : '<div style="padding:20px; text-align:center; color:var(--texto-secundario);">Nenhum feriado cadastrado.</div>';
+
+    $('modalFeriados').innerHTML = `
+        <div class="modal-card" style="width:380px; max-width:90vw; border-top:5px solid var(--cor-historico); max-height:80vh;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px;">
+                <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px; font-size:16px;">
+                    <i class="fas fa-calendar-xmark" style="color:var(--cor-historico);"></i> FERIADOS
+                </h2>
+                <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:15px;">
+                Um feriado cadastrado aqui vira um dia sem produção no cronograma da Sequência (igual sábado/domingo) — as OPs previstas pra esse dia passam pro próximo dia útil.
+            </div>
+            <div style="overflow-y:auto; flex:1; margin-bottom:15px; border:1px solid var(--borda-cor); border-radius:8px;">
+                ${linhas}
+            </div>
+            <div class="somente-admin tambem-usuario" style="display:flex; gap:10px;">
+                <input type="date" id="inputNovoFeriado" style="flex:1;">
+                <button onclick="adicionarFeriado($('inputNovoFeriado').value)" class="btn btn-sugestao"><i class="fas fa-plus"></i> ADICIONAR</button>
+            </div>
+        </div>
+    `;
+}
+
 function tempoCosturaOP(op) {
     const valor = op[op.campoTempo || 'minutosCostura'];
     return (valor !== null && valor !== undefined && !isNaN(valor)) ? valor : null;
@@ -4827,10 +4890,12 @@ function tempoCosturaOP(op) {
 // dela na fila também não contam como "hoje", mesmo que sejam menores
 // (não pula a fila, só porque uma OP menor caberia).
 // Avança pro próximo dia ÚTIL (pula sábado/domingo — confirmado com o
-// usuário, a fábrica não costura nesses dias).
-function proximoDiaUtilCostura(data) {
+// usuário, a fábrica não costura nesses dias — e também pula qualquer
+// data cadastrada em obterFeriados()).
+function proximoDiaUtilCostura(data, feriados) {
+    const feriadosSet = feriados || new Set(obterFeriados());
     const nova = new Date(data);
-    do { nova.setDate(nova.getDate() + 1); } while (nova.getDay() === 0 || nova.getDay() === 6);
+    do { nova.setDate(nova.getDate() + 1); } while (nova.getDay() === 0 || nova.getDay() === 6 || feriadosSet.has(nova.toISOString().slice(0, 10)));
     return nova;
 }
 
@@ -4840,9 +4905,15 @@ function proximoDiaUtilCostura(data) {
 // dela continua no próximo dia útil (sem deixar o pessoal "parado" depois
 // que uma OP grande não coube inteira num dia só, como o usuário
 // descreveu). Cada OP recebe uma data de início e uma de término.
+// Avança dia por dia (não "pula N dias" com uma conta pronta) de propósito
+// — com feriados misturados no meio, dias diferentes podem valer 0 ou o
+// valor cheio, então só dá pra saber certo andando um de cada vez.
 function calcularCronogramaCostura(fila, minutosDisponiveisPorDia) {
+    const feriados = new Set(obterFeriados());
     let diaAtual = new Date(); diaAtual.setHours(0, 0, 0, 0);
-    while (diaAtual.getDay() === 0 || diaAtual.getDay() === 6) diaAtual = proximoDiaUtilCostura(diaAtual);
+    while (diaAtual.getDay() === 0 || diaAtual.getDay() === 6 || feriados.has(diaAtual.toISOString().slice(0, 10))) {
+        diaAtual = proximoDiaUtilCostura(diaAtual, feriados);
+    }
     let minutosUsadosHoje = 0;
 
     return fila.map(op => {
@@ -4852,15 +4923,16 @@ function calcularCronogramaCostura(fila, minutosDisponiveisPorDia) {
         }
 
         const dataInicioProducao = new Date(diaAtual);
-        const sobraHoje = minutosDisponiveisPorDia - minutosUsadosHoje;
+        let restante = tempo - (minutosDisponiveisPorDia - minutosUsadosHoje);
 
-        if (tempo <= sobraHoje) {
+        if (restante <= 0) {
             minutosUsadosHoje += tempo;
         } else {
-            const restanteAposHoje = tempo - sobraHoje;
-            const diasAdicionais = Math.ceil(restanteAposHoje / minutosDisponiveisPorDia);
-            for (let i = 0; i < diasAdicionais; i++) diaAtual = proximoDiaUtilCostura(diaAtual);
-            minutosUsadosHoje = restanteAposHoje - (diasAdicionais - 1) * minutosDisponiveisPorDia;
+            while (restante > 0) {
+                diaAtual = proximoDiaUtilCostura(diaAtual, feriados);
+                if (restante <= minutosDisponiveisPorDia) { minutosUsadosHoje = restante; restante = 0; }
+                else restante -= minutosDisponiveisPorDia;
+            }
         }
 
         const dataTerminoProducao = new Date(diaAtual);
@@ -6948,6 +7020,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
+        wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });
         wireEvento('btnImprimirSeqCostura', 'click', () => { imprimirSecao('secaoImprimirSeqCostura'); });
         wireEvento('btnOrdemAutomaticaEnfesto', 'click', () => { resetarOrdemAutomaticaEnfesto(); });
         wireEvento('seqCostPessoas', 'input', () => { renderizarSequenciamentoCostura(); });
