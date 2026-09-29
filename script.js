@@ -6622,8 +6622,17 @@ function limparHistorico(e) { e.stopPropagation(); if (confirm("Limpar históric
 
 
 // SIDEBAR E MODO TV
-function toggleSidebarPrioridades() { const s = $('sidebar-prioridades'), o = $('overlay-sidebar'); if (s.classList.contains('aberta')) { s.classList.remove('aberta'); o.style.display = 'none'; } else { s.classList.add('aberta'); o.style.display = 'block'; renderizarSidebarPrioridades(); } }
-function renderizarSidebarPrioridades() { const u = bancoDadosOPs.filter(o => o.prioridade); if ($('badge-prioridades')) { if (u.length > 0) { $('badge-prioridades').style.display = 'flex'; $('badge-prioridades').innerText = u.length; } else $('badge-prioridades').style.display = 'none'; } if ($('lista-prioridades')) { if (u.length === 0) $('lista-prioridades').innerHTML = '<div style="text-align:center; padding:30px 10px; color:var(--texto-secundario); font-weight:bold;"><i class="fas fa-check-circle" style="font-size:30px; margin-bottom:10px; color:var(--cor-despacho);"></i><br>Nenhuma urgência.</div>'; else $('lista-prioridades').innerHTML = u.map(o => `<div class="card-op" style="border-left-color:#B8862A; padding:12px; cursor:default;" oncontextmenu="mostrarMenuContexto(event,'${o.id}')"><div style="display:flex; justify-content:space-between; margin-bottom:8px;"><strong>OP: ${o.id}</strong><button onclick="opContextoId='${o.id}'; ctxAcao('prioridade');" class="btn" style="padding:4px 8px;"><i class="fas fa-times"></i></button></div><div style="font-size:11px; margin-bottom:10px;">${o.desc.substring(0, 35)}</div><div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span class="pill" style="background:var(--cor-primaria);">${nomesEtapas[o.etapa]}</span> <strong>${o.qtd} pçs</strong>${o.mesDestino ? `<span class="pill" style="background:#B8862A;" title="Mês que essa OP foi destinada, informado na importação de Destino"><i class="fas fa-calendar"></i> ${o.mesDestino}</span>` : ''}</div></div>`).join(''); } }
+// Antes enchia a sidebar do Radar (removida — usuário achou redundante com
+// a aba Prioridades, que já filtra por setor/mês destino em formato de
+// tabela). Ficou só atualizando o número no topo, que agora leva direto
+// pra aba Prioridades quando clicado.
+function renderizarSidebarPrioridades() {
+    const u = bancoDadosOPs.filter(o => o.prioridade);
+    if ($('badge-prioridades')) {
+        if (u.length > 0) { $('badge-prioridades').style.display = 'flex'; $('badge-prioridades').innerText = u.length; }
+        else $('badge-prioridades').style.display = 'none';
+    }
+}
 
 let scInt = null;
 function ativarModoTV() { document.body.classList.add('modo-tv'); if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { }); abrirAba(null, 'aba-fila'); initScrollV('#aba-fila .secao-corpo'); }
@@ -6921,8 +6930,7 @@ function wireEvento(id, evento, handler) {
 }
 
 function inicializarEventosUI() {
-        wireEvento('overlay-sidebar', 'click', () => { toggleSidebarPrioridades(); });
-        wireEvento('toggleSidebarPrioridades', 'click', () => { toggleSidebarPrioridades(); });
+        wireEvento('toggleSidebarPrioridades-2', 'click', () => { abrirAba(null, 'aba-prioridades'); });
         wireEvento('abrirPrioridadeClientes', 'click', () => { abrirModalPrioridadeClientes(); });
         wireEvento('inputGrades', 'change', () => { processarGrades(); });
         wireEvento('inputPedidos', 'change', () => { processarPedidos(); });
@@ -6952,7 +6960,6 @@ function inicializarEventosUI() {
         wireEvento('ctxAcao-prioridade', 'click', () => { ctxAcao('prioridade'); });
         wireEvento('ctxAcao-fracionar', 'click', () => { ctxAcao('fracionar'); });
         wireEvento('ctxAcao-avancar', 'click', () => { ctxAcao('avancar'); });
-        wireEvento('toggleSidebarPrioridades-2', 'click', () => { toggleSidebarPrioridades(); });
         wireEvento('btnMenuAnalise', 'click', () => { toggleDropdown('menuAnalise'); });
         wireEvento('btnMenuImportar', 'click', () => { toggleDropdown('menuImportar'); });
         wireEvento('btnMenuSistema', 'click', () => { toggleDropdown('menuSistema'); });

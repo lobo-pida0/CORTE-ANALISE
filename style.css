@@ -52,57 +52,6 @@ h1, h2, h3 {
     letter-spacing: 0.3px;
 }
 
-#sidebar-prioridades {
-    position: fixed;
-    top: 0;
-    right: -350px;
-    width: 350px;
-    height: 100vh;
-    background: var(--bg-card);
-    box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
-    z-index: 10000;
-    transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex;
-    flex-direction: column;
-    border-left: 1px solid var(--borda-cor);
-}
-
-#sidebar-prioridades.aberta {
-    right: 0;
-}
-
-.sidebar-header {
-    background: #B8862A;
-    color: white;
-    padding: 20px;
-    font-weight: 900;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 14px;
-    letter-spacing: 1px;
-    font-family: var(--fonte-display);
-}
-
-.sidebar-content {
-    padding: 15px;
-    overflow-y: auto;
-    flex-grow: 1;
-    background: var(--bg-painel);
-}
-
-#overlay-sidebar {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: 9999;
-    backdrop-filter: blur(3px);
-}
-
 .header-main {
     background: var(--cor-primaria);
     color: white;
@@ -961,7 +910,6 @@ body.dark-mode .tabela-dados tbody tr:hover {
 body.modo-tv .header-main,
 body.modo-tv .tabs-container,
 body.modo-tv .painel-montador,
-body.modo-tv #sidebar-prioridades,
 body.modo-tv .kpi-card {
     display: none !important;
 }
