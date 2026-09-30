@@ -2303,7 +2303,10 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
         // confirmar (bug real: uma OP sem a palavra "MALHA" escrita mas já
         // fisicamente nesse local sumia da sequência por engano).
         emAndamento: 'PNP COST SUP MALHA', filtroEmAndamento: null,
-        aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => /MALHA/i.test(op.descRef || ''), // aqui sim precisa, é fila compartilhada
+        // MOLETOM entra junto de MALHA aqui — pedido do usuário (moletom é
+        // tratado como malha, exceto quando é moletom de CALÇA, que nem
+        // passa por essa fila compartilhada, tem local próprio dela).
+        aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => /MALHA|MOLETOM/i.test(op.descRef || ''), // aqui sim precisa, é fila compartilhada
         campoTempo: 'minutosCostura',
     },
     JAQUETA_GANDOLA_PARKA: {
@@ -2314,8 +2317,13 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
     },
     CAMISA: {
         rotulo: 'Camisa',
+        // OBS: só exclui MOLETOM aqui (fila de espera) — não no "em
+        // andamento" logo abaixo, que usa um local exclusivo diferente do
+        // da Malha; excluir moletom de lá sem dar um lugar novo pra ele na
+        // Malha faria ele sumir da tela por completo, em vez de aparecer
+        // no grupo certo. Só mexer nisso também se confirmar que precisa.
         emAndamento: 'PNP COST SUP CAMISA', filtroEmAndamento: (op) => !/MALHA/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // compartilhado com jaqueta/gandola/parka
-        aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => !/MALHA/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // fila compartilhada — sobra tudo que não é dos outros grupos
+        aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => !/MALHA|MOLETOM/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // fila compartilhada — sobra tudo que não é dos outros grupos
         campoTempo: 'minutosCostura',
     },
     ACABAMENTO: {
