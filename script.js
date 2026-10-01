@@ -2649,8 +2649,66 @@ function processarPorOPCostura() {
 // que está misturado no mesmo local no sistema original (o filtro recebe
 // a linha inteira, não só a descrição, já que agora também temos Tipo
 // Produto disponível).
+// "Ocultar" é mais leve que "Remover" — sem motivo, só local (não
+// sincroniza com a nuvem), e reversível NA HORA (não precisa reimportar a
+// planilha pra voltar, já que o dado da OP nunca sai de
+// porOPCosturaDetalhado, só fica filtrado daqui). Pra quando a OP
+// "atrapalha" a sequência mas o usuário não quer removê-la de verdade.
+function obterOpsOcultasSeqCostura() {
+    try { return JSON.parse(localStorage.getItem('opsOcultasSeqCostura') || '{}'); } catch (e) { return {}; }
+}
+function salvarOpsOcultasSeqCostura(obj) {
+    localStorage.setItem('opsOcultasSeqCostura', JSON.stringify(obj));
+}
+function ocultarOPDaSequenciaCostura(op, ciclo) {
+    if (!exigirAdminOuUsuario('ocultar uma OP da sequência')) return;
+    const item = obterPorOPCosturaDetalhado().find(o => o.op === op && (o.ciclo || '') === (ciclo || ''));
+    if (!item) return;
+    const chave = chaveOPCostura(op, ciclo);
+    const ocultas = obterOpsOcultasSeqCostura();
+    ocultas[chave] = { op, ciclo: ciclo || '', descRef: item.descRef || '', ocultadoEm: new Date().toISOString() };
+    salvarOpsOcultasSeqCostura(ocultas);
+    renderizarSequenciamentoCostura();
+    renderizarOpsOcultasSeqCostura();
+    showToast(`<i class="fas fa-eye-slash"></i> OP ${op} ocultada da sequência.`);
+}
+function reexibirOPOcultaSeqCostura(chave) {
+    if (!exigirAdminOuUsuario('reexibir uma OP oculta')) return;
+    const ocultas = obterOpsOcultasSeqCostura();
+    const item = ocultas[chave];
+    if (!item) return;
+    delete ocultas[chave];
+    salvarOpsOcultasSeqCostura(ocultas);
+    renderizarSequenciamentoCostura();
+    renderizarOpsOcultasSeqCostura();
+    showToast(`<i class="fas fa-eye"></i> OP ${item.op} reexibida na sequência.`);
+}
+function renderizarOpsOcultasSeqCostura() {
+    if (!$('seqCostListaOcultas')) return;
+    const ocultas = obterOpsOcultasSeqCostura();
+    const lista = Object.entries(ocultas).sort((a, b) => new Date(b[1].ocultadoEm) - new Date(a[1].ocultadoEm));
+
+    if ($('seqCostContOcultas')) $('seqCostContOcultas').textContent = lista.length;
+
+    if (!lista.length) {
+        $('seqCostListaOcultas').innerHTML = `<tr><td colspan="4" class="tabela-vazia">Nenhuma OP oculta.</td></tr>`;
+        return;
+    }
+
+    $('seqCostListaOcultas').innerHTML = lista.map(([chave, item]) => `
+        <tr>
+            <td><strong>${item.op}</strong></td>
+            <td>${item.ciclo || '—'}</td>
+            <td>${item.descRef || ''}</td>
+            <td style="text-align:center;"><button class="btn somente-admin tambem-usuario" style="padding:2px 8px; background:var(--cor-despacho); font-size:10px;" onclick="reexibirOPOcultaSeqCostura('${chave}')" title="Reexibir essa OP na sequência"><i class="fas fa-eye"></i> REEXIBIR</button></td>
+        </tr>`).join('');
+}
+
 function obterOPsPorLocalCostura(local, filtro) {
-    return obterPorOPCosturaDetalhado().filter(op => op.local === local && (!filtro || filtro(op)));
+    const ocultas = obterOpsOcultasSeqCostura();
+    return obterPorOPCosturaDetalhado().filter(op =>
+        op.local === local && (!filtro || filtro(op)) && !ocultas[chaveOPCostura(op.op, op.ciclo)]
+    );
 }
 
 // Prioridade 1-98 = ordem normal, menor primeiro. Dentro da prioridade 99
@@ -5105,7 +5163,10 @@ function renderizarSequenciamentoCostura() {
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${tempoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
-            <td style="text-align:center;"><button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Remover essa OP da sequência (não volta nem reimportando)"><i class="fas fa-trash"></i></button></td>
+            <td style="text-align:center; white-space:nowrap;">
+                <button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-historico);" onclick="ocultarOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Ocultar essa OP (continua existindo, só some da lista e do tempo — reversível na hora)"><i class="fas fa-eye-slash"></i></button>
+                <button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Remover essa OP da sequência (não volta nem reimportando)"><i class="fas fa-trash"></i></button>
+            </td>
         </tr>`;
     }).join('');
 
@@ -7095,7 +7156,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
-        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
+        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });
