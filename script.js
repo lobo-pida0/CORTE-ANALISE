@@ -2582,6 +2582,7 @@ function processarPorOPCostura() {
             const idxMinutosCostura = cab.findIndex(c => c.includes('MINUTOS') && c.includes('COSTURA'));
             const idxMinutosAcabamento = cab.findIndex(c => c.includes('MINUTOS') && c.includes('ACABAMENTO'));
             const idxDataFinalizacao = cab.findIndex(c => c.includes('DATA') && c.includes('FINALIZ'));
+            const idxDataInclusao = cab.findIndex(c => c.includes('DATA') && c.includes('INCLUS'));
             const idxCiclo = cab.findIndex(c => c === 'CICLO');
 
             const faltando = [];
@@ -2625,6 +2626,7 @@ function processarPorOPCostura() {
                     minutosCostura: idxMinutosCostura !== -1 && row[idxMinutosCostura] !== null && row[idxMinutosCostura] !== undefined ? parseFloat(row[idxMinutosCostura]) : null,
                     minutosAcabamento: idxMinutosAcabamento !== -1 && row[idxMinutosAcabamento] !== null && row[idxMinutosAcabamento] !== undefined ? parseFloat(row[idxMinutosAcabamento]) : null,
                     dataFinalizacao: idxDataFinalizacao !== -1 ? extrairDataExcel(row[idxDataFinalizacao]) : null,
+                    dataInclusao: idxDataInclusao !== -1 ? extrairDataExcel(row[idxDataInclusao]) : null,
                 });
             }
             if (!porOPCosturaDetalhado.length) throw new Error("Nenhuma linha nos locais de costura conhecidos foi encontrada (confira se a planilha realmente cobre esses locais).");
@@ -2718,14 +2720,73 @@ function obterOPsPorLocalCostura(local, filtro) {
 // Data Finalização é o critério PRINCIPAL agora (quem tem data vem antes
 // de quem não tem, e entre as que têm, a mais próxima primeiro) — só cai
 // pra prioridade quando a OP não tem data nenhuma cadastrada.
+// Quantos dias úteis (pula sábado/domingo e feriados cadastrados) uma OP
+// de Costura precisa "sobrar" depois de pronta, pra dar tempo do
+// Acabamento fazer a dele antes da Data Finalização de verdade. Mesmo
+// valor pros 6 grupos (confirmado com o usuário).
+const DIAS_RESERVA_ACABAMENTO_COSTURA = 5;
+// A partir de quantos dias úteis de folga uma OP deixa de ser "urgente"
+// pra ordem (e passa a competir só pela data de inclusão, como reposição).
+const DIAS_JANELA_URGENCIA_COSTURA = 2;
+
+function somarDiasUteisCostura(data, dias, feriados) {
+    const feriadosSet = feriados || new Set(obterFeriados());
+    const d = new Date(data);
+    let restante = dias;
+    while (restante > 0) {
+        d.setDate(d.getDate() + 1);
+        if (d.getDay() !== 0 && d.getDay() !== 6 && !feriadosSet.has(d.toISOString().slice(0, 10))) restante--;
+    }
+    return d;
+}
+function subtrairDiasUteisCostura(data, dias, feriados) {
+    const feriadosSet = feriados || new Set(obterFeriados());
+    const d = new Date(data);
+    let restante = dias;
+    while (restante > 0) {
+        d.setDate(d.getDate() - 1);
+        if (d.getDay() !== 0 && d.getDay() !== 6 && !feriadosSet.has(d.toISOString().slice(0, 10))) restante--;
+    }
+    return d;
+}
+
+// A data que REALMENTE importa pra Costura — a Data Finalização menos os
+// dias de reserva do Acabamento. Null se a OP não tem Data Finalização.
+function calcularDataLimiteCostura(op, feriados) {
+    if (!op.dataFinalizacao) return null;
+    const dataFinal = new Date(op.dataFinalizacao); dataFinal.setHours(0, 0, 0, 0);
+    return subtrairDiasUteisCostura(dataFinal, DIAS_RESERVA_ACABAMENTO_COSTURA, feriados);
+}
+
+// Lógica combinada (pedido do usuário, substituindo a ordenação só por
+// Data Finalização): uma OP só "fura a fila" pela data se estiver REALMENTE
+// perto — já atrasada, ou dentro de DIAS_JANELA_URGENCIA_COSTURA dias úteis
+// a partir de hoje (usando a data LIMITE, já descontado o tempo do
+// Acabamento). Fora dessa janela, não tem urgência de prazo ainda, então
+// a OP concorre pela DATA DE INCLUSÃO (mais antiga primeiro) — mesmo
+// raciocínio já usado na aba Programação, pra reposições não ficarem
+// esquecidas só porque o prazo ainda está longe.
 function compararPrioridadeCostura(a, b) {
-    const temA = !!a.dataFinalizacao, temB = !!b.dataFinalizacao;
-    if (temA && temB) return new Date(a.dataFinalizacao) - new Date(b.dataFinalizacao);
-    if (temA && !temB) return -1;
-    if (!temA && temB) return 1;
-    // Nenhuma das duas tem data — aí sim usa a prioridade
-    const prioA = a.prioridade ?? 99, prioB = b.prioridade ?? 99;
-    return prioA - prioB;
+    const feriados = new Set(obterFeriados());
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const limiteUrgencia = somarDiasUteisCostura(hoje, DIAS_JANELA_URGENCIA_COSTURA, feriados);
+
+    const limiteA = calcularDataLimiteCostura(a, feriados);
+    const limiteB = calcularDataLimiteCostura(b, feriados);
+    const urgenteA = limiteA !== null && limiteA <= limiteUrgencia;
+    const urgenteB = limiteB !== null && limiteB <= limiteUrgencia;
+
+    if (urgenteA && urgenteB) return limiteA - limiteB; // as duas urgentes: mais cedo (ou mais atrasada) primeiro
+    if (urgenteA && !urgenteB) return -1;
+    if (!urgenteA && urgenteB) return 1;
+
+    // Nenhuma urgente (ou sem data) — ordena por data de inclusão, mais
+    // antiga primeiro; sem data de inclusão vai pro fim; empate total cai
+    // na prioridade, como antes.
+    const incA = a.dataInclusao ? new Date(a.dataInclusao).getTime() : Infinity;
+    const incB = b.dataInclusao ? new Date(b.dataInclusao).getTime() : Infinity;
+    if (incA !== incB) return incA - incB;
+    return (a.prioridade ?? 99) - (b.prioridade ?? 99);
 }
 
 // Monta a fila de um grupo inteiro: primeiro tudo que já está "em
@@ -5047,11 +5108,14 @@ function minutosDisponiveisDiaCostura() {
 // (calculada em calcularCronogramaCostura), ela só vai terminar de ser
 // costurada DEPOIS da data prometida — ou seja, vai atrasar por causa do
 // que vem antes dela, mesmo a data em si ainda não tendo vencido.
+// Usa a data LIMITE da costura (Data Finalização menos os dias de reserva
+// do Acabamento), não a Data Finalização crua — é esse o prazo que a
+// Costura precisa cumprir de verdade, já que o Acabamento vem depois.
 function classificarAtrasoOP(op, hoje) {
-    if (!op.dataFinalizacao) return null;
-    const dataFinal = new Date(op.dataFinalizacao); dataFinal.setHours(0, 0, 0, 0);
-    if (dataFinal < hoje) return 'vermelho';
-    if (op.dataTerminoProducao && op.dataTerminoProducao > dataFinal) return 'laranja';
+    const dataLimite = calcularDataLimiteCostura(op);
+    if (!dataLimite) return null;
+    if (dataLimite < hoje) return 'vermelho';
+    if (op.dataTerminoProducao && op.dataTerminoProducao > dataLimite) return 'laranja';
     return null;
 }
 
@@ -5126,11 +5190,18 @@ function renderizarSequenciamentoCostura() {
             : op.tempoCostura.toFixed(1).replace('.', ',');
         const situacaoCor = op.situacaoCostura === 'Em andamento' ? 'var(--cor-despacho)' : 'var(--texto-secundario)';
         const dataFinalizacaoTexto = op.dataFinalizacao ? formatarDataBR(op.dataFinalizacao) : '—';
+        const dataLimiteCostura = calcularDataLimiteCostura(op);
+        const dataLimiteTexto = dataLimiteCostura ? formatarDataBR(dataLimiteCostura) : null;
 
         const classificacaoAtraso = classificarAtrasoOP(op, hoje);
         const corDataFinalizacao = classificacaoAtraso === 'vermelho' ? 'var(--cor-alerta)' : classificacaoAtraso === 'laranja' ? '#E07B39' : '';
-        const dataFinalizacaoHtml = corDataFinalizacao
-            ? `<strong style="color:${corDataFinalizacao};">${dataFinalizacaoTexto}</strong>`
+        // Mostra as duas datas: a Data Finalização de verdade (a que vem
+        // da planilha) e, embaixo dela, a data LIMITE da costura (já
+        // descontados os dias de reserva do Acabamento) — é essa segunda
+        // que fica colorida quando está atrasada/vai atrasar, já que é o
+        // prazo que a Costura precisa cumprir de verdade.
+        const dataFinalizacaoHtml = dataLimiteTexto
+            ? `${dataFinalizacaoTexto}<br><span style="font-size:10px; ${corDataFinalizacao ? `color:${corDataFinalizacao}; font-weight:700;` : 'color:var(--texto-secundario);'}" title="Data limite pra Costura terminar, já descontando ${DIAS_RESERVA_ACABAMENTO_COSTURA} dias úteis de reserva pro Acabamento">limite: ${dataLimiteTexto}</span>`
             : dataFinalizacaoTexto;
 
         // "Previsão" mostra quando essa OP começa e termina de ser
