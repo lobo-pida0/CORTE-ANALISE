@@ -5224,7 +5224,15 @@ function renderizarSequenciamentoCostura() {
             <button class="btn somente-admin tambem-usuario" style="padding:0 4px; font-size:9px; line-height:1.4; background:var(--cor-historico); ${podeSubir ? '' : 'opacity:0.25;'}" ${podeSubir ? '' : 'disabled'} onclick="moverOPEnfesto('${chaveLinha}', -1)" title="Mover pra cima"><i class="fas fa-caret-up"></i></button>
             <button class="btn somente-admin tambem-usuario" style="padding:0 4px; font-size:9px; line-height:1.4; background:var(--cor-historico); ${podeDescer ? '' : 'opacity:0.25;'}" ${podeDescer ? '' : 'disabled'} onclick="moverOPEnfesto('${chaveLinha}', 1)" title="Mover pra baixo"><i class="fas fa-caret-down"></i></button>
         </span>` : '';
-        return `<tr style="${comecaHoje ? '' : 'opacity:0.6;'}">
+        // Linha separadora bem visível entre "Em andamento" e "Aguardando"
+        // — pedido do usuário, pra ficar claro pra quem olha a tela onde
+        // uma situação termina e a outra começa, sem precisar ler a
+        // coluna Situação linha por linha.
+        const linhaAnterior = filaComResultado[indice - 1];
+        const separador = (indice > 0 && linhaAnterior.situacaoCostura === 'Em andamento' && op.situacaoCostura === 'Aguardando')
+            ? `<tr><td colspan="10" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
+            : '';
+        return separador + `<tr style="${comecaHoje ? '' : 'opacity:0.6;'}">
             <td>${setasHtml}<strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
