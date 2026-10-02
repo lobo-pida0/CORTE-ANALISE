@@ -1103,6 +1103,13 @@ body.modo-tv #controles-tv {
         -webkit-print-color-adjust: exact !important;
     }
 
+    /* Sequência da Produção: na tela mostra a Data Finalização e, embaixo,
+       a data limite ajustada (já descontando a reserva do Acabamento) —
+       na impressão, só a Data Finalização original deve aparecer. */
+    .data-limite-costura-esconde-impressao {
+        display: none !important;
+    }
+
     body * {
         visibility: hidden;
     }

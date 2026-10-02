@@ -5201,7 +5201,7 @@ function renderizarSequenciamentoCostura() {
         // que fica colorida quando está atrasada/vai atrasar, já que é o
         // prazo que a Costura precisa cumprir de verdade.
         const dataFinalizacaoHtml = dataLimiteTexto
-            ? `${dataFinalizacaoTexto}<br><span style="font-size:10px; ${corDataFinalizacao ? `color:${corDataFinalizacao}; font-weight:700;` : 'color:var(--texto-secundario);'}" title="Data limite pra Costura terminar, já descontando ${DIAS_RESERVA_ACABAMENTO_COSTURA} dias úteis de reserva pro Acabamento">limite: ${dataLimiteTexto}</span>`
+            ? `${dataFinalizacaoTexto}<br><span class="data-limite-costura-esconde-impressao" style="font-size:10px; ${corDataFinalizacao ? `color:${corDataFinalizacao}; font-weight:700;` : 'color:var(--texto-secundario);'}" title="Data limite pra Costura terminar, já descontando ${DIAS_RESERVA_ACABAMENTO_COSTURA} dias úteis de reserva pro Acabamento">limite: ${dataLimiteTexto}</span>`
             : dataFinalizacaoTexto;
 
         // "Previsão" mostra quando essa OP começa e termina de ser
