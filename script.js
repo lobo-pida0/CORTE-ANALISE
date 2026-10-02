@@ -6835,15 +6835,14 @@ function imprimirTela() { imprimirSecao('secaoProgramarLote'); }
 // Imprime só UMA seção da tela, isolando ela do resto — genérico, dá pra
 // usar em qualquer aba futura, só passando o id do elemento (não precisa
 // de uma função nova nem de CSS novo pra cada caso).
+// Qual seção clonar pra área de impressão — setado por imprimirSecao(id) e
+// lido dentro do 'beforeprint' (não antes: precisa rodar DEPOIS da lógica
+// de esconder linha-por-linha do Programar Lote logo abaixo, senão o
+// clone sai com a seleção errada).
+let idSecaoParaImprimir = null;
 function imprimirSecao(idElemento) {
-    const el = document.getElementById(idElemento);
-    if (!el) return;
-    el.classList.add('imprimir-isolado');
+    idSecaoParaImprimir = idElemento;
     window.print();
-    // 'afterprint' cobre tanto imprimir de verdade quanto cancelar a
-    // caixa de diálogo — os dois disparam esse evento.
-    const limpar = () => { el.classList.remove('imprimir-isolado'); window.removeEventListener('afterprint', limpar); };
-    window.addEventListener('afterprint', limpar);
 }
 
 // Na hora de imprimir, esconde as OPs que NÃO estão marcadas (só imprime o
@@ -6869,10 +6868,29 @@ window.addEventListener('beforeprint', () => {
         }
     });
     if (divisorAtual) divisorAtual.classList.toggle('imprimir-esconder', temSelecao && !temMarcadaNoBloco);
+
+    // Clona a seção pedida (já com a filtragem de linhas acima aplicada,
+    // já que isso roda primeiro nesse mesmo evento) pra dentro da área
+    // dedicada de impressão — ver comentário longo no style.css sobre por
+    // que isso é mais robusto que o esquema antigo de visibility+position.
+    if (idSecaoParaImprimir) {
+        const el = document.getElementById(idSecaoParaImprimir);
+        const area = document.getElementById('areaImpressaoGenerica');
+        if (el && area) {
+            area.innerHTML = el.outerHTML;
+            document.body.classList.add('modo-impressao-generica');
+        }
+    }
 });
 
 window.addEventListener('afterprint', () => {
     $$('.imprimir-esconder').forEach(el => el.classList.remove('imprimir-esconder'));
+    // Cobre tanto imprimir de verdade quanto cancelar a caixa de diálogo —
+    // os dois disparam esse evento.
+    const area = document.getElementById('areaImpressaoGenerica');
+    if (area) area.innerHTML = '';
+    document.body.classList.remove('modo-impressao-generica');
+    idSecaoParaImprimir = null;
 });
 
 function importarBackup(e) {

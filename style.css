@@ -1110,32 +1110,33 @@ body.modo-tv #controles-tv {
         display: none !important;
     }
 
-    body * {
-        visibility: hidden;
-    }
-
     /* Mecanismo GENÉRICO pra imprimir qualquer seção isolada — usado tanto
        pelo Programar Lote (Programação) quanto pela Sequência da Produção
-       e qualquer seção futura. imprimirSecao(id) (JS) adiciona essa classe
-       na hora de imprimir e tira depois. Antes o Programar Lote tinha uma
-       regra PRÓPRIA e incondicional (sempre visível em QUALQUER impressão,
-       não só a dele) — unificado nessa classe só, porque a regra antiga
-       entrava em conflito sempre que outra seção (tipo a Sequência) também
-       estava sendo impressa ao mesmo tempo, aparecendo um bloco vazio
-       estranho na folha (bug real relatado pelo usuário). */
-    .imprimir-isolado,
-    .imprimir-isolado * {
-        visibility: visible;
+       e qualquer seção futura.
+       TENTATIVA ANTERIOR (abandonada): "body * {visibility:hidden}" +
+       deixar só a seção alvo visível, reposicionada com position:absolute.
+       Problema: um elemento com visibility:hidden continua RESERVANDO o
+       espaço dele no layout — e o reposicionamento via position:absolute
+       depende de não ter nenhum ancestral com position próprio no meio do
+       caminho, o que é frágil e varia entre navegador/motor de renderização.
+       Resultado real: bloco vazio estranho aparecendo na folha (bug
+       relatado pelo usuário, persistiu mesmo depois de eliminar o conflito
+       direto com #secaoProgramarLote).
+       SOLUÇÃO ATUAL: imprimirSecao(id) CLONA o conteúdo da seção pedida
+       pra dentro de #areaImpressaoGenerica (um <div> vazio, filho direto
+       do <body>, que só ganha conteúdo na hora de imprimir). Daí é só
+       esconder TUDO que não for essa área com display:none — que, ao
+       contrário de visibility:hidden, não reserva espaço nenhum — então
+       não tem como sobrar buraco em branco de outro elemento. */
+    body.modo-impressao-generica > *:not(#areaImpressaoGenerica) {
+        display: none !important;
     }
 
-    .imprimir-isolado {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
+    #areaImpressaoGenerica {
+        display: block !important;
     }
 
-    .imprimir-isolado .secao-corpo {
+    #areaImpressaoGenerica .secao-corpo {
         max-height: none !important;
         overflow: visible !important;
     }
@@ -1145,15 +1146,15 @@ body.modo-tv #controles-tv {
        impressa, e em vários navegadores deixa um espaço em branco esquisito
        no topo da página (o navegador calcula a posição "grudada" como se
        ainda existisse rolagem, mesmo sem ter). Desliga só na impressão. */
-    .imprimir-isolado th,
-    .imprimir-isolado tfoot td {
+    #areaImpressaoGenerica th,
+    #areaImpressaoGenerica tfoot td {
         position: static !important;
     }
 
     /* a coluna de ações (botão de remover, etc) não faz sentido impressa —
        é clicável, não tem função no papel */
-    .imprimir-isolado th:last-child,
-    .imprimir-isolado td:last-child {
+    #areaImpressaoGenerica th:last-child,
+    #areaImpressaoGenerica td:last-child {
         display: none;
     }
 
