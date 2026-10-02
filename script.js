@@ -6824,7 +6824,13 @@ function exportarBackup() { const a = document.createElement('a'); a.href = URL.
 // Programação), do jeito que ela aparece na tela — a folha de estilo de
 // impressão (@media print no CSS) isola só essa seção, tira o resto da
 // página, e não corta tabela grande.
-function imprimirTela() { window.print(); }
+// Antes chamava window.print() direto, contando com uma regra de CSS fixa
+// que deixava #secaoProgramarLote sempre visível na impressão, não importa
+// a aba. Isso conflitava com QUALQUER outra seção usando o mecanismo
+// genérico (imprimirSecao) ao mesmo tempo — as duas apareciam juntas,
+// causando um bloco vazio estranho (bug real relatado pelo usuário na
+// impressão da Sequência). Unificado: agora usa o mesmo mecanismo.
+function imprimirTela() { imprimirSecao('secaoProgramarLote'); }
 
 // Imprime só UMA seção da tela, isolando ela do resto — genérico, dá pra
 // usar em qualquer aba futura, só passando o id do elemento (não precisa

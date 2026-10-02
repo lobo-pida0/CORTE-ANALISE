@@ -1114,29 +1114,15 @@ body.modo-tv #controles-tv {
         visibility: hidden;
     }
 
-    #secaoProgramarLote,
-    #secaoProgramarLote * {
-        visibility: visible;
-    }
-
-    #secaoProgramarLote {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-    }
-
-    /* a tabela imprime por completo, sem o limite de altura/scroll que
-       existe na tela */
-    #secaoProgramarLote .secao-corpo {
-        max-height: none !important;
-        overflow: visible !important;
-    }
-
-    /* Mecanismo GENÉRICO pra imprimir qualquer seção isolada — em vez de
-       repetir esse bloco pra cada aba nova, é só chamar imprimirSecao(id)
-       (JS), que adiciona essa classe na hora e tira depois. Usado hoje no
-       Seq. Costura, mas serve pra qualquer seção futura. */
+    /* Mecanismo GENÉRICO pra imprimir qualquer seção isolada — usado tanto
+       pelo Programar Lote (Programação) quanto pela Sequência da Produção
+       e qualquer seção futura. imprimirSecao(id) (JS) adiciona essa classe
+       na hora de imprimir e tira depois. Antes o Programar Lote tinha uma
+       regra PRÓPRIA e incondicional (sempre visível em QUALQUER impressão,
+       não só a dele) — unificado nessa classe só, porque a regra antiga
+       entrava em conflito sempre que outra seção (tipo a Sequência) também
+       estava sendo impressa ao mesmo tempo, aparecendo um bloco vazio
+       estranho na folha (bug real relatado pelo usuário). */
     .imprimir-isolado,
     .imprimir-isolado * {
         visibility: visible;
