@@ -483,7 +483,7 @@ function atualizarIndicadorLogin() {
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
 const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
-const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
+const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura', 'aba-urgencias'];
 function abaLiberadaAgora(idAba) {
     if (papelUsuarioAtual === 'admin') return true;
     if (papelUsuarioAtual === 'usuario') return ABAS_LIBERADAS_PARA_USUARIO.includes(idAba);
@@ -4608,6 +4608,216 @@ function renderizarPedidosPendentes() {
 // Corte, e calcula quantos dias de fila cada um representa, usando a média
 // diária real do setor CORTE (já lançada na aba Gestão Mensal).
 // =========================================================================
+// Aba URGÊNCIAS — pega a lista de OPs da aba "Implantação" de uma planilha
+// própria do usuário, e cruza com a POR_OP (mesmo arquivo usado em outras
+// abas do sistema) pra manter local/quantidade atualizados. Guardado em
+// DOIS lugares: a base (do jeito que veio da Implantação, sem cruzar) e o
+// resultado exibido (depois do cruzamento) — assim, importar a POR_OP de
+// novo sempre recalcula A PARTIR da base, em vez de ir empilhando
+// desdobramento em cima de desdobramento se importar várias vezes seguidas.
+function obterImplantacaoBase() {
+    try { return JSON.parse(localStorage.getItem('implantacaoBase') || '[]'); } catch (e) { return []; }
+}
+function salvarImplantacaoBase(lista) { localStorage.setItem('implantacaoBase', JSON.stringify(lista)); }
+function obterImplantacaoOPs() {
+    try { return JSON.parse(localStorage.getItem('implantacaoOPs') || '[]'); } catch (e) { return []; }
+}
+function salvarImplantacaoOPs(lista) { localStorage.setItem('implantacaoOPs', JSON.stringify(lista)); }
+
+function processarImplantacao() {
+    if (!exigirAdminOuUsuario('importar a planilha de Implantação')) return;
+    if (!exigirBibliotecaExcel()) return;
+    const input = $('inputImplantacao'); if (!input.files[0]) return;
+    const r = new FileReader();
+    r.onload = function (e) {
+        try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            // O arquivo do usuário tem VÁRIAS abas — procura uma chamada
+            // "Implantação" (tolerante a acento/maiúscula) em vez de supor
+            // que é sempre a primeira aba do arquivo.
+            const nomeAba = wb.SheetNames.find(n => n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().includes('IMPLANTA')) || wb.SheetNames[0];
+            // Limita o intervalo lido (até a coluna Q, 20 mil linhas) — sem
+            // isso, uma planilha que reporte um "intervalo usado" muito
+            // maior que o dado real (comum em arquivo Excel com formatação
+            // espalhada por engano) pode travar a importação tentando
+            // processar células vazias por minutos.
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, range: 'A1:Q20000' });
+            if (!rows.length) throw new Error("Planilha vazia.");
+
+            const cab = rows[0].map(c => String(c || '').trim().toUpperCase());
+            const idx = {
+                chave: cab.findIndex(c => c === 'CHAVE'),
+                pedido: cab.findIndex(c => c === 'PEDIDO'),
+                grade: cab.findIndex(c => c === 'GRADE'),
+                local: cab.findIndex(c => c.includes('DESCRI') && c.includes('LOCAL')),
+                referencia: cab.findIndex(c => c.includes('REFER') && !c.includes('DESCRI')),
+                descRef: cab.findIndex(c => c.includes('DESCRI') && c.includes('REFER')),
+                cor: cab.findIndex(c => c === 'COR'),
+                ciclo: cab.findIndex(c => c === 'CICLO'),
+                op: cab.findIndex(c => c === 'OP'),
+                qtd: cab.findIndex(c => c.includes('QT') && c.includes('LOCAL')),
+                tipoProduto: cab.findIndex(c => c.includes('TIPO') && c.includes('PRODUTO')),
+                dataFinalizacao: cab.findIndex(c => c.includes('FINALIZ')),
+                reprogramado: cab.findIndex(c => c.includes('REPROGRAM')),
+            };
+            if (idx.op === -1) throw new Error("Não encontrei a coluna OP no cabeçalho.");
+
+            const lista = [];
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i]; if (!row) continue;
+                const opVal = row[idx.op] !== undefined && row[idx.op] !== null ? String(row[idx.op]).trim() : '';
+                if (!opVal) continue;
+                const pega = (chave) => idx[chave] !== -1 && row[idx[chave]] !== undefined && row[idx[chave]] !== null ? String(row[idx[chave]]).trim() : '';
+                lista.push({
+                    chave: pega('chave'), pedido: pega('pedido'), grade: pega('grade'), local: pega('local'),
+                    referencia: pega('referencia'), descRef: pega('descRef'), cor: pega('cor'), ciclo: pega('ciclo'),
+                    op: opVal, qtd: idx.qtd !== -1 ? (parseFloat(row[idx.qtd]) || 0) : 0, tipoProduto: pega('tipoProduto'),
+                    dataFinalizacao: idx.dataFinalizacao !== -1 ? extrairDataExcel(row[idx.dataFinalizacao]) : null,
+                    reprogramado: pega('reprogramado'),
+                });
+            }
+
+            salvarImplantacaoBase(lista);
+            salvarImplantacaoOPs(lista); // sem cruzar com POR_OP ainda — fica igual à base até importar ela
+            renderizarUrgencias();
+            showToast(`<i class="fas fa-check"></i> ${lista.length} OPs importadas da aba Implantação.`);
+        } catch (err) {
+            alert("Erro ao importar a planilha de Implantação: " + err.message);
+        }
+        input.value = '';
+    };
+    r.readAsArrayBuffer(input.files[0]);
+}
+
+// Cruza a base da Implantação com a POR_OP, atualizando local/quantidade.
+// Uma OP pode aparecer em MAIS de um local na POR_OP (movimentação
+// parcial — parte das peças já saiu, parte ainda não) — confirmado com o
+// usuário: nesse caso, desdobra em uma linha por local, cada uma com sua
+// quantidade, SEM pedir decisão nenhuma (não é ambiguidade, é a realidade
+// física da OP estar dividida mesmo).
+function processarPorOPParaUrgencias() {
+    if (!exigirAdminOuUsuario('importar a POR_OP pra Urgências')) return;
+    if (!exigirBibliotecaExcel()) return;
+    const input = $('inputPorOPUrgencias'); if (!input.files[0]) return;
+    const r = new FileReader();
+    r.onload = function (e) {
+        try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            // Mesma proteção da importação da Implantação — evita travar se
+            // o "intervalo usado" reportado pela planilha for muito maior
+            // que o dado real.
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, range: 'A1:T50000' });
+            if (!rows.length) throw new Error("Planilha vazia.");
+
+            const cab = rows[0].map(c => String(c || '').trim().toUpperCase());
+            const idxOP = cab.findIndex(c => c === 'OP');
+            const idxDescLocal = cab.findIndex(c => c.includes('DESCRI') && c.includes('LOCAL'));
+            const idxQtd = cab.findIndex(c => c.includes('QT') && c.includes('LOCAL'));
+            const faltando = [];
+            if (idxOP === -1) faltando.push('OP');
+            if (idxDescLocal === -1) faltando.push('Descrição Local');
+            if (idxQtd === -1) faltando.push('Qt OP Local');
+            if (faltando.length) throw new Error("Não encontrei as colunas: " + faltando.join(', ') + ".");
+
+            // Agrupa por OP — pode ter mais de uma linha (local diferente)
+            // pra mesma OP, exatamente o caso de movimentação parcial.
+            const porOP = new Map();
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i]; if (!row) continue;
+                const opVal = row[idxOP] !== undefined && row[idxOP] !== null ? String(row[idxOP]).trim() : '';
+                if (!opVal) continue;
+                const local = String(row[idxDescLocal] ?? '').trim();
+                const qtd = parseFloat(row[idxQtd]) || 0;
+                if (!porOP.has(opVal)) porOP.set(opVal, []);
+                porOP.get(opVal).push({ local, qtd });
+            }
+
+            const base = obterImplantacaoBase();
+            if (!base.length) throw new Error("Importe primeiro a planilha de Implantação.");
+            let qtdSemCorrespondencia = 0, qtdDesdobradas = 0;
+            const resultado = [];
+            base.forEach(item => {
+                const locais = porOP.get(item.op);
+                if (!locais || !locais.length) {
+                    resultado.push({ ...item, naoEncontradoPorOP: true });
+                    qtdSemCorrespondencia++;
+                } else if (locais.length === 1) {
+                    resultado.push({ ...item, local: locais[0].local, qtd: locais[0].qtd, naoEncontradoPorOP: false });
+                } else {
+                    locais.forEach(l => resultado.push({ ...item, local: l.local, qtd: l.qtd, naoEncontradoPorOP: false }));
+                    qtdDesdobradas++;
+                }
+            });
+
+            salvarImplantacaoOPs(resultado);
+            renderizarUrgencias();
+            let msg = `<i class="fas fa-check"></i> Local/quantidade atualizados pela POR_OP.`;
+            if (qtdDesdobradas) msg += ` ${qtdDesdobradas} OP(s) desdobrada(s) por estar em mais de um local.`;
+            if (qtdSemCorrespondencia) msg += ` ${qtdSemCorrespondencia} OP(s) não encontrada(s) na POR_OP.`;
+            showToast(msg);
+        } catch (err) {
+            alert("Erro ao importar a POR_OP: " + err.message);
+        }
+        input.value = '';
+    };
+    r.readAsArrayBuffer(input.files[0]);
+}
+
+function renderizarUrgencias() {
+    if (!$('urgenciasLista')) return;
+    const lista = obterImplantacaoOPs();
+
+    // Opções do filtro de Local são montadas a partir do que existe de
+    // verdade na lista (não é uma lista fixa, já que os nomes vêm direto
+    // da planilha) — preserva a seleção atual se ela ainda for válida.
+    const selectLocal = $('filtroLocalUrgencias');
+    const localSelecionado = selectLocal ? selectLocal.value : '';
+    if (selectLocal) {
+        const locaisDistintos = [...new Set(lista.map(o => o.local).filter(Boolean))].sort();
+        selectLocal.innerHTML = '<option value="">Todos</option>' + locaisDistintos.map(l => `<option value="${l}">${l}</option>`).join('');
+        if (locaisDistintos.includes(localSelecionado)) selectLocal.value = localSelecionado;
+    }
+
+    const filtroLocal = selectLocal ? selectLocal.value : '';
+    const filtroOP = ($('filtroOPUrgencias')?.value || '').trim().toUpperCase();
+    const filtroReferencia = ($('filtroReferenciaUrgencias')?.value || '').trim().toUpperCase();
+
+    const filtrada = lista.filter(o =>
+        (!filtroLocal || o.local === filtroLocal) &&
+        (!filtroOP || o.op.toUpperCase().includes(filtroOP)) &&
+        (!filtroReferencia || (o.referencia || '').toUpperCase().includes(filtroReferencia) || (o.descRef || '').toUpperCase().includes(filtroReferencia))
+    );
+
+    if ($('urgenciasCont')) $('urgenciasCont').textContent = `${filtrada.length} OP(s)`;
+
+    if (!filtrada.length) {
+        $('urgenciasLista').innerHTML = `<tr><td colspan="12" class="tabela-vazia">Nenhuma OP encontrada com esses filtros.</td></tr>`;
+        return;
+    }
+
+    $('urgenciasLista').innerHTML = filtrada.map(o => {
+        // OP que não teve correspondência na POR_OP fica com o fundo
+        // destacado e um aviso — o local/qtd mostrado nesse caso é o que
+        // veio original da Implantação, sem atualizar.
+        const estiloLinha = o.naoEncontradoPorOP ? ' style="background:rgba(224,123,57,0.12);"' : '';
+        const avisoLocal = o.naoEncontradoPorOP ? ` <i class="fas fa-triangle-exclamation" style="color:#E07B39;" title="Essa OP não foi encontrada na última importação da POR_OP — local/quantidade são os originais da Implantação"></i>` : '';
+        return `<tr${estiloLinha}>
+            <td><strong>${o.op}</strong></td>
+            <td>${o.ciclo || '—'}</td>
+            <td>${o.pedido || ''}</td>
+            <td>${o.grade || ''}</td>
+            <td>${o.local || '—'}${avisoLocal}</td>
+            <td>${o.referencia || ''}</td>
+            <td>${o.descRef || ''}</td>
+            <td>${o.cor || ''}</td>
+            <td style="text-align:right;">${(o.qtd || 0).toLocaleString('pt-BR')}</td>
+            <td>${o.tipoProduto || ''}</td>
+            <td>${o.dataFinalizacao ? formatarDataBR(o.dataFinalizacao) : '—'}</td>
+            <td>${o.reprogramado || ''}</td>
+        </tr>`;
+    }).join('');
+}
+
 function processarFilaCorte() {
     if (!exigirAdmin('importar a fila de corte')) return;
     if (!exigirBibliotecaExcel()) return;
@@ -7272,6 +7482,12 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
+        wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); renderizarUrgencias(); });
+        wireEvento('inputImplantacao', 'change', () => { processarImplantacao(); });
+        wireEvento('inputPorOPUrgencias', 'change', () => { processarPorOPParaUrgencias(); });
+        wireEvento('filtroLocalUrgencias', 'change', () => { renderizarUrgencias(); });
+        wireEvento('filtroOPUrgencias', 'input', () => { renderizarUrgencias(); });
+        wireEvento('filtroReferenciaUrgencias', 'input', () => { renderizarUrgencias(); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });

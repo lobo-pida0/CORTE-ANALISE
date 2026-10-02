@@ -271,6 +271,7 @@
         <button id="abrirAba-aba-prioridades" class="tab-btn">PRIORIDADES</button>
         <button id="abrirAba-aba-kpi" class="tab-btn">KPI</button>
         <button id="abrirAba-aba-seq-costura" class="tab-btn">SEQUÊNCIA</button>
+        <button id="abrirAba-aba-urgencias" class="tab-btn">URGÊNCIAS</button>
         <div class="dropdown-container">
             <button id="btnMenuMaisAbas" class="tab-btn">MAIS <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
             <div id="menuMaisAbas" class="dropdown-menu">
@@ -938,6 +939,45 @@
                         <tbody id="seqCostListaOcultas"></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="aba-urgencias" class="aba-conteudo">
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:var(--cor-primaria);"><span>URGÊNCIAS</span></div>
+            <div style="display:flex; align-items:flex-end; gap:16px; padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
+                <label class="btn somente-admin tambem-usuario" style="background:var(--cor-primaria); color:white; cursor:pointer; margin:0;" title="Planilha com a aba 'Implantação' — é a base da lista desta aba"><i class="fas fa-file-import"></i> IMPORTAR IMPLANTAÇÃO
+                    <input id="inputImplantacao" type="file" accept=".xlsx, .xls" style="display:none;">
+                </label>
+                <label class="btn somente-admin tambem-usuario" style="background:var(--cor-historico); color:white; cursor:pointer; margin:0;" title="Planilha POR_OP — atualiza local e quantidade de cada OP já importada da Implantação"><i class="fas fa-file-import"></i> IMPORTAR POR_OP
+                    <input id="inputPorOPUrgencias" type="file" accept=".xlsx, .xls" style="display:none;">
+                </label>
+                <div class="campo-meta" style="width:220px;"><label>LOCAL</label>
+                    <select id="filtroLocalUrgencias"><option value="">Todos</option></select>
+                </div>
+                <div class="campo-meta" style="width:140px;"><label>OP</label>
+                    <input type="text" id="filtroOPUrgencias" placeholder="Buscar OP...">
+                </div>
+                <div class="campo-meta" style="width:200px;"><label>REFERÊNCIA</label>
+                    <input type="text" id="filtroReferenciaUrgencias" placeholder="Buscar referência...">
+                </div>
+            </div>
+        </div>
+
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-triangle-exclamation"></i> URGÊNCIAS</span><span id="urgenciasCont">0 OP(s)</span></div>
+            <div class="secao-corpo" style="padding:0; overflow:auto;">
+                <table class="tabela-dados" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>OP</th><th>CICLO</th><th>PEDIDO</th><th>GRADE</th><th>LOCAL</th><th>REFERÊNCIA</th>
+                            <th>DESCRIÇÃO REFERÊNCIA</th><th>COR</th><th style="text-align:right;">QTD</th>
+                            <th>TIPO PRODUTO</th><th>DATA FINALIZAÇÃO</th><th>REPROGRAMADO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="urgenciasLista"></tbody>
+                </table>
             </div>
         </div>
     </div>
