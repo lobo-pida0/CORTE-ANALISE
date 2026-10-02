@@ -1158,6 +1158,13 @@ body.modo-tv #controles-tv {
         display: none;
     }
 
+    /* coluna de checkbox (usada só pra escolher o que imprimir) também não
+       faz sentido no papel — ela é sempre a PRIMEIRA coluna onde existe */
+    #areaImpressaoGenerica th:first-child:has(input[type="checkbox"]),
+    #areaImpressaoGenerica td:first-child:has(input[type="checkbox"]) {
+        display: none;
+    }
+
     /* barra "LOTE MATÉRIA-PRIMA" vira branca — repete muito numa lista
        grande, e a cor dela não carrega nenhum significado (diferente do
        selo de pedido, por exemplo) */

@@ -5180,7 +5180,7 @@ function renderizarSequenciamentoCostura() {
     renderizarResumoAtrasosPorGrupo();
 
     if (!filaComResultado.length) {
-        $('seqCostListaOPs').innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
 
@@ -5230,9 +5230,10 @@ function renderizarSequenciamentoCostura() {
         // coluna Situação linha por linha.
         const linhaAnterior = filaComResultado[indice - 1];
         const separador = (indice > 0 && linhaAnterior.situacaoCostura === 'Em andamento' && op.situacaoCostura === 'Aguardando')
-            ? `<tr><td colspan="10" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
+            ? `<tr><td colspan="11" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
             : '';
         return separador + `<tr style="${comecaHoje ? '' : 'opacity:0.6;'}">
+            <td><input type="checkbox" class="check-imprimir-seq" data-id="${chaveLinha}"></td>
             <td>${setasHtml}<strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
@@ -6869,6 +6870,17 @@ window.addEventListener('beforeprint', () => {
     });
     if (divisorAtual) divisorAtual.classList.toggle('imprimir-esconder', temSelecao && !temMarcadaNoBloco);
 
+    // Mesma ideia do Programar Lote, agora pra Sequência da Produção: se
+    // alguma OP estiver marcada, só ela(s) saem na impressão; se nenhuma
+    // estiver marcada, imprime a fila inteira (não faz sentido uma folha
+    // em branco só porque ninguém marcou nada).
+    const linhasSeq = $$('#secaoImprimirSeqCostura .tabela-dados tbody tr');
+    const temSelecaoSeq = [...linhasSeq].some(tr => tr.querySelector('.check-imprimir-seq:checked'));
+    linhasSeq.forEach(tr => {
+        const checkbox = tr.querySelector('.check-imprimir-seq');
+        if (checkbox) tr.classList.toggle('imprimir-esconder', temSelecaoSeq && !checkbox.checked);
+    });
+
     // Clona a seção pedida (já com a filtragem de linhas acima aplicada,
     // já que isso roda primeiro nesse mesmo evento) pra dentro da área
     // dedicada de impressão — ver comentário longo no style.css sobre por
@@ -7263,6 +7275,7 @@ function inicializarEventosUI() {
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });
+        wireEvento('checkTudoSeqCostura', 'change', (e) => { $$('.check-imprimir-seq').forEach(cb => cb.checked = e.target.checked); });
         wireEvento('btnImprimirSeqCostura', 'click', () => { imprimirSecao('secaoImprimirSeqCostura'); });
         wireEvento('btnOrdemAutomaticaEnfesto', 'click', () => { resetarOrdemAutomaticaEnfesto(); });
         wireEvento('seqCostPessoas', 'input', () => { renderizarSequenciamentoCostura(); });
