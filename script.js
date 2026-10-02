@@ -4763,6 +4763,16 @@ function processarPorOPParaUrgencias() {
     r.readAsArrayBuffer(input.files[0]);
 }
 
+// Pedido/Descrição Referência/Reprogramado às vezes vêm bem longos —
+// sem isso, o texto quebrava em 2-3 linhas e deixava a tabela com altura
+// de linha toda desigual ("serrilhada"). Trunca numa linha só, com o
+// texto completo disponível passando o mouse.
+function celulaTruncadaUrgencias(texto, larguraMaxPx) {
+    if (!texto) return '';
+    const escapado = String(texto).replace(/"/g, '&quot;');
+    return `<span style="display:inline-block; vertical-align:middle; max-width:${larguraMaxPx}px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapado}">${texto}</span>`;
+}
+
 function renderizarUrgencias() {
     if (!$('urgenciasLista')) return;
     const lista = obterImplantacaoOPs();
@@ -4813,16 +4823,16 @@ function renderizarUrgencias() {
         return `<tr${estiloLinha}>
             <td><strong>${o.op}</strong></td>
             <td>${o.ciclo || '—'}</td>
-            <td>${o.pedido || ''}</td>
-            <td>${o.grade || ''}</td>
-            <td>${o.local || '—'}${avisoLocal}</td>
+            <td>${celulaTruncadaUrgencias(o.pedido, 150)}</td>
+            <td>${celulaTruncadaUrgencias(o.grade, 120)}</td>
+            <td>${o.local ? celulaTruncadaUrgencias(o.local, 160) : '—'}${avisoLocal}</td>
             <td>${o.referencia || ''}</td>
-            <td>${o.descRef || ''}</td>
+            <td>${celulaTruncadaUrgencias(o.descRef, 220)}</td>
             <td>${o.cor || ''}</td>
             <td style="text-align:right;">${(o.qtd || 0).toLocaleString('pt-BR')}</td>
             <td>${o.tipoProduto || ''}</td>
             <td>${o.dataFinalizacao ? formatarDataBR(o.dataFinalizacao) : '—'}</td>
-            <td>${o.reprogramado || ''}</td>
+            <td>${celulaTruncadaUrgencias(o.reprogramado, 150)}</td>
         </tr>`;
     }).join('');
 }
