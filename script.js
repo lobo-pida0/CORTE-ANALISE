@@ -4788,6 +4788,15 @@ function renderizarUrgencias() {
         (!filtroReferencia || (o.referencia || '').toUpperCase().includes(filtroReferencia) || (o.descRef || '').toUpperCase().includes(filtroReferencia))
     );
 
+    // Mais antiga pra mais nova na Data Finalização — sem data vai pro
+    // final (não tem como comparar uma data que não existe).
+    filtrada.sort((a, b) => {
+        if (!a.dataFinalizacao && !b.dataFinalizacao) return 0;
+        if (!a.dataFinalizacao) return 1;
+        if (!b.dataFinalizacao) return -1;
+        return new Date(a.dataFinalizacao) - new Date(b.dataFinalizacao);
+    });
+
     if ($('urgenciasCont')) $('urgenciasCont').textContent = `${filtrada.length} OP(s)`;
 
     if (!filtrada.length) {
