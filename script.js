@@ -4711,25 +4711,36 @@ function processarPorOPParaUrgencias() {
 
             const cab = rows[0].map(c => String(c || '').trim().toUpperCase());
             const idxOP = cab.findIndex(c => c === 'OP');
+            const idxCiclo = cab.findIndex(c => c === 'CICLO');
             const idxDescLocal = cab.findIndex(c => c.includes('DESCRI') && c.includes('LOCAL'));
             const idxQtd = cab.findIndex(c => c.includes('QT') && c.includes('LOCAL'));
             const faltando = [];
             if (idxOP === -1) faltando.push('OP');
+            if (idxCiclo === -1) faltando.push('Ciclo');
             if (idxDescLocal === -1) faltando.push('Descrição Local');
             if (idxQtd === -1) faltando.push('Qt OP Local');
             if (faltando.length) throw new Error("Não encontrei as colunas: " + faltando.join(', ') + ".");
 
-            // Agrupa por OP — pode ter mais de uma linha (local diferente)
-            // pra mesma OP, exatamente o caso de movimentação parcial.
+            // O MESMO número de OP pode existir em ciclos diferentes (ex: 111
+            // e 211) — são OPs distintas. Cruzar só pelo número misturava as
+            // duas (mesma coisa que a coluna "chave" da Implantação resolve
+            // concatenando ciclo e OP). Normaliza tirando espaço e o ".0"
+            // que número vindo do Excel às vezes carrega.
+            const normalizar = v => (v === undefined || v === null) ? '' : String(v).trim().replace(/\.0+$/, '');
+            const chaveCicloOP = (ciclo, op) => `${normalizar(ciclo)}-${normalizar(op)}`;
+
+            // Agrupa por ciclo+OP — pode ter mais de uma linha (local
+            // diferente) pra mesma OP, exatamente o caso de movimentação parcial.
             const porOP = new Map();
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row) continue;
-                const opVal = row[idxOP] !== undefined && row[idxOP] !== null ? String(row[idxOP]).trim() : '';
+                const opVal = normalizar(row[idxOP]);
                 if (!opVal) continue;
+                const chave = chaveCicloOP(row[idxCiclo], opVal);
                 const local = String(row[idxDescLocal] ?? '').trim();
                 const qtd = parseFloat(row[idxQtd]) || 0;
-                if (!porOP.has(opVal)) porOP.set(opVal, []);
-                porOP.get(opVal).push({ local, qtd });
+                if (!porOP.has(chave)) porOP.set(chave, []);
+                porOP.get(chave).push({ local, qtd });
             }
 
             const base = obterImplantacaoBase();
@@ -4737,7 +4748,7 @@ function processarPorOPParaUrgencias() {
             let qtdSemCorrespondencia = 0, qtdDesdobradas = 0;
             const resultado = [];
             base.forEach(item => {
-                const locais = porOP.get(item.op);
+                const locais = porOP.get(chaveCicloOP(item.ciclo, item.op));
                 if (!locais || !locais.length) {
                     resultado.push({ ...item, naoEncontradoPorOP: true });
                     qtdSemCorrespondencia++;
