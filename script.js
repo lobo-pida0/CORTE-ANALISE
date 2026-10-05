@@ -4923,10 +4923,28 @@ function renderizarUrgencias() {
     const filtroOP = ($('filtroOPUrgencias')?.value || '').trim().toUpperCase();
     const filtroReferencia = ($('filtroReferenciaUrgencias')?.value || '').trim().toUpperCase();
 
+    // "Situação na POR_OP": só tem sentido depois de importar a POR_OP —
+    // antes disso o campo naoEncontradoPorOP nem existe (undefined), e a
+    // OP não conta nem como encontrada nem como não encontrada.
+    const filtroSituacao = $('filtroSituacaoUrgencias') ? $('filtroSituacaoUrgencias').value : '';
+
+    // Contador clicável de não encontradas (sempre sobre a lista inteira,
+    // não sobre o que está filtrado) — clicar nele aplica/tira o filtro.
+    const totalNaoEncontradas = lista.filter(o => o.naoEncontradoPorOP === true).length;
+    const wrapNaoEnc = $('wrapNaoEncontradasUrgencias'), btnNaoEnc = $('btnNaoEncontradasUrgencias');
+    if (wrapNaoEnc && btnNaoEnc) {
+        wrapNaoEnc.style.display = totalNaoEncontradas ? '' : 'none';
+        const ativo = filtroSituacao === 'nao';
+        btnNaoEnc.innerHTML = `<i class="fas fa-triangle-exclamation"></i> ${totalNaoEncontradas} NÃO ENCONTRADA${totalNaoEncontradas > 1 ? 'S' : ''}${ativo ? ' &nbsp;<i class="fas fa-xmark"></i>' : ''}`;
+        btnNaoEnc.style.boxShadow = ativo ? '0 0 0 3px rgba(224,123,57,0.35)' : '';
+        btnNaoEnc.title = ativo ? 'Mostrando só as não encontradas — clique pra ver todas de novo' : 'Clique pra ver só as OPs que não foram achadas na última POR_OP importada';
+    }
+
     const filtrada = lista.filter(o =>
         (!filtroLocal || o.local === filtroLocal) &&
         (!filtroOP || o.op.toUpperCase().includes(filtroOP)) &&
-        (!filtroReferencia || (o.referencia || '').toUpperCase().includes(filtroReferencia) || (o.descRef || '').toUpperCase().includes(filtroReferencia))
+        (!filtroReferencia || (o.referencia || '').toUpperCase().includes(filtroReferencia) || (o.descRef || '').toUpperCase().includes(filtroReferencia)) &&
+        (!filtroSituacao || (filtroSituacao === 'nao' ? o.naoEncontradoPorOP === true : o.naoEncontradoPorOP === false))
     );
 
     // Mais antiga pra mais nova na Data Finalização — sem data vai pro
@@ -4946,21 +4964,28 @@ function renderizarUrgencias() {
     }
 
     $('urgenciasLista').innerHTML = filtrada.map(o => {
-        // OP que não teve correspondência na POR_OP fica com o fundo
-        // destacado e um aviso — o local/qtd mostrado nesse caso é o que
-        // veio original da Implantação, sem atualizar.
-        const estiloLinha = o.naoEncontradoPorOP ? ' style="background:rgba(224,123,57,0.12);"' : '';
-        const avisoLocal = o.naoEncontradoPorOP ? ` <i class="fas fa-triangle-exclamation" style="color:#E07B39;" title="Essa OP não foi encontrada na última importação da POR_OP — local/quantidade são os originais da Implantação"></i>` : '';
+        // OP que não foi achada na POR_OP: etiqueta bem visível no lugar do
+        // triângulo antigo, e local/quantidade (que são os ORIGINAIS da
+        // Implantação, possivelmente velhos) em cinza itálico pra não
+        // passar por dado atual e confiável.
+        const nao = o.naoEncontradoPorOP === true;
+        const estiloLinha = nao ? ' style="background:rgba(224,123,57,0.10); box-shadow:inset 4px 0 0 #E07B39;"' : '';
+        const apagado = 'color:var(--texto-secundario); font-style:italic;';
+        const etiqueta = `<span class="pill" style="background:#E07B39; color:white; margin-right:6px; vertical-align:middle;" title="Essa OP não foi encontrada na última POR_OP importada — o local e a quantidade abaixo são os originais da Implantação, podem estar desatualizados">NÃO ENCONTRADA</span>`;
+        const localTxt = nao
+            ? `${etiqueta}${o.local ? `<span style="${apagado}">${celulaTruncadaUrgencias(o.local, 130)}</span>` : ''}`
+            : (o.local ? celulaTruncadaUrgencias(o.local, 160) : '—');
+        const qtdTxt = (o.qtd || 0).toLocaleString('pt-BR');
         return `<tr${estiloLinha}>
             <td><strong>${o.op}</strong></td>
             <td>${o.ciclo || '—'}</td>
             <td>${celulaTruncadaUrgencias(o.pedido, 150)}</td>
             <td>${celulaTruncadaUrgencias(o.grade, 120)}</td>
-            <td>${o.local ? celulaTruncadaUrgencias(o.local, 160) : '—'}${avisoLocal}</td>
+            <td${nao ? ' style="white-space:nowrap;"' : ''}>${localTxt}</td>
             <td>${o.referencia || ''}</td>
             <td>${celulaTruncadaUrgencias(o.descRef, 220)}</td>
             <td>${o.cor || ''}</td>
-            <td style="text-align:right;">${(o.qtd || 0).toLocaleString('pt-BR')}</td>
+            <td style="text-align:right;${nao ? ' ' + apagado : ''}">${qtdTxt}</td>
             <td>${o.tipoProduto || ''}</td>
             <td>${o.dataFinalizacao ? formatarDataBR(o.dataFinalizacao) : '—'}</td>
             <td>${celulaTruncadaUrgencias(o.reprogramado, 150)}</td>
@@ -7638,6 +7663,12 @@ function inicializarEventosUI() {
         wireEvento('filtroLocalUrgencias', 'change', () => { renderizarUrgencias(); });
         wireEvento('filtroOPUrgencias', 'input', () => { renderizarUrgencias(); });
         wireEvento('filtroReferenciaUrgencias', 'input', () => { renderizarUrgencias(); });
+        wireEvento('filtroSituacaoUrgencias', 'change', () => { renderizarUrgencias(); });
+        wireEvento('btnNaoEncontradasUrgencias', 'click', () => {
+            const sel = $('filtroSituacaoUrgencias');
+            sel.value = sel.value === 'nao' ? '' : 'nao';
+            renderizarUrgencias();
+        });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });

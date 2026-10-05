@@ -964,6 +964,17 @@
                 <div class="campo-meta" style="width:200px;"><label>REFERÊNCIA</label>
                     <input type="text" id="filtroReferenciaUrgencias" placeholder="Buscar referência...">
                 </div>
+                <div class="campo-meta" style="width:190px;"><label>SITUAÇÃO NA POR_OP</label>
+                    <select id="filtroSituacaoUrgencias">
+                        <option value="">Todas</option>
+                        <option value="nao">Só não encontradas</option>
+                        <option value="sim">Só encontradas</option>
+                    </select>
+                </div>
+                <div class="campo-meta" id="wrapNaoEncontradasUrgencias" style="width:auto; display:none;">
+                    <label style="visibility:hidden;">.</label>
+                    <button id="btnNaoEncontradasUrgencias" class="btn" style="background:#E07B39; color:white;"></button>
+                </div>
             </div>
         </div>
 
