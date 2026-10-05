@@ -1466,7 +1466,7 @@ function mostrarTooltipOP(e, id) {
 function esconderTooltipOP() { const tt = $('tooltip-op'); if (!tt) return; tt.style.opacity = '0'; tt.style.display = 'none'; }
 
 // MODAIS E MENUS
-function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; }
+function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; $('modalBalancoUrgencias').style.display = 'none'; }
 
 // =========================================================================
 // 👑 PRIORIDADE DE CLIENTES — lista editável, do mais pro menos prioritário.
@@ -4689,6 +4689,117 @@ function processarImplantacao() {
     r.readAsArrayBuffer(input.files[0]);
 }
 
+// Compara a lista de Urgências ANTES e DEPOIS de importar a POR_OP (igual
+// o balanço da sincronização faz com as etapas), pra mostrar o que andou.
+// Casa por ciclo+OP. Devolve 4 grupos:
+//  - movimentadas: mudou o(s) local(is) da OP
+//  - qtdAlterada: continua no(s) mesmo(s) local(is), mas a quantidade mudou
+//  - sairam: estava na POR_OP e agora não está mais (provavelmente seguiu adiante)
+//  - voltaram: não estava na POR_OP e agora aparece
+function compararUrgenciasAntesDepois(antes, depois) {
+    const agrupar = lista => {
+        const mapa = new Map();
+        lista.forEach(o => {
+            const k = `${o.ciclo}-${o.op}`;
+            if (!mapa.has(k)) mapa.set(k, { op: o.op, ciclo: o.ciclo, naoEncontrado: !!o.naoEncontradoPorOP, entradas: [] });
+            mapa.get(k).entradas.push({ local: o.local || '—', qtd: o.qtd || 0 });
+        });
+        mapa.forEach(v => v.entradas.sort((a, b) => a.local.localeCompare(b.local)));
+        return mapa;
+    };
+    const A = agrupar(antes), B = agrupar(depois);
+    const rotuloLocais = v => v.entradas.map(e => e.local).join(' + ');
+    const rotuloQtds = v => v.entradas.map(e => e.qtd.toLocaleString('pt-BR')).join(' + ');
+    const resultado = { movimentadas: [], qtdAlterada: [], sairam: [], voltaram: [] };
+
+    B.forEach((novo, k) => {
+        const velho = A.get(k);
+        if (!velho) return;
+        if (!velho.naoEncontrado && novo.naoEncontrado) {
+            resultado.sairam.push({ op: novo.op, ciclo: novo.ciclo, de: rotuloLocais(velho) });
+        } else if (velho.naoEncontrado && !novo.naoEncontrado) {
+            resultado.voltaram.push({ op: novo.op, ciclo: novo.ciclo, para: rotuloLocais(novo) });
+        } else if (!velho.naoEncontrado && !novo.naoEncontrado) {
+            const de = rotuloLocais(velho), para = rotuloLocais(novo);
+            if (de !== para) {
+                resultado.movimentadas.push({ op: novo.op, ciclo: novo.ciclo, de, para });
+            } else if (rotuloQtds(velho) !== rotuloQtds(novo)) {
+                resultado.qtdAlterada.push({ op: novo.op, ciclo: novo.ciclo, local: para, de: rotuloQtds(velho), para: rotuloQtds(novo) });
+            }
+        }
+    });
+    return resultado;
+}
+
+function exibirBalancoUrgencias(bal) {
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const chip = (texto, extra = '') => `<span class="pill" style="background:var(--bg-card); border:1px solid var(--borda-cor); color:var(--texto-cor); margin:2px 3px 0 0; display:inline-block; ${extra}">${esc(texto)}</span>`;
+    const rotuloOP = o => `${o.op}${o.ciclo ? ' · ' + o.ciclo : ''}`;
+    const total = bal.movimentadas.length + bal.qtdAlterada.length + bal.sairam.length + bal.voltaram.length;
+
+    const cabecalho = (icone, cor) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px; flex-shrink:0;">
+            <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px; font-size:16px;"><i class="fas ${icone}" style="color:${cor};"></i> BALANÇO DA POR_OP</h2>
+            <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+        </div>`;
+
+    if (!total) {
+        $('modalBalancoUrgencias').innerHTML = `
+            <div class="modal-card" style="width:480px; max-width:90vw; border-top:5px solid var(--cor-despacho);">
+                ${cabecalho('fa-check-circle', 'var(--cor-despacho)')}
+                <div style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma movimentação desde a última importação da POR_OP — tudo igual.</div>
+            </div>`;
+        $('modalBalancoUrgencias').style.display = 'flex';
+        return;
+    }
+
+    // Movimentadas: junta por par "de → para", com os números das OPs dentro
+    const pares = new Map();
+    bal.movimentadas.forEach(m => {
+        const k = `${m.de}>>${m.para}`;
+        if (!pares.has(k)) pares.set(k, { de: m.de, para: m.para, ops: [] });
+        pares.get(k).ops.push(m);
+    });
+    const movimentadasHtml = [...pares.values()].sort((a, b) => b.ops.length - a.ops.length).map(g => `
+        <div style="border-left:4px solid var(--cor-sugestao); background:var(--bg-painel); border-radius:8px; padding:12px; margin-bottom:10px;">
+            <div style="font-size:12px; font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span class="pill" style="background:var(--cor-historico);">${esc(g.de)}</span>
+                <i class="fas fa-arrow-right" style="color:var(--texto-secundario);"></i>
+                <span class="pill" style="background:var(--cor-sugestao);">${esc(g.para)}</span>
+                <span style="color:var(--texto-secundario); font-weight:400;">(${g.ops.length} OP${g.ops.length > 1 ? 's' : ''})</span>
+            </div>
+            <div>${g.ops.map(o => chip(rotuloOP(o))).join('')}</div>
+        </div>`).join('');
+
+    const qtdHtml = !bal.qtdAlterada.length ? '' : `
+        <div style="margin-top:14px;">
+            <div style="font-size:12px; font-weight:700; color:var(--cor-sugestao); margin-bottom:6px;"><i class="fas fa-scale-balanced"></i> QUANTIDADE ALTERADA (${bal.qtdAlterada.length}) <span style="font-weight:400; color:var(--texto-secundario);">— mesmo local, quantidade diferente</span></div>
+            <div>${bal.qtdAlterada.map(o => chip(`${rotuloOP(o)} · ${o.de} → ${o.para} pçs`)).join('')}</div>
+        </div>`;
+
+    const voltaramHtml = !bal.voltaram.length ? '' : `
+        <div style="margin-top:14px;">
+            <div style="font-size:12px; font-weight:700; color:var(--cor-despacho); margin-bottom:6px;"><i class="fas fa-plus-circle"></i> PASSARAM A APARECER NA POR_OP (${bal.voltaram.length})</div>
+            <div>${bal.voltaram.map(o => `<span class="pill pill-ok" style="margin:2px 3px 0 0; display:inline-block;">${esc(rotuloOP(o))} · agora em ${esc(o.para)}</span>`).join('')}</div>
+        </div>`;
+
+    const sairamHtml = !bal.sairam.length ? '' : `
+        <div style="margin-top:14px;">
+            <div style="font-size:12px; font-weight:700; color:var(--texto-secundario); margin-bottom:6px;"><i class="fas fa-sign-out-alt"></i> SAÍRAM DA POR_OP (${bal.sairam.length}) <span style="font-weight:400;">— deixaram de aparecer; o local mostrado volta a ser o da Implantação</span></div>
+            <div>${bal.sairam.map(o => `<span class="pill" style="background:var(--cor-historico); margin:2px 3px 0 0; display:inline-block;">${esc(rotuloOP(o))} · estava em ${esc(o.de)}</span>`).join('')}</div>
+        </div>`;
+
+    $('modalBalancoUrgencias').innerHTML = `
+        <div class="modal-card" style="width:680px; max-width:92vw; border-top:5px solid var(--cor-sugestao); max-height:85vh;">
+            ${cabecalho('fa-right-left', 'var(--cor-sugestao)')}
+            <div style="overflow-y:auto; flex:1;">
+                ${movimentadasHtml || '<div style="text-align:center; padding:10px; color:var(--texto-secundario); font-size:12px;">Nenhuma OP trocou de local.</div>'}
+                ${qtdHtml}${voltaramHtml}${sairamHtml}
+            </div>
+        </div>`;
+    $('modalBalancoUrgencias').style.display = 'flex';
+}
+
 // Cruza a base da Implantação com a POR_OP, atualizando local/quantidade.
 // Uma OP pode aparecer em MAIS de um local na POR_OP (movimentação
 // parcial — parte das peças já saiu, parte ainda não) — confirmado com o
@@ -4760,12 +4871,21 @@ function processarPorOPParaUrgencias() {
                 }
             });
 
+            // Guarda a lista de ANTES pra comparar. Só dá pra comparar se já
+            // teve uma importação da POR_OP antes (itens cruzados têm o campo
+            // naoEncontradoPorOP; lista recém-saída da Implantação não tem) —
+            // na primeira vez tudo "mudaria" do local da Implantação pro da
+            // POR_OP e o balanço só seria ruído.
+            const antes = obterImplantacaoOPs();
+            const jaTinhaCruzamento = antes.some(o => o.naoEncontradoPorOP !== undefined);
+
             salvarImplantacaoOPs(resultado);
             renderizarUrgencias();
             let msg = `<i class="fas fa-check"></i> Local/quantidade atualizados pela POR_OP.`;
             if (qtdDesdobradas) msg += ` ${qtdDesdobradas} OP(s) desdobrada(s) por estar em mais de um local.`;
             if (qtdSemCorrespondencia) msg += ` ${qtdSemCorrespondencia} OP(s) não encontrada(s) na POR_OP.`;
             showToast(msg);
+            if (jaTinhaCruzamento) exibirBalancoUrgencias(compararUrgenciasAntesDepois(antes, resultado));
         } catch (err) {
             alert("Erro ao importar a POR_OP: " + err.message);
         }
