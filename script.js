@@ -5102,6 +5102,65 @@ function processarPorOPParaUrgencias() {
     r.readAsArrayBuffer(input.files[0]);
 }
 
+// Exporta a lista de Urgências em Excel, no MESMO formato (colunas e ordem) da
+// aba "Implantação" da planilha original — pra poder colar de volta lá ou
+// reimportar aqui. Diferença: na planilha original a "chave" é fórmula
+// (=Ciclo&"-"&OP) e a "Descrição Local" é um PROCV na aba Base; aqui já saem
+// PRONTAS, como valor: chave escrita e local já atualizado pela POR_OP. OP
+// que está em mais de um local (movimentação parcial) sai em uma linha por
+// local, cada uma com a sua quantidade (a chave se repete nessas linhas — é
+// a mesma OP). Última coluna, extra, diz se a linha foi atualizada pela
+// POR_OP ou não; quem colar só as 13 primeiras colunas ignora ela.
+// Sempre exporta a lista INTEIRA, não só o que está filtrado na tela, na
+// ordem em que veio da Implantação.
+function montarExportacaoUrgencias(lista) {
+    const cabecalho = ['chave', 'Pedido', 'Grade', 'Descrição Local', 'Referência', 'Descrição Referência', 'Cor', 'Ciclo', 'OP', 'Qt OP Local', 'Tipo Produto', 'DT finalização', 'Reprogramado', 'Situação POR_OP'];
+    // Ciclo e OP voltam a ser número quando só têm dígitos — como na planilha original
+    const comoNumero = v => { const t = String(v ?? '').trim(); return /^\d+$/.test(t) ? Number(t) : t; };
+    const linhas = lista.map(o => {
+        // Data como número de série do Excel (data de verdade, não texto), calculada
+        // pelo dia/mês/ano LOCAIS — a Data Finalização é criada à meia-noite local na importação
+        const d = o.dataFinalizacao ? new Date(o.dataFinalizacao) : null;
+        const celulaData = (d && !isNaN(d.getTime()))
+            ? { t: 'n', v: Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000 + 25569, z: 'dd/mm/yyyy' }
+            : null;
+        const situacao = o.naoEncontradoPorOP === true ? 'NÃO ENCONTRADA'
+            : o.naoEncontradoPorOP === false ? 'Atualizada pela POR_OP' : 'POR_OP ainda não importada';
+        return [
+            `${String(o.ciclo ?? '').trim()}-${String(o.op ?? '').trim()}`,
+            // null (e não '') nos campos vazios: '' vira uma célula de texto vazio, que o
+            // Excel conta como preenchida (ÉVAZIO/CONT.VALORES se enganam); null deixa a célula realmente vazia
+            o.pedido || null, o.grade || null, o.local || null, o.referencia || null, o.descRef || null, o.cor || null,
+            comoNumero(o.ciclo), comoNumero(o.op), o.qtd || 0, o.tipoProduto || null, celulaData, o.reprogramado || null, situacao,
+        ];
+    });
+    return { cabecalho, linhas };
+}
+
+function exportarUrgenciasExcel() {
+    if (!exigirBibliotecaExcel()) return;
+    const lista = obterImplantacaoOPs();
+    if (!lista.length) return alert('Não há nada pra exportar — importe a planilha de Implantação primeiro.');
+
+    // Sem POR_OP importada os locais saem como vieram da Implantação (que na
+    // planilha original muitas vezes é #N/A) — avisa antes de gerar.
+    const jaCruzou = lista.some(o => o.naoEncontradoPorOP !== undefined);
+    if (!jaCruzou && !confirm('A POR_OP ainda não foi importada, então os locais vão sair como vieram da Implantação (sem atualizar).\n\nExportar mesmo assim?')) return;
+
+    const { cabecalho, linhas } = montarExportacaoUrgencias(lista);
+    const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+    ws['!cols'] = [12, 34, 22, 36, 12, 50, 8, 7, 8, 11, 16, 14, 26, 26].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Implantação'); // mesmo nome da aba original
+
+    const hoje = new Date(), dois = n => String(n).padStart(2, '0');
+    XLSX.writeFile(wb, `Urgencias_${hoje.getFullYear()}-${dois(hoje.getMonth() + 1)}-${dois(hoje.getDate())}.xlsx`);
+
+    const opsDistintas = new Set(lista.map(o => `${o.ciclo}-${o.op}`)).size;
+    const naoEnc = lista.filter(o => o.naoEncontradoPorOP === true).length;
+    showToast(`<i class="fas fa-file-excel"></i> ${lista.length} linhas exportadas (${opsDistintas} OPs).${naoEnc ? ` ${naoEnc} sem correspondência na POR_OP — local original.` : ''}`);
+}
+
 // Pedido/Descrição Referência/Reprogramado às vezes vêm bem longos —
 // sem isso, o texto quebrava em 2-3 linhas e deixava a tabela com altura
 // de linha toda desigual ("serrilhada"). Trunca numa linha só, com o
@@ -7934,6 +7993,7 @@ function inicializarEventosUI() {
         wireEvento('filtroOPUrgencias', 'input', () => { renderizarUrgencias(); });
         wireEvento('filtroReferenciaUrgencias', 'input', () => { renderizarUrgencias(); });
         wireEvento('filtroSituacaoUrgencias', 'change', () => { renderizarUrgencias(); });
+        wireEvento('btnExportarUrgencias', 'click', () => { exportarUrgenciasExcel(); });
         wireEvento('btnNaoEncontradasUrgencias', 'click', () => {
             const sel = $('filtroSituacaoUrgencias');
             sel.value = sel.value === 'nao' ? '' : 'nao';
