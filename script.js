@@ -4887,6 +4887,7 @@ function processarImplantacao() {
 
             salvarImplantacaoBase(lista);
             salvarImplantacaoOPs(lista); // sem cruzar com POR_OP ainda — fica igual à base até importar ela
+            reconciliarFiltroLocalUrgencias();
             renderizarUrgencias();
             showToast(`<i class="fas fa-check"></i> ${lista.length} OPs importadas da aba Implantação.`);
         } catch (err) {
@@ -5092,6 +5093,7 @@ function processarPorOPParaUrgencias() {
             const jaTinhaCruzamento = antes.some(o => o.naoEncontradoPorOP !== undefined);
 
             salvarImplantacaoOPs(resultado);
+            reconciliarFiltroLocalUrgencias();
             renderizarUrgencias();
             let msg = `<i class="fas fa-check"></i> Local/quantidade atualizados pela POR_OP.`;
             if (qtdDesdobradas) msg += ` ${qtdDesdobradas} OP(s) desdobrada(s) por estar em mais de um local.`;
@@ -5176,22 +5178,56 @@ function celulaTruncadaUrgencias(texto, larguraMaxPx) {
     return `<span style="display:inline-block; vertical-align:middle; max-width:${larguraMaxPx}px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapado}">${texto}</span>`;
 }
 
+// Filtro de LOCAL da aba Urgências, de seleção múltipla (marcar vários de uma
+// vez). Mesmo padrão do Mês Destino / Produto: guarda os EXCLUÍDOS, então um
+// local que apareça numa próxima importação já entra marcado. A lista vem do
+// que existe de verdade na lista (os nomes vêm direto da planilha). OP sem
+// nome de local tem a opção "(sem local)" — sem ela não teria como excluí-las.
+const CHAVE_SEM_LOCAL_URGENCIAS = '__SEM_LOCAL__';
+let locaisUrgenciasExcluidos = new Set();
+
+function chaveLocalUrgencias(o) { return (o.local && String(o.local).trim()) || CHAVE_SEM_LOCAL_URGENCIAS; }
+function passaFiltroLocalUrgencias(o) { return !locaisUrgenciasExcluidos.has(chaveLocalUrgencias(o)); }
+
+function renderizarFiltroLocalUrgencias(lista) {
+    const el = $('listaFiltroLocalUrgencias');
+    if (!el) return;
+    const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const contagem = new Map();
+    lista.forEach(o => { const k = chaveLocalUrgencias(o); contagem.set(k, (contagem.get(k) || 0) + 1); });
+
+    const chaves = [...contagem.keys()].filter(k => k !== CHAVE_SEM_LOCAL_URGENCIAS).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    if (contagem.has(CHAVE_SEM_LOCAL_URGENCIAS)) chaves.push(CHAVE_SEM_LOCAL_URGENCIAS);
+
+    if (!chaves.length) {
+        el.innerHTML = '<label style="color:var(--texto-secundario); cursor:default;">Nenhuma OP importada ainda.</label>';
+        if ($('textoFiltroLocalUrgencias')) $('textoFiltroLocalUrgencias').innerText = 'Todos';
+        return;
+    }
+    const marcadas = chaves.filter(k => !locaisUrgenciasExcluidos.has(k)).length;
+    el.innerHTML = `<label style="font-weight:700;"><input type="checkbox" id="chkTodosLocaisUrgencias" ${marcadas === chaves.length ? 'checked' : ''}> Selecionar tudo</label>`
+        + chaves.map(k => `<label><input type="checkbox" class="chk-local-urgencias" value="${esc(k)}" ${locaisUrgenciasExcluidos.has(k) ? '' : 'checked'}> ${k === CHAVE_SEM_LOCAL_URGENCIAS ? '(sem local)' : esc(k)} <span style="color:var(--texto-secundario);">(${contagem.get(k)})</span></label>`).join('');
+    if ($('textoFiltroLocalUrgencias')) {
+        $('textoFiltroLocalUrgencias').innerText = marcadas === chaves.length ? 'Todos' : marcadas === 0 ? 'Nenhum' : `${marcadas} de ${chaves.length}`;
+    }
+}
+
+// Depois de importar uma planilha nova: tira da seleção os locais que não
+// existem mais e, se TUDO ficou desmarcado, volta a mostrar tudo — senão a
+// tabela ficava vazia e a pessoa nem sabia por quê. (Só aqui, ao importar:
+// durante o uso, "Nenhum" é um estado normal de quem vai marcar um por um.)
+function reconciliarFiltroLocalUrgencias() {
+    const existentes = new Set(obterImplantacaoOPs().map(chaveLocalUrgencias));
+    locaisUrgenciasExcluidos = new Set([...locaisUrgenciasExcluidos].filter(k => existentes.has(k)));
+    if (existentes.size && [...existentes].every(k => locaisUrgenciasExcluidos.has(k))) locaisUrgenciasExcluidos.clear();
+}
+
 function renderizarUrgencias() {
     if (!$('urgenciasLista')) return;
     const lista = obterImplantacaoOPs();
 
-    // Opções do filtro de Local são montadas a partir do que existe de
-    // verdade na lista (não é uma lista fixa, já que os nomes vêm direto
-    // da planilha) — preserva a seleção atual se ela ainda for válida.
-    const selectLocal = $('filtroLocalUrgencias');
-    const localSelecionado = selectLocal ? selectLocal.value : '';
-    if (selectLocal) {
-        const locaisDistintos = [...new Set(lista.map(o => o.local).filter(Boolean))].sort();
-        selectLocal.innerHTML = '<option value="">Todos</option>' + locaisDistintos.map(l => `<option value="${l}">${l}</option>`).join('');
-        if (locaisDistintos.includes(localSelecionado)) selectLocal.value = localSelecionado;
-    }
+    renderizarFiltroLocalUrgencias(lista);
 
-    const filtroLocal = selectLocal ? selectLocal.value : '';
     const filtroOP = ($('filtroOPUrgencias')?.value || '').trim().toUpperCase();
     const filtroReferencia = ($('filtroReferenciaUrgencias')?.value || '').trim().toUpperCase();
 
@@ -5213,7 +5249,7 @@ function renderizarUrgencias() {
     }
 
     const filtrada = lista.filter(o =>
-        (!filtroLocal || o.local === filtroLocal) &&
+        passaFiltroLocalUrgencias(o) &&
         (!filtroOP || o.op.toUpperCase().includes(filtroOP)) &&
         (!filtroReferencia || (o.referencia || '').toUpperCase().includes(filtroReferencia) || (o.descRef || '').toUpperCase().includes(filtroReferencia)) &&
         (!filtroSituacao || (filtroSituacao === 'nao' ? o.naoEncontradoPorOP === true
@@ -8026,7 +8062,18 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); renderizarUrgencias(); });
         wireEvento('inputImplantacao', 'change', () => { processarImplantacao(); });
         wireEvento('inputPorOPUrgencias', 'change', () => { processarPorOPParaUrgencias(); });
-        wireEvento('filtroLocalUrgencias', 'change', () => { renderizarUrgencias(); });
+        wireEvento('toggleMultiSelectLocalUrgencias', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectLocalUrgencias', 'listaFiltroLocalUrgencias', event); });
+        wireEvento('listaFiltroLocalUrgencias', 'click', (event) => { event.stopPropagation(); });
+        wireEvento('listaFiltroLocalUrgencias', 'change', (e) => {
+            if (e.target.id === 'chkTodosLocaisUrgencias') {
+                if (e.target.checked) locaisUrgenciasExcluidos.clear();
+                else $$('.chk-local-urgencias').forEach(c => locaisUrgenciasExcluidos.add(c.value));
+            } else if (e.target.classList.contains('chk-local-urgencias')) {
+                if (e.target.checked) locaisUrgenciasExcluidos.delete(e.target.value);
+                else locaisUrgenciasExcluidos.add(e.target.value);
+            } else return;
+            renderizarUrgencias();
+        });
         wireEvento('filtroOPUrgencias', 'input', () => { renderizarUrgencias(); });
         wireEvento('filtroReferenciaUrgencias', 'input', () => { renderizarUrgencias(); });
         wireEvento('filtroSituacaoUrgencias', 'change', () => { renderizarUrgencias(); });
