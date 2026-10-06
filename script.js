@@ -5066,7 +5066,7 @@ function processarPorOPParaUrgencias() {
             if (!base.length) throw new Error("Importe primeiro a planilha de Implantação.");
             let qtdSemCorrespondencia = 0, qtdDesdobradas = 0;
             const resultado = [];
-            base.forEach(item => {
+            base.forEach((item, idxBase) => {
                 const locais = porOP.get(chaveCicloOP(item.ciclo, item.op));
                 if (!locais || !locais.length) {
                     resultado.push({ ...item, naoEncontradoPorOP: true });
@@ -5074,7 +5074,11 @@ function processarPorOPParaUrgencias() {
                 } else if (locais.length === 1) {
                     resultado.push({ ...item, local: locais[0].local, qtd: locais[0].qtd, naoEncontradoPorOP: false });
                 } else {
-                    locais.forEach(l => resultado.push({ ...item, local: l.local, qtd: l.qtd, naoEncontradoPorOP: false }));
+                    // grupoDesdobra = qual linha da Implantação gerou essas linhas — é o que
+                    // deixa a tela juntar as linhas da MESMA OP, mostrar o selo "EM N LOCAIS"
+                    // e listar todos os locais (a mesma OP pode aparecer 2x na própria
+                    // Implantação, ex: dois pedidos; cada uma vira o seu grupo).
+                    locais.forEach(l => resultado.push({ ...item, local: l.local, qtd: l.qtd, naoEncontradoPorOP: false, grupoDesdobra: idxBase }));
                     qtdDesdobradas++;
                 }
             });
@@ -5124,8 +5128,9 @@ function montarExportacaoUrgencias(lista) {
         const celulaData = (d && !isNaN(d.getTime()))
             ? { t: 'n', v: Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000 + 25569, z: 'dd/mm/yyyy' }
             : null;
+        const emLocais = o.grupoDesdobra !== undefined ? lista.filter(x => x.grupoDesdobra === o.grupoDesdobra).length : 0;
         const situacao = o.naoEncontradoPorOP === true ? 'NÃO ENCONTRADA'
-            : o.naoEncontradoPorOP === false ? 'Atualizada pela POR_OP' : 'POR_OP ainda não importada';
+            : o.naoEncontradoPorOP === false ? `Atualizada pela POR_OP${emLocais > 1 ? ` (OP em ${emLocais} locais)` : ''}` : 'POR_OP ainda não importada';
         return [
             `${String(o.ciclo ?? '').trim()}-${String(o.op ?? '').trim()}`,
             // null (e não '') nos campos vazios: '' vira uma célula de texto vazio, que o
@@ -5211,7 +5216,9 @@ function renderizarUrgencias() {
         (!filtroLocal || o.local === filtroLocal) &&
         (!filtroOP || o.op.toUpperCase().includes(filtroOP)) &&
         (!filtroReferencia || (o.referencia || '').toUpperCase().includes(filtroReferencia) || (o.descRef || '').toUpperCase().includes(filtroReferencia)) &&
-        (!filtroSituacao || (filtroSituacao === 'nao' ? o.naoEncontradoPorOP === true : o.naoEncontradoPorOP === false))
+        (!filtroSituacao || (filtroSituacao === 'nao' ? o.naoEncontradoPorOP === true
+            : filtroSituacao === 'multi' ? o.grupoDesdobra !== undefined
+            : o.naoEncontradoPorOP === false))
     );
 
     // Mais antiga pra mais nova na Data Finalização — sem data vai pro
@@ -5230,13 +5237,43 @@ function renderizarUrgencias() {
         return;
     }
 
-    $('urgenciasLista').innerHTML = filtrada.map(o => {
+    // OP que aparece em MAIS de um local na POR_OP: monta, sobre a lista INTEIRA (não a
+    // filtrada), os locais de cada grupo — assim o selo e a dica mostram TODOS os locais
+    // mesmo quando o filtro deixa só uma das linhas na tela.
+    const grupos = new Map();
+    lista.forEach(o => {
+        if (o.grupoDesdobra === undefined) return;
+        if (!grupos.has(o.grupoDesdobra)) grupos.set(o.grupoDesdobra, []);
+        grupos.get(o.grupoDesdobra).push(o);
+    });
+    const idGrupo = o => (o && o.grupoDesdobra !== undefined) ? o.grupoDesdobra : null;
+    const escAttr = t => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+    $('urgenciasLista').innerHTML = filtrada.map((o, i) => {
+        // Linhas da mesma OP (vindas de uma divisão na POR_OP) ficam coladas — a
+        // ordenação por data é estável e todas herdam a data da mesma linha da
+        // Implantação — e ganham uma faixa azul na lateral, com linha no topo
+        // da primeira e embaixo da última, mais o selo "EM N LOCAIS".
+        const g = idGrupo(o);
+        const primeiraDoGrupo = g !== null && g !== idGrupo(filtrada[i - 1]);
+        const ultimaDoGrupo = g !== null && g !== idGrupo(filtrada[i + 1]);
+        let estiloGrupo = '', seloGrupo = '';
+        if (g !== null) {
+            const membros = grupos.get(g);
+            const sombras = ['inset 4px 0 0 var(--cor-sugestao)'];
+            if (primeiraDoGrupo) sombras.push('inset 0 2px 0 rgba(62,124,151,0.55)');
+            if (ultimaDoGrupo) sombras.push('inset 0 -2px 0 rgba(62,124,151,0.55)');
+            estiloGrupo = `background:rgba(62,124,151,0.08); box-shadow:${sombras.join(', ')};`;
+            const dica = `Essa OP aparece em ${membros.length} locais na POR_OP:&#10;` + membros.map(m => `• ${escAttr(m.local || '(sem nome)')} — ${(m.qtd || 0).toLocaleString('pt-BR')} pçs`).join('&#10;');
+            seloGrupo = ` <span class="pill" style="background:var(--cor-sugestao); color:white; margin-left:6px; vertical-align:middle; white-space:nowrap;" title="${dica}">EM ${membros.length} LOCAIS</span>`;
+        }
         // OP que não foi achada na POR_OP: etiqueta bem visível no lugar do
         // triângulo antigo, e local/quantidade (que são os ORIGINAIS da
         // Implantação, possivelmente velhos) em cinza itálico pra não
         // passar por dado atual e confiável.
         const nao = o.naoEncontradoPorOP === true;
-        const estiloLinha = nao ? ' style="background:rgba(224,123,57,0.10); box-shadow:inset 4px 0 0 #E07B39;"' : '';
+        const estiloLinha = nao ? ' style="background:rgba(224,123,57,0.10); box-shadow:inset 4px 0 0 #E07B39;"'
+            : (estiloGrupo ? ` style="${estiloGrupo}"` : '');
         const apagado = 'color:var(--texto-secundario); font-style:italic;';
         const etiqueta = `<span class="pill" style="background:#E07B39; color:white; margin-right:6px; vertical-align:middle;" title="Essa OP não foi encontrada na última POR_OP importada — o local e a quantidade abaixo são os originais da Implantação, podem estar desatualizados">NÃO ENCONTRADA</span>`;
         const localTxt = nao
@@ -5244,7 +5281,7 @@ function renderizarUrgencias() {
             : (o.local ? celulaTruncadaUrgencias(o.local, 160) : '—');
         const qtdTxt = (o.qtd || 0).toLocaleString('pt-BR');
         return `<tr${estiloLinha}>
-            <td><strong>${o.op}</strong></td>
+            <td style="white-space:nowrap;"><strong>${o.op}</strong>${seloGrupo}</td>
             <td>${o.ciclo || '—'}</td>
             <td>${celulaTruncadaUrgencias(o.pedido, 150)}</td>
             <td>${celulaTruncadaUrgencias(o.grade, 120)}</td>
