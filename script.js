@@ -3070,27 +3070,50 @@ function parsearDataBR(str) {
     return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
 }
 
-// Apaga as movimentações importadas — do setor selecionado no momento, ou
-// de todos os 7 se estiver em "Todos". Existe pra resolver dado de teste
-// que ficou acumulado por engano (o sistema acumula por design, então
-// importações de teste antigas podem somar junto com dado real depois).
+// Nome do mês pra mostrar em avisos ("SETEMBRO/2026"), a partir de "AAAA-MM".
+function rotuloMesKPI(anoMes) {
+    const nomes = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+    const [ano, mes] = String(anoMes).split('-');
+    return `${nomes[Number(mes) - 1] || mes}/${ano}`;
+}
+
+// Apaga as movimentações importadas do MÊS escolhido no seletor MÊS — do
+// setor selecionado, ou de todos os setores se estiver em "Todos". Os outros
+// meses não são mexidos. (Antes apagava o setor INTEIRO, de todos os meses,
+// ignorando o seletor de mês: quem limpava setembro, já guardado em Excel,
+// perdia também outubro sem querer — bug real relatado pelo usuário.)
+// Só mexe no navegador: o que já foi publicado na nuvem continua lá.
 function limparMovimentacoesKPI() {
     if (!exigirAdmin('limpar dados do KPI')) return;
     const setorSelecionado = $('seletorSetorKPI') ? $('seletorSetorKPI').value : 'TODOS';
-    const mensagem = setorSelecionado === 'TODOS'
-        ? 'Isso vai apagar TODAS as movimentações importadas, de TODOS os 7 setores. Não dá pra desfazer. Confirma?'
-        : `Isso vai apagar todas as movimentações importadas de "${setorSelecionado}". Não dá pra desfazer. Confirma?`;
+    const anoMes = $('seletorMesKPI') ? $('seletorMesKPI').value : '';
+    if (!anoMes) return alert('Escolha no seletor MÊS qual mês você quer limpar.');
+
+    const todas = obterMovimentacoesPorSetor();
+    const setores = setorSelecionado === 'TODOS' ? Object.keys(todas) : [setorSelecionado];
+    const doMes = m => m.data && new Date(m.data).toISOString().slice(0, 7) === anoMes;
+
+    let aApagar = 0, aManter = 0;
+    setores.forEach(setor => Object.values(todas[setor] || {}).forEach(m => { if (doMes(m)) aApagar++; else aManter++; }));
+    const rotulo = rotuloMesKPI(anoMes);
+    const onde = setorSelecionado === 'TODOS' ? 'de TODOS os setores' : `do setor "${setorSelecionado}"`;
+    if (!aApagar) return alert(`Não há movimentações de ${rotulo} ${onde} pra limpar.`);
+
+    const mensagem = `Vai apagar ${aApagar.toLocaleString('pt-BR')} movimentações de ${rotulo} ${onde}.\n\n`
+        + `Os outros meses NÃO são mexidos (${aManter.toLocaleString('pt-BR')} movimentações ${onde} continuam).\n\n`
+        + `Só apaga deste navegador — o que já foi publicado na nuvem continua lá. Se ainda não baixou o arquivo do mês (BAIXAR MÊS), baixe antes.\n\n`
+        + `Não dá pra desfazer. Confirma?`;
     if (!confirm(mensagem)) return;
 
-    if (setorSelecionado === 'TODOS') {
-        salvarMovimentacoesPorSetor({});
-    } else {
-        const todas = obterMovimentacoesPorSetor();
-        delete todas[setorSelecionado];
-        salvarMovimentacoesPorSetor(todas);
-    }
+    setores.forEach(setor => {
+        if (!todas[setor]) return;
+        const mantidas = {};
+        Object.entries(todas[setor]).forEach(([chave, m]) => { if (!doMes(m)) mantidas[chave] = m; });
+        if (Object.keys(mantidas).length) todas[setor] = mantidas; else delete todas[setor];
+    });
+    salvarMovimentacoesPorSetor(todas);
     renderizarGraficoKPI();
-    showToast('<i class="fas fa-check"></i> Dados de KPI limpos.');
+    showToast(`<i class="fas fa-check"></i> ${rotulo} limpo (${aApagar.toLocaleString('pt-BR')} movimentações). Os outros meses foram mantidos.`);
 }
 
 function processarMovimentacaoSetor() {
@@ -3733,9 +3756,7 @@ function calcularLeadTimeSetorNoMes(setor, anoMes) {
 // geração do arquivo em si pra poder ser testado sem navegador.
 function montarPlanilhasMesKPI(anoMes) {
     const todas = obterMovimentacoesPorSetor();
-    const [ano, mes] = anoMes.split('-');
-    const nomesMes = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
-    const rotuloMes = `${nomesMes[Number(mes) - 1] || mes}/${ano}`;
+    const rotuloMes = rotuloMesKPI(anoMes);
     const nomesDia = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
     const diaDaSemana = chave => nomesDia[new Date(chave + 'T00:00:00Z').getUTCDay()]; // UTC de propósito (mesma armadilha de fuso de sempre)
 
