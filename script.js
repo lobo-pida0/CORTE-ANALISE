@@ -1739,6 +1739,51 @@ function exigirBibliotecaExcel() {
     return false;
 }
 
+// Acha, na planilha de sincronização, em qual coluna estão o PRODUTO
+// (camisa, calça, jaqueta...) e o LASER. Antes o LASER era lido sempre do
+// índice 41 (coluna AP) — mas o usuário adicionou uma coluna de produto
+// também na AP, então o LASER pode ter ido pra outra coluna, e continuar
+// lendo "AP = laser" faria TODA OP a laser deixar de ser marcada, sem
+// nenhum aviso. Por isso agora procura pelo NOME do cabeçalho primeiro.
+// Ordem de decisão:
+//  1) cabeçalho "LASER" e cabeçalho com "PRODUTO" → usa onde estiverem;
+//  2) achou o LASER em OUTRA coluna que não a AP → a AP está livre e é o produto;
+//  3) não achou nenhum dos dois cabeçalhos → decide pelo CONTEÚDO da AP
+//     (se tem "LASER" nela, é o laser; se tem outro texto, é o produto).
+// Devolve também as letras (AP, AQ...) pra mostrar no aviso da importação.
+function detectarColunasProdutoELaser(rows) {
+    const semAc = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+    const letra = i => { let s = '', n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+
+    // Linha de cabeçalho: a das primeiras 4 que tem a coluna "CHAVE"; senão a 2ª (índice 1), como sempre foi
+    let idxLinhaCab = [0, 1, 2, 3].find(i => rows[i] && rows[i].some(c => semAc(c) === 'CHAVE'));
+    if (idxLinhaCab === undefined) idxLinhaCab = 1;
+    // Array.from (não .map direto): a linha de cabeçalho vem do Excel com
+    // "buracos" nas células vazias (ex: a coluna W não tem título), e .map
+    // pula buraco — o findIndex depois dava erro em cima de undefined.
+    const cab = Array.from(rows[idxLinhaCab] || [], semAc);
+
+    const AP = 41;
+    let idxLaser = cab.indexOf('LASER');
+    let idxProduto = cab.findIndex(c => c.includes('PRODUTO'));
+
+    if (idxLaser === -1 && idxProduto === -1) {
+        const conteudoAP = rows.slice(idxLinhaCab + 1).map(r => r && r[AP]).filter(v => v !== undefined && v !== null && String(v).trim() !== '');
+        if (conteudoAP.some(v => semAc(v).includes('LASER'))) idxLaser = AP;
+        else if (conteudoAP.length) idxProduto = AP;
+    } else if (idxProduto === -1 && idxLaser !== -1 && idxLaser !== AP) {
+        idxProduto = AP;
+    }
+    // Laser sem cabeçalho achado: comportamento antigo (coluna AP), a não ser que a AP seja o produto
+    if (idxLaser === -1 && idxProduto !== AP) idxLaser = AP;
+
+    return {
+        idxLinhaCab, idxLaser, idxProduto,
+        letraLaser: idxLaser !== -1 ? letra(idxLaser) : null,
+        letraProduto: idxProduto !== -1 ? letra(idxProduto) : null,
+    };
+}
+
 function processarExcel() {
     if (!exigirAdmin('sincronizar a planilha')) return;
     if (!exigirBibliotecaExcel()) return;
@@ -1793,6 +1838,8 @@ function processarExcel() {
         }
 
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+        const colunasSinc = detectarColunasProdutoELaser(rows); // onde estão LASER e PRODUTO (a planilha mudou de layout)
+        const lerProduto = r => (colunasSinc.idxProduto !== -1 && r[colunasSinc.idxProduto]) ? String(r[colunasSinc.idxProduto]).trim().toUpperCase() : '';
         let mapA = {}; bancoDadosOPs.forEach(o => mapA[o.id] = o); bancoDadosOPs = [];
         const sincronizacaoInicial = Object.keys(mapA).length === 0; // primeira vez que sincroniza nesse navegador
         let movimentacoes = []; // OPs que trocaram de etapa nessa sincronização
@@ -1817,6 +1864,7 @@ function processarExcel() {
                         qtd: parseInt(r[6]) || 0, diasLocal: parseInt(r[25]) || 0,
                         codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
                         referencia: r[40] ? String(r[40]).trim().toUpperCase() : "",
+                        produto: lerProduto(r),
                         sobMedida: mapaSBM.has(String(r[5]).trim())
                     });
                     continue; // não passa pela lógica de etapa 0-7 abaixo
@@ -1846,7 +1894,8 @@ function processarExcel() {
                         descMP: r[39] ? String(r[39]).trim().toUpperCase() : "🔍 COLUNA VAZIA",
                         referencia: r[40] ? String(r[40]).trim().toUpperCase() : "", // coluna AO
                         sobMedida: mapaSBM.has(idOP), // aba BASE, coluna Y ("Descrição OP" contém "SBM")
-                        laser: r[41] ? String(r[41]).trim().toUpperCase().includes('LASER') : false, // coluna AP
+                        laser: (colunasSinc.idxLaser !== -1 && r[colunasSinc.idxLaser]) ? String(r[colunasSinc.idxLaser]).trim().toUpperCase().includes('LASER') : false, // coluna do LASER (achada pelo cabeçalho)
+                        produto: lerProduto(r), // camisa/calça/jaqueta... — só local (não vai pra nuvem), usado no filtro de Produto
                         dataFinalizacao: mapaFinalizacao.get(idOP) || null, // aba BASE, coluna P
                         dataCorteSuposta: calcularDataCorteSuposta(mapaFinalizacao.get(idOP)),
                         dataInclusao: extrairDataExcel(r[16]) || null, // quando a OP foi criada — base do cálculo de lead time por setor
@@ -1862,12 +1911,19 @@ function processarExcel() {
         inicializarFiltros();
         renderizarFiltroDataCorte();
         renderizarFiltroMesDestino();
+        renderizarFiltroProduto();
         reconstruirFiltrosPrioridades();
         renderizarTudoImediato();
 
         input.value = '';
         registrarAtualizacao('bancoOPs'); atualizarIndicadoresDeAtualizacao();
-        showToast("<i class='fas fa-check-double'></i> Planilha e OTD atualizados!");
+        // Avisa de onde o Produto foi lido — se a coluna não existir/mudar de
+        // lugar de novo, o usuário vê na hora em vez de achar que o filtro quebrou.
+        const qtdComProduto = bancoDadosOPs.filter(o => o.produto).length;
+        let avisoProduto = '';
+        if (colunasSinc.idxProduto === -1) avisoProduto = ` <br><i class='fas fa-triangle-exclamation'></i> Não achei a coluna de PRODUTO na planilha — o filtro de Produto ficou vazio.`;
+        else avisoProduto = ` Produto lido da coluna ${colunasSinc.letraProduto} (${qtdComProduto} de ${bancoDadosOPs.length} OPs com produto).`;
+        showToast("<i class='fas fa-check-double'></i> Planilha e OTD atualizados!" + avisoProduto);
 
         // Painel de balanço: quem mudou de setor, quem é novo, quem saiu da
         // planilha — só faz sentido comparar se já existia uma sincronização
@@ -6279,7 +6335,8 @@ function renderizarTudoImediato() {
     // com o texto buscado. Ajuda a já visualizar o que "cabe" no mesmo corte.
     const condBase = o => locaisSelecionados.includes(o.localDestino) && (bCic === "" || o.ciclo.toLowerCase().includes(bCic)) && (bMP === "" || (o.codigoMP || '').toLowerCase().includes(bMP))
         && passaFiltroDataCorte(o)
-        && passaFiltroMesDestino(o);
+        && passaFiltroMesDestino(o)
+        && passaFiltroProduto(o);
     let filtrados;
     if (bOP !== "") {
         const localizadasPorTexto = bancoDadosOPs.filter(o => condBase(o) && o.id.toLowerCase().includes(bOP));
@@ -7490,6 +7547,67 @@ function passaFiltroMesDestino(op) {
     return !mesesDestinoExcluidos.has(op.mesDestino);
 }
 
+// Filtro de "Produto" (camisa, calça, jaqueta, parka, blusa...) — vem da
+// coluna de produto da planilha de sincronização, e só existe LOCAL (não vai
+// pra nuvem; a Programação é só do admin). Mesmo padrão do Mês Destino:
+// guarda o que foi EXCLUÍDO, então um produto novo que apareça numa próxima
+// sincronização já entra marcado. A lista é montada do que existe de
+// verdade nas OPs, não é fixa. "CALÇA" e "CALCA" contam como o mesmo produto.
+const CHAVE_SEM_PRODUTO = '__SEM_PRODUTO__';
+let produtosExcluidos = new Set();
+
+function chaveProdutoOP(op) {
+    const p = String(op.produto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+    return p || CHAVE_SEM_PRODUTO;
+}
+
+function renderizarFiltroProduto() {
+    const el = $('listaFiltroProduto');
+    if (!el) return;
+    const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const rotulos = new Map(), contagem = new Map();
+    bancoDadosOPs.forEach(op => {
+        const k = chaveProdutoOP(op);
+        contagem.set(k, (contagem.get(k) || 0) + 1);
+        if (k !== CHAVE_SEM_PRODUTO && !rotulos.has(k)) rotulos.set(k, String(op.produto).trim().toUpperCase());
+    });
+
+    if (!rotulos.size) {
+        // Nenhuma OP tem produto (planilha sem a coluna). Zera as exclusões
+        // de antes, senão dava pra ficar com tudo escondido sem ter como
+        // desmarcar (a lista de opções some).
+        produtosExcluidos.clear();
+        el.innerHTML = '<label style="color:var(--texto-secundario); padding:8px 12px; display:block;">Nenhum produto disponível — sincronize uma planilha que tenha a coluna de produto.</label>';
+        atualizarTextoFiltroProduto(0, 0);
+        return;
+    }
+
+    const chaves = [...rotulos.keys()].sort((a, b) => rotulos.get(a).localeCompare(rotulos.get(b), 'pt-BR'));
+    if (contagem.has(CHAVE_SEM_PRODUTO)) chaves.push(CHAVE_SEM_PRODUTO);
+
+    const marcadas = chaves.filter(k => !produtosExcluidos.has(k)).length;
+    let html = `<label style="font-weight:700; border-bottom:1px solid var(--borda-cor);">
+        <input type="checkbox" id="chkTodosProdutos" ${marcadas === chaves.length ? 'checked' : ''}> Selecionar tudo</label>`;
+    html += chaves.map(k => {
+        const rotulo = k === CHAVE_SEM_PRODUTO ? '(sem produto)' : rotulos.get(k);
+        return `<label><input type="checkbox" class="chk-produto" value="${esc(k)}" ${produtosExcluidos.has(k) ? '' : 'checked'}> ${esc(rotulo)} <span style="color:var(--texto-secundario);">(${contagem.get(k)})</span></label>`;
+    }).join('');
+    el.innerHTML = html;
+    atualizarTextoFiltroProduto(marcadas, chaves.length);
+}
+
+function atualizarTextoFiltroProduto(marcadas, total) {
+    if (!$('textoFiltroProduto')) return;
+    if (total === 0 || marcadas === total) $('textoFiltroProduto').innerText = 'Todos';
+    else if (marcadas === 0) $('textoFiltroProduto').innerText = 'Nenhum';
+    else $('textoFiltroProduto').innerText = `${marcadas} de ${total}`;
+}
+
+function passaFiltroProduto(op) {
+    return !produtosExcluidos.has(chaveProdutoOP(op));
+}
+
 function inicializarFiltroEtapa() {
     if (!$('listaFiltroEtapa')) return;
     // Mantém o comportamento de sempre por padrão (só PROGRAMAÇÃO marcada),
@@ -7716,6 +7834,19 @@ function inicializarEventosUI() {
             renderizarFiltroMesDestino();
             renderizarTudoImediato();
         });
+        wireEvento('toggleMultiSelectProduto', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectProduto', 'listaFiltroProduto', event); });
+        wireEvento('listaFiltroProduto', 'click', (event) => { event.stopPropagation(); });
+        wireEvento('listaFiltroProduto', 'change', (e) => {
+            if (e.target.id === 'chkTodosProdutos') {
+                if (e.target.checked) produtosExcluidos.clear();
+                else $$('.chk-produto').forEach(c => produtosExcluidos.add(c.value));
+            } else if (e.target.classList.contains('chk-produto')) {
+                if (e.target.checked) produtosExcluidos.delete(e.target.value);
+                else produtosExcluidos.add(e.target.value);
+            } else return;
+            renderizarFiltroProduto();
+            renderizarTudoImediato();
+        });
         wireEvento('toggleMultiSelectSetorPrioridades', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectSetorPrioridades', 'listaFiltroSetorPrioridades', event); });
         wireEvento('listaFiltroSetorPrioridades', 'click', (event) => { event.stopPropagation(); });
         wireEvento('listaFiltroSetorPrioridades', 'change', (e) => {
@@ -7785,6 +7916,7 @@ window.onload = function () {
     renderizarHistorico();
     renderizarFiltroDataCorte();
     renderizarFiltroMesDestino();
+    renderizarFiltroProduto();
     reconstruirFiltrosPrioridades();
 
     carregarFiltrosFilaCorte();
