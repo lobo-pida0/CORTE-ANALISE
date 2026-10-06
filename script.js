@@ -3696,6 +3696,137 @@ function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
     }).join('');
 }
 
+// =========================================================================
+// 📥 BAIXAR MÊS DO KPI (Excel) — pra guardar um mês que acabou. Os dados
+// brutos de movimentação ficam na nuvem, mas os números CALCULADOS em cima
+// deles mudam com o tempo (principalmente o lead time, que depende da data
+// de inclusão da OP — que só existe enquanto a OP ainda está na planilha de
+// Sincronização). O arquivo congela o mês como ele está AGORA.
+// =========================================================================
+
+// Lead time só das OPs que CHEGARAM nesse setor dentro do mês (a primeira
+// vez que chegaram, igual calcularLeadTimeSetor) — o do cartão da tela
+// considera todos os meses juntos, então não serve pra "fechar" um mês.
+function calcularLeadTimeSetorNoMes(setor, anoMes) {
+    const movimentos = obterMovimentacoesPorSetor()[setor] || {};
+    const primeiraChegadaPorOP = {};
+    Object.values(movimentos).forEach(m => {
+        if (!m.data) return;
+        if (!primeiraChegadaPorOP[m.op] || m.data < primeiraChegadaPorOP[m.op]) primeiraChegadaPorOP[m.op] = m.data;
+    });
+    const opsPorId = new Map(bancoDadosOPs.map(o => [o.id, o]));
+    const leadTimes = [];
+    let opsQueChegaramNoMes = 0;
+    Object.entries(primeiraChegadaPorOP).forEach(([opId, dataChegada]) => {
+        if (new Date(dataChegada).toISOString().slice(0, 7) !== anoMes) return;
+        opsQueChegaramNoMes++;
+        const op = opsPorId.get(opId);
+        if (!op || !op.dataInclusao) return;
+        const dias = Math.round((new Date(dataChegada) - new Date(op.dataInclusao)) / 86400000);
+        if (dias >= 0) leadTimes.push(dias);
+    });
+    const media = leadTimes.length ? Math.round((leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length) * 10) / 10 : null;
+    return { mediaLeadTime: media, opsComDado: leadTimes.length, opsQueChegaramNoMes };
+}
+
+// Monta o conteúdo das abas do arquivo (listas de linhas) — separado da
+// geração do arquivo em si pra poder ser testado sem navegador.
+function montarPlanilhasMesKPI(anoMes) {
+    const todas = obterMovimentacoesPorSetor();
+    const [ano, mes] = anoMes.split('-');
+    const nomesMes = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+    const rotuloMes = `${nomesMes[Number(mes) - 1] || mes}/${ano}`;
+    const nomesDia = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+    const diaDaSemana = chave => nomesDia[new Date(chave + 'T00:00:00Z').getUTCDay()]; // UTC de propósito (mesma armadilha de fuso de sempre)
+
+    // Tudo do mês, por setor, uma única passada
+    const porSetor = {};
+    SETORES_KPI.forEach(setor => {
+        porSetor[setor] = { dias: {}, opsUteis: new Set(), foraDoTotal: 0, movs: [] };
+        Object.values(todas[setor] || {}).forEach(m => {
+            if (!m.data) return;
+            const dia = new Date(m.data).toISOString().slice(0, 10);
+            if (!dia.startsWith(anoMes)) return;
+            const d = porSetor[setor];
+            d.movs.push({ dia, op: m.op, ciclo: m.ciclo || '', qtd: m.qtd });
+            if (!d.dias[dia]) d.dias[dia] = { pecas: 0, ops: new Set() };
+            d.dias[dia].pecas += m.qtd; d.dias[dia].ops.add(m.op);
+            const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
+            if (dow === 0 || dow === 6) d.foraDoTotal += m.qtd; else d.opsUteis.add(m.op);
+        });
+    });
+
+    // ---- RESUMO
+    const resumo = [
+        [`KPI — ${rotuloMes}`],
+        [`Arquivo gerado em ${new Date().toLocaleString('pt-BR')}. Congela o mês como ele estava nesse momento.`],
+        ['Total do mês, OPs e médias contam só dias úteis (segunda a sexta), igual aos cartões da tela. Movimento de fim de semana aparece numa coluna à parte e NÃO entra no total.'],
+        ['Lead time = dias entre a inclusão da OP e a 1ª chegada dela no setor, só das OPs que chegaram no setor DENTRO desse mês. Só calcula pra OPs que ainda tinham a data de inclusão na Sincronização.'],
+        [],
+        ['SETOR', 'TOTAL DO MÊS (peças, dias úteis)', 'OPs DISTINTAS (dias úteis)', 'DIAS ÚTEIS COM MOVIMENTO', 'MÉDIA POR DIA COM MOVIMENTO', 'PEÇAS EM FIM DE SEMANA (fora do total)', 'LEAD TIME MÉDIO (dias)', 'OPs COM LEAD TIME CALCULADO', 'OPs QUE CHEGARAM NO SETOR NO MÊS'],
+    ];
+    const semanas = [['SETOR', 'SEMANA', 'TOTAL (peças)', 'OPs DISTINTAS', 'DIAS COM MOVIMENTO', 'MÉDIA POR DIA']];
+    SETORES_KPI.forEach(setor => {
+        const sem = calcularMediaPorSemanaDoMes(setor, anoMes).filter(x => x.diasComMovimento > 0);
+        const total = sem.reduce((a, x) => a + x.totalSemana, 0);
+        const dias = sem.reduce((a, x) => a + x.diasComMovimento, 0);
+        const lead = calcularLeadTimeSetorNoMes(setor, anoMes);
+        resumo.push([setor, total, porSetor[setor].opsUteis.size, dias, dias ? Math.round(total / dias) : 0, porSetor[setor].foraDoTotal, lead.mediaLeadTime === null ? '' : lead.mediaLeadTime, lead.opsComDado, lead.opsQueChegaramNoMes]);
+        sem.forEach(x => semanas.push([setor, x.rotulo, x.totalSemana, x.totalOPs, x.diasComMovimento, x.mediaDiaria]));
+    });
+
+    // ---- DIA A DIA (uma coluna de peças e uma de OPs por setor)
+    const todasDatas = [...new Set(SETORES_KPI.flatMap(s => Object.keys(porSetor[s].dias)))].sort();
+    const diaADia = [['DATA', 'DIA DA SEMANA', ...SETORES_KPI.flatMap(s => [`${s} — PEÇAS`, `${s} — OPs`])]];
+    todasDatas.forEach(dia => {
+        diaADia.push([formatarChaveDataBR(dia), diaDaSemana(dia), ...SETORES_KPI.flatMap(s => {
+            const d = porSetor[s].dias[dia];
+            return d ? [d.pecas, d.ops.size] : ['', ''];
+        })]);
+    });
+
+    // ---- ACERTIVIDADE (só quantidades — sem porcentagem, de propósito)
+    const acertividade = [['PAR (ORIGEM → DESTINO)', 'DIA', 'TOTAL QUE SAIU DA ORIGEM', 'BATERAM NO DESTINO NO PRÓXIMO DIA ÚTIL']];
+    PARES_ADJACENTES_KPI.forEach(([origem, destino]) => {
+        const dias = calcularAcertividadeSetores(origem, destino, anoMes);
+        if (!dias.length) return;
+        dias.forEach(d => acertividade.push([`${origem} → ${destino}`, formatarChaveDataBR(d.dia), d.totalOrigem, d.acertos]));
+        acertividade.push([`${origem} → ${destino}`, 'TOTAL DO MÊS', dias.reduce((a, d) => a + d.totalOrigem, 0), dias.reduce((a, d) => a + d.acertos, 0)]);
+    });
+
+    // ---- MOVIMENTAÇÕES (os dados brutos do mês, linha a linha)
+    const movimentacoes = [['SETOR', 'OP', 'CICLO', 'DATA', 'QTD (já com o multiplicador de camadas no Enfesto/Corte)']];
+    let totalMovs = 0;
+    SETORES_KPI.forEach(setor => {
+        porSetor[setor].movs.sort((a, b) => a.dia.localeCompare(b.dia) || String(a.op).localeCompare(String(b.op), 'pt-BR', { numeric: true }))
+            .forEach(m => { movimentacoes.push([setor, m.op, m.ciclo, formatarChaveDataBR(m.dia), m.qtd]); totalMovs++; });
+    });
+
+    return { rotuloMes, resumo, semanas, diaADia, acertividade, movimentacoes, totalMovs };
+}
+
+function baixarMesKPIExcel() {
+    if (!exigirBibliotecaExcel()) return;
+    const anoMes = $('seletorMesKPI') ? $('seletorMesKPI').value : '';
+    if (!anoMes) return alert('Escolha um mês no seletor MÊS antes de baixar.');
+    const dados = montarPlanilhasMesKPI(anoMes);
+    if (!dados.totalMovs) return alert(`Não há nenhuma movimentação importada em ${dados.rotuloMes}.`);
+
+    const wb = XLSX.utils.book_new();
+    const aba = (nome, linhas, larguras) => {
+        const ws = XLSX.utils.aoa_to_sheet(linhas);
+        ws['!cols'] = larguras.map(w => ({ wch: w }));
+        XLSX.utils.book_append_sheet(wb, ws, nome);
+    };
+    aba('RESUMO', dados.resumo, [26, 20, 20, 18, 20, 22, 16, 18, 22]);
+    aba('SEMANAS', dados.semanas, [26, 26, 16, 16, 18, 16]);
+    aba('DIA A DIA', dados.diaADia, [12, 14, ...SETORES_KPI.flatMap(() => [14, 8])]);
+    aba('ACERTIVIDADE', dados.acertividade, [52, 14, 24, 34]);
+    aba('MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24]);
+    XLSX.writeFile(wb, `KPI_${anoMes}.xlsx`);
+    showToast(`<i class="fas fa-file-excel"></i> KPI de ${dados.rotuloMes} baixado (${dados.totalMovs.toLocaleString('pt-BR')} movimentações).`);
+}
+
 function salvarOpsDestinoAutomaticas(obj) {
     localStorage.setItem('opsDestinoAutomaticas', JSON.stringify(obj));
 }
@@ -7801,6 +7932,7 @@ function inicializarEventosUI() {
         wireEvento('seletorParAcertividadeKPI', 'change', () => { renderizarGraficoAcertividadeKPI(); });
         wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor(); });
         wireEvento('btnLimparMovimentacoesKPI', 'click', () => { limparMovimentacoesKPI(); });
+        wireEvento('btnBaixarMesKPI', 'click', () => { baixarMesKPIExcel(); });
         ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
             wireEvento(`thOrdenarPrioridades-${campo}`, 'click', () => { ordenarPrioridadesPor(campo); });
         });
