@@ -6678,11 +6678,7 @@ function renderizarMaquinasEnfesto() {
     if (!$('subaba-maquinas')) return;
     const esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const mapa = obterMapaMaquinasEnfesto();
-    const por = { '1': [], '2': [], 'SEM': [] };
-    dadosProgramacaoVisiveis.forEach(op => {
-        const v = maquinaDoProdutoEnfesto(chaveProdutoMaquina(op), mapa);
-        if (v === 'AMBAS') { por['1'].push(op); por['2'].push(op); } else por[v === '1' || v === '2' ? v : 'SEM'].push(op);
-    });
+    const por = classificarOPsPorMaquinaEnfesto(dadosProgramacaoVisiveis, mapa);
     $('contMaquina1').textContent = por['1'].length; $('contMaquina2').textContent = por['2'].length; $('contMaquinaSem').textContent = por['SEM'].length;
     [['1', 'btnMaquina1'], ['2', 'btnMaquina2'], ['SEM', 'btnMaquinaSem']].forEach(([m, id]) => $(id).classList.toggle('ativo', maquinaEnfestoSelecionada === m));
 
@@ -6711,12 +6707,13 @@ function renderizarMaquinasEnfesto() {
     ops.forEach((o, i) => {
         const mpOP = (o.codigoMP && o.codigoMP !== 'SEM CÓDIGO') ? o.codigoMP : 'SEM MP (LOTE MISTO)';
         if (mpOP !== loteAtual) {
-            html += `<tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;"><td colspan="11" style="text-align:left; font-weight:bold; padding:10px 15px;"><i class="fas fa-layer-group" style="margin-right:8px;"></i> LOTE MATÉRIA-PRIMA: ${esc(mpOP)} <span style="font-weight:normal; font-size:0.9em; opacity:0.9;"> - ${esc(o.descMP || 'Descrição não cadastrada')}</span></td></tr>`;
+            html += `<tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;"><td colspan="12" style="text-align:left; font-weight:bold; padding:10px 15px;"><i class="fas fa-layer-group" style="margin-right:8px;"></i> LOTE MATÉRIA-PRIMA: ${esc(mpOP)} <span style="font-weight:normal; font-size:0.9em; opacity:0.9;"> - ${esc(o.descMP || 'Descrição não cadastrada')}</span></td></tr>`;
             loteAtual = mpOP;
         }
         const chave = chaveProdutoMaquina(o);
         const ambas = maquinaDoProdutoEnfesto(chave, mapa) === 'AMBAS';
         html += `<tr>
+            <td><input type="checkbox" class="check-maquina-enfesto" data-id="${esc(o.id)}" ${selecaoMaquinaEnfesto.has(o.id) ? 'checked' : ''}></td>
             <td>${i + 1}º</td><td>${esc(o.ciclo)}</td><td><strong>${esc(o.id)}</strong></td>
             <td><span class="pill" style="background:var(--cor-historico);">${esc(nomesEtapas[o.etapa])}</span>${o.laser ? ' <span class="pill" style="background:var(--cor-roxo);"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
             <td><span class="pill" style="background:var(--cor-sugestao);">${esc(chave || '—')}</span>${ambas ? ' <small title="Aceito nas duas máquinas">✱</small>' : ''}</td>
@@ -6726,7 +6723,78 @@ function renderizarMaquinasEnfesto() {
         </tr>`;
     });
     $('listaMaquinaEnfesto').innerHTML = ops.length ? html
-        : `<tr><td colspan="11" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>${dadosProgramacaoVisiveis.length ? 'Nenhuma OP da lista cabe nessa opção.' : 'A lista do Programar Lote está vazia — ajuste os filtros de lá.'}</td></tr>`;
+        : `<tr><td colspan="12" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>${dadosProgramacaoVisiveis.length ? 'Nenhuma OP da lista cabe nessa opção.' : 'A lista do Programar Lote está vazia — ajuste os filtros de lá.'}</td></tr>`;
+    atualizarSelecaoMaquinaEnfesto();
+}
+
+// Divide uma lista de OPs entre as máquinas (OP "qualquer uma" entra nas duas) — usada pela tela e pela exportação.
+function classificarOPsPorMaquinaEnfesto(ops, mapa) {
+    const por = { '1': [], '2': [], 'SEM': [] };
+    ops.forEach(op => {
+        const v = maquinaDoProdutoEnfesto(chaveProdutoMaquina(op), mapa);
+        if (v === 'AMBAS') { por['1'].push(op); por['2'].push(op); } else por[v === '1' || v === '2' ? v : 'SEM'].push(op);
+    });
+    return por;
+}
+
+// Seleção de OPs na sub-aba (própria — não mexe na seleção do Programar Lote):
+// marcar OPs só serve pra escolher o que vai no Excel; sem nenhuma marcada, o
+// Excel leva a lista inteira da tela. Guardada em memória por número de OP.
+let selecaoMaquinaEnfesto = new Set();
+let ultimoIndiceMaquinaEnfesto = null;     // pra marcar um intervalo com Shift
+
+function opsDaMaquinaAtualEnfesto() { return classificarOPsPorMaquinaEnfesto(dadosProgramacaoVisiveis)[maquinaEnfestoSelecionada] || []; }
+
+function atualizarSelecaoMaquinaEnfesto() {
+    const info = $('infoSelecaoMaquinaEnfesto'), topo = $('checkTudoMaquinaEnfesto');
+    if (!info) return;
+    const ops = opsDaMaquinaAtualEnfesto(), marcadas = ops.filter(o => selecaoMaquinaEnfesto.has(o.id));
+    const pecas = marcadas.reduce((a, o) => a + (Number(o.qtd) || 0), 0), min = marcadas.reduce((a, o) => a + (Number(o.tempoCorte) || 0), 0);
+    info.textContent = !ops.length ? ''
+        : !marcadas.length ? `Nenhuma OP marcada — o Excel leva as ${ops.length} OPs da lista.`
+        : `${marcadas.length} OP${marcadas.length > 1 ? 's' : ''} marcada${marcadas.length > 1 ? 's' : ''} · ${pecas.toLocaleString('pt-BR')} pçs · ${Math.round(min).toLocaleString('pt-BR')} min — o Excel leva só ${marcadas.length > 1 ? 'elas' : 'ela'}.`;
+    if (topo) { topo.checked = ops.length > 0 && marcadas.length === ops.length; topo.indeterminate = marcadas.length > 0 && marcadas.length < ops.length; }
+}
+
+// Monta as linhas do Excel (separado da geração do arquivo, pra poder testar).
+function montarExportacaoMaquinaEnfesto(ops, maquina) {
+    const mapa = obterMapaMaquinasEnfesto();
+    const comoNumero = v => { const t = String(v ?? '').trim(); return /^\d+$/.test(t) ? Number(t) : t; };
+    const cabecalho = ['ORDEM', 'CICLO', 'OP', 'ETAPA', 'PRODUTO', 'MÁQUINA', 'MATÉRIA-PRIMA', 'DESCRIÇÃO DA MATÉRIA-PRIMA', 'DESCRIÇÃO', 'DUBLAGEM', 'TEMPO (min)', 'PEÇAS', 'DATA CORTE', 'LOCAL DESTINO', 'LASER'];
+    let totalMin = 0, totalPecas = 0;
+    const linhas = ops.map((o, i) => {
+        const chave = chaveProdutoMaquina(o), v = maquinaDoProdutoEnfesto(chave, mapa);
+        const tempo = Math.round((Number(o.tempoCorte) || 0) * 100) / 100, qtd = Number(o.qtd) || 0;
+        totalMin += tempo; totalPecas += qtd;
+        const d = o.dataCorte ? new Date(o.dataCorte) : null;
+        const dataCorte = (d && !isNaN(d.getTime())) ? { t: 'n', v: Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000 + 25569, z: 'dd/mm/yyyy' } : 'FIFO';
+        return [i + 1, comoNumero(o.ciclo), comoNumero(o.id), nomesEtapas[o.etapa] || '', chave || null,
+            v === 'AMBAS' ? 'Qualquer uma' : (maquina === 'SEM' ? 'Sem definição' : `Máquina ${maquina}`),
+            (o.codigoMP && o.codigoMP !== 'SEM CÓDIGO') ? o.codigoMP : 'SEM MP', o.descMP || null, o.desc || null,
+            o.temDublado ? 'SIM' : 'NÃO', tempo, qtd, dataCorte, o.localDestino || null, o.laser ? 'SIM' : null];
+    });
+    // linha em branco + totais no fim (fora do bloco de dados, pra não atrapalhar filtro/ordenação no Excel)
+    const totais = [null, null, null, null, null, null, null, null, `TOTAL — ${ops.length} OP${ops.length > 1 ? 's' : ''}`, null, Math.round(totalMin * 100) / 100, totalPecas, null, null, null];
+    return { cabecalho, linhas, totais };
+}
+
+function exportarMaquinaEnfestoExcel() {
+    if (!exigirBibliotecaExcel()) return;
+    const ops = opsDaMaquinaAtualEnfesto();
+    if (!ops.length) return alert('Não há OPs nessa lista pra exportar.');
+    const marcadas = ops.filter(o => selecaoMaquinaEnfesto.has(o.id));
+    const aExportar = marcadas.length ? marcadas : ops;     // sem nenhuma marcada → leva a lista inteira
+    const rotulo = maquinaEnfestoSelecionada === 'SEM' ? 'Sem definição' : `Máquina ${maquinaEnfestoSelecionada}`;
+    const { cabecalho, linhas, totais } = montarExportacaoMaquinaEnfesto(aExportar, maquinaEnfestoSelecionada);
+
+    const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas, [], totais]);
+    ws['!cols'] = [7, 7, 8, 18, 14, 14, 13, 40, 52, 10, 12, 8, 12, 18, 8].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, rotulo);
+    const hoje = new Date(), dois = n => String(n).padStart(2, '0');
+    const nomeMaquina = maquinaEnfestoSelecionada === 'SEM' ? 'Sem_definicao' : `Maquina_${maquinaEnfestoSelecionada}`;
+    XLSX.writeFile(wb, `Enfesto_${nomeMaquina}${marcadas.length ? '_selecionadas' : ''}_${hoje.getFullYear()}-${dois(hoje.getMonth() + 1)}-${dois(hoje.getDate())}.xlsx`);
+    showToast(`<i class="fas fa-file-excel"></i> ${aExportar.length} OP${aExportar.length > 1 ? 's' : ''} exportada${aExportar.length > 1 ? 's' : ''} (${rotulo})${marcadas.length ? ' — só as marcadas.' : '.'}`);
 }
 
 // Tela "DEFINIR PRODUTOS": uma linha por produto que existe nas OPs (os sem
@@ -8275,6 +8343,22 @@ function inicializarEventosUI() {
         wireEvento('btnMaquina2', 'click', () => { selecionarMaquinaEnfesto('2'); });
         wireEvento('btnMaquinaSem', 'click', () => { selecionarMaquinaEnfesto('SEM'); });
         wireEvento('btnDefinirMaquinas', 'click', () => { renderizarModalMaquinasEnfesto(); $('modalMaquinasEnfesto').style.display = 'flex'; });
+        wireEvento('btnExportarMaquinaEnfesto', 'click', () => { exportarMaquinaEnfestoExcel(); });
+        wireEvento('btnLimparSelecaoMaquina', 'click', () => { selecaoMaquinaEnfesto.clear(); ultimoIndiceMaquinaEnfesto = null; renderizarMaquinasEnfesto(); });
+        wireEvento('checkTudoMaquinaEnfesto', 'change', (e) => {
+            opsDaMaquinaAtualEnfesto().forEach(o => { if (e.target.checked) selecaoMaquinaEnfesto.add(o.id); else selecaoMaquinaEnfesto.delete(o.id); });
+            renderizarMaquinasEnfesto();
+        });
+        wireEvento('listaMaquinaEnfesto', 'click', (e) => {
+            if (!e.target.classList || !e.target.classList.contains('check-maquina-enfesto')) return;
+            const caixas = [...document.querySelectorAll('#listaMaquinaEnfesto .check-maquina-enfesto')];
+            const i = caixas.indexOf(e.target);
+            // Shift + clique marca (ou desmarca) o intervalo inteiro desde a última caixinha clicada
+            const faixa = (e.shiftKey && ultimoIndiceMaquinaEnfesto !== null && ultimoIndiceMaquinaEnfesto < caixas.length) ? [Math.min(i, ultimoIndiceMaquinaEnfesto), Math.max(i, ultimoIndiceMaquinaEnfesto)] : [i, i];
+            for (let k = faixa[0]; k <= faixa[1]; k++) { caixas[k].checked = e.target.checked; if (e.target.checked) selecaoMaquinaEnfesto.add(caixas[k].dataset.id); else selecaoMaquinaEnfesto.delete(caixas[k].dataset.id); }
+            ultimoIndiceMaquinaEnfesto = i;
+            atualizarSelecaoMaquinaEnfesto();
+        });
         wireEvento('modalMaquinasEnfesto', 'change', (e) => {
             const sel = e.target.closest('select[data-chave]'); if (!sel) return;
             definirMaquinaProdutoEnfesto(sel.dataset.chave, sel.value);

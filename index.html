@@ -475,6 +475,11 @@
                         <button id="btnMaquinaSem" class="btn maq-btn" title="Produtos que ainda não têm máquina definida">SEM DEFINIÇÃO <span class="maq-cont" id="contMaquinaSem">0</span></button>
                     </div>
                     <div id="resumoMaquinaEnfesto" style="margin-top:12px; font-size:12px; color:var(--texto-secundario); line-height:1.6;"></div>
+                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; padding-top:12px; border-top:1px dashed var(--borda-cor);">
+                        <button id="btnExportarMaquinaEnfesto" class="btn" style="background:var(--cor-despacho); color:white;" title="Baixa em Excel a lista que está na tela — só as OPs marcadas, ou todas se não marcar nenhuma"><i class="fas fa-file-excel"></i> EXPORTAR EXCEL</button>
+                        <button id="btnLimparSelecaoMaquina" class="btn" style="background:var(--cor-historico); color:white; padding:6px 12px;" title="Desmarca todas as OPs"><i class="fas fa-eraser"></i> LIMPAR SELEÇÃO</button>
+                        <span id="infoSelecaoMaquinaEnfesto" style="font-size:12px; color:var(--texto-secundario);"></span>
+                    </div>
                 </div>
             </div>
             <div class="secao">
@@ -482,7 +487,7 @@
                 <div class="secao-corpo">
                     <table class="tabela-dados">
                         <thead>
-                            <tr><th>ORDEM</th><th>CICLO</th><th>OP</th><th>ETAPA</th><th>PRODUTO</th><th>MP</th><th>DESCRIÇÃO</th><th>DUB?</th><th>TEMPO</th><th>PEÇAS</th><th>CORTE</th></tr>
+                            <tr><th><input type="checkbox" id="checkTudoMaquinaEnfesto" title="Marcar/desmarcar todas"></th><th>ORDEM</th><th>CICLO</th><th>OP</th><th>ETAPA</th><th>PRODUTO</th><th>MP</th><th>DESCRIÇÃO</th><th>DUB?</th><th>TEMPO</th><th>PEÇAS</th><th>CORTE</th></tr>
                         </thead>
                         <tbody id="listaMaquinaEnfesto"></tbody>
                     </table>
