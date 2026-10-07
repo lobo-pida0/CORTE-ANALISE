@@ -383,6 +383,65 @@ body.modo-usuario .somente-admin:not(.tambem-usuario) {
     border-color: var(--cor-primaria);
 }
 
+/* Sub-abas dentro da aba Programação (Programar Lote | Máquinas de Enfesto) —
+   menores e arredondadas, pra não se confundir com as abas principais */
+.subabas-programacao {
+    display: flex;
+    gap: 8px;
+    margin-bottom: var(--espaco-md);
+    flex-wrap: wrap;
+}
+
+.subaba-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--borda-cor);
+    color: var(--texto-cor);
+    padding: 9px 18px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: var(--fonte-display);
+    letter-spacing: 0.5px;
+    transition: var(--transicao);
+}
+
+.subaba-btn:hover {
+    filter: brightness(0.93);
+}
+
+.subaba-btn.ativo {
+    background: var(--cor-primaria);
+    color: white;
+    border-color: var(--cor-primaria);
+}
+
+/* Botões de escolha da máquina de enfesto */
+.maq-btn {
+    background: var(--bg-card);
+    color: var(--texto-cor);
+    border: 2px solid var(--borda-cor);
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.maq-btn.ativo {
+    background: var(--cor-primaria);
+    color: white;
+    border-color: var(--cor-selecao);
+}
+
+.maq-cont {
+    display: inline-block;
+    margin-left: 8px;
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 10px;
+    padding: 1px 9px;
+    font-size: 11px;
+}
+
 .aba-conteudo {
     display: none;
 }

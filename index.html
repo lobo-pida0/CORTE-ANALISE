@@ -109,6 +109,8 @@
 
     <div id="modalFeriados" class="modal-overlay"></div>
 
+    <div id="modalMaquinasEnfesto" class="modal-overlay"></div>
+
     <div id="modalBalancoUrgencias" class="modal-overlay"></div>
 
     <div id="modalSequenciamentoFifo"
@@ -288,6 +290,11 @@
     </div>
 
     <div id="aba-programacao" class="aba-conteudo integra ativa">
+        <div class="subabas-programacao">
+            <button id="btnSubabaProgramarLote" class="subaba-btn ativo"><i class="fas fa-layer-group"></i> PROGRAMAR LOTE</button>
+            <button id="btnSubabaMaquinas" class="subaba-btn"><i class="fas fa-industry"></i> MÁQUINAS DE ENFESTO</button>
+        </div>
+        <div id="subaba-programar-lote">
         <div class="painel-montador">
             <div class="grupo-montador">
                 <div class="campo-meta" style="width:160px;"><label>ETAPA(S)</label>
@@ -453,6 +460,33 @@
                     </thead>
                     <tbody id="listaHistorico"></tbody>
                 </table>
+            </div>
+        </div>
+        </div>
+
+        <div id="subaba-maquinas" style="display:none;">
+            <div class="secao" style="margin-bottom:var(--espaco-md);">
+                <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-industry"></i> MÁQUINAS DE ENFESTO</span>
+                    <button id="btnDefinirMaquinas" class="btn" style="background:rgba(255,255,255,0.2); color:white; padding:4px 10px;" title="Definir qual máquina aceita cada produto"><i class="fas fa-gear"></i> DEFINIR PRODUTOS</button></div>
+                <div style="padding:16px 20px; background:var(--bg-painel);">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button id="btnMaquina1" class="btn maq-btn ativo">MÁQUINA 1 <span class="maq-cont" id="contMaquina1">0</span></button>
+                        <button id="btnMaquina2" class="btn maq-btn">MÁQUINA 2 <span class="maq-cont" id="contMaquina2">0</span></button>
+                        <button id="btnMaquinaSem" class="btn maq-btn" title="Produtos que ainda não têm máquina definida">SEM DEFINIÇÃO <span class="maq-cont" id="contMaquinaSem">0</span></button>
+                    </div>
+                    <div id="resumoMaquinaEnfesto" style="margin-top:12px; font-size:12px; color:var(--texto-secundario); line-height:1.6;"></div>
+                </div>
+            </div>
+            <div class="secao">
+                <div class="secao-header" style="background:var(--cor-fila);"><span id="tituloMaquinaEnfesto">OPs QUE CABEM NA MÁQUINA 1</span><span id="contListaMaquinaEnfesto">0 OPs</span></div>
+                <div class="secao-corpo">
+                    <table class="tabela-dados">
+                        <thead>
+                            <tr><th>ORDEM</th><th>CICLO</th><th>OP</th><th>ETAPA</th><th>PRODUTO</th><th>MP</th><th>DESCRIÇÃO</th><th>DUB?</th><th>TEMPO</th><th>PEÇAS</th><th>CORTE</th></tr>
+                        </thead>
+                        <tbody id="listaMaquinaEnfesto"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

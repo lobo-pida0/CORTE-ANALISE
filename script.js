@@ -1466,7 +1466,7 @@ function mostrarTooltipOP(e, id) {
 function esconderTooltipOP() { const tt = $('tooltip-op'); if (!tt) return; tt.style.opacity = '0'; tt.style.display = 'none'; }
 
 // MODAIS E MENUS
-function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; $('modalBalancoUrgencias').style.display = 'none'; }
+function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; $('modalBalancoUrgencias').style.display = 'none'; $('modalMaquinasEnfesto').style.display = 'none'; }
 
 // =========================================================================
 // 👑 PRIORIDADE DE CLIENTES — lista editável, do mais pro menos prioritário.
@@ -2832,17 +2832,31 @@ function compararPrioridadeCostura(a, b) {
     const urgenteA = limiteA !== null && limiteA <= limiteUrgencia;
     const urgenteB = limiteB !== null && limiteB <= limiteUrgencia;
 
-    if (urgenteA && urgenteB) return limiteA - limiteB; // as duas urgentes: mais cedo (ou mais atrasada) primeiro
+    // Desempates, na ordem: Data Finalização (a mais cedo primeiro), data de
+    // inclusão (a mais antiga primeiro; sem data vai pro fim) e, por último, a prioridade.
+    const finA = a.dataFinalizacao ? new Date(a.dataFinalizacao).getTime() : Infinity;
+    const finB = b.dataFinalizacao ? new Date(b.dataFinalizacao).getTime() : Infinity;
+    const incA = a.dataInclusao ? new Date(a.dataInclusao).getTime() : Infinity;
+    const incB = b.dataInclusao ? new Date(b.dataInclusao).getTime() : Infinity;
+    const porFinalizacao = () => finA === finB ? 0 : (finA < finB ? -1 : 1);
+    const porInclusao = () => incA === incB ? 0 : (incA < incB ? -1 : 1);
+
+    if (urgenteA && urgenteB) {
+        // as duas urgentes: a data limite mais cedo (ou mais atrasada) primeiro...
+        if (limiteA - limiteB !== 0) return limiteA - limiteB;
+        // ...e se a data limite EMPATA, vale a Data Finalização — dias diferentes
+        // podem cair na mesma data limite (ex: um feriado cadastrado no meio junta
+        // 12/10 e 13/10 no mesmo limite; sem esse desempate as duas ficavam na ordem
+        // da planilha e a de 13/10 podia passar na frente da de 12/10).
+        return porFinalizacao() || porInclusao() || (a.prioridade ?? 99) - (b.prioridade ?? 99);
+    }
     if (urgenteA && !urgenteB) return -1;
     if (!urgenteA && urgenteB) return 1;
 
     // Nenhuma urgente (ou sem data) — ordena por data de inclusão, mais
-    // antiga primeiro; sem data de inclusão vai pro fim; empate total cai
-    // na prioridade, como antes.
-    const incA = a.dataInclusao ? new Date(a.dataInclusao).getTime() : Infinity;
-    const incB = b.dataInclusao ? new Date(b.dataInclusao).getTime() : Infinity;
-    if (incA !== incB) return incA - incB;
-    return (a.prioridade ?? 99) - (b.prioridade ?? 99);
+    // antiga primeiro; sem data de inclusão vai pro fim; empate cai na Data
+    // Finalização e, por último, na prioridade.
+    return porInclusao() || porFinalizacao() || (a.prioridade ?? 99) - (b.prioridade ?? 99);
 }
 
 // Monta a fila de um grupo inteiro: primeiro tudo que já está "em
@@ -6603,6 +6617,151 @@ function ordenarProgramacaoPorInclusao(ops, maisAntigaPrimeiro) {
     return [...lotes.flat(), ...semData];
 }
 
+// =========================================================================
+// 🏭 MÁQUINAS DE ENFESTO — sub-aba da Programação
+// Decisão de reunião: Máquina 1 = peças inferiores + blazer e paletó;
+// Máquina 2 = peças superiores (jaqueta, camisa, blusa), menos blazer/paletó.
+// A regra é POR PRODUTO e pode ser editada na própria tela (DEFINIR PRODUTOS),
+// porque a reunião não cobriu tudo (jaleco, camiseta, colete, avental, túnica,
+// parka... ~23% das OPs) e a decisão pode mudar. Só guarda o que o usuário
+// MUDOU em relação ao padrão (localStorage 'maquinasEnfestoMapa').
+// Valores: '1' | '2' | 'AMBAS' (qualquer uma) | 'SEM' (sem definição).
+// A lista mostrada é a MESMA do Programar Lote (com os filtros de lá).
+// =========================================================================
+const MAQUINAS_ENFESTO_PADRAO = { CALCA: '1', BERMUDA: '1', SAIA: '1', BLAZER: '1', PALETO: '1', JAQUETA: '2', CAMISA: '2', BLUSA: '2' };
+let dadosProgramacaoVisiveis = [];     // atualizado a cada renderizarTudoImediato
+let maquinaEnfestoSelecionada = '1';
+
+function obterMapaMaquinasEnfesto() {
+    try { return JSON.parse(localStorage.getItem('maquinasEnfestoMapa') || '{}'); } catch (e) { return {}; }
+}
+function salvarMapaMaquinasEnfesto(mapa) { localStorage.setItem('maquinasEnfestoMapa', JSON.stringify(mapa)); }
+
+// Produto da OP = 1ª palavra da descrição depois de "CORTE" (ex: "CORTE CAMISA
+// POLO MASC..." → CAMISA), sem acento e em maiúsculas. Descrição sem "CORTE" usa
+// a 1ª palavra mesmo. Só se a descrição não der palavra nenhuma usa a coluna de
+// produto da Sincronização.
+function chaveProdutoMaquina(op) {
+    const sem = t => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+    const d = sem(op.desc);
+    const m = d.match(/^CORTE\s+(\S+)/);
+    return (m ? m[1] : (d.split(/\s+/)[0] || '')) || sem(op.produto);
+}
+function maquinaDoProdutoEnfesto(chave, mapa) {
+    if (!chave) return 'SEM';
+    const m = mapa || obterMapaMaquinasEnfesto();
+    if (Object.prototype.hasOwnProperty.call(m, chave)) return m[chave];
+    return MAQUINAS_ENFESTO_PADRAO[chave] || 'SEM';
+}
+
+function abrirSubabaProgramacao(qual) {
+    const maq = qual === 'maquinas';
+    if ($('subaba-programar-lote')) $('subaba-programar-lote').style.display = maq ? 'none' : '';
+    if ($('subaba-maquinas')) $('subaba-maquinas').style.display = maq ? '' : 'none';
+    if ($('btnSubabaProgramarLote')) $('btnSubabaProgramarLote').classList.toggle('ativo', !maq);
+    if ($('btnSubabaMaquinas')) $('btnSubabaMaquinas').classList.toggle('ativo', maq);
+    if (maq) renderizarMaquinasEnfesto();
+}
+function selecionarMaquinaEnfesto(maquina) { maquinaEnfestoSelecionada = maquina; renderizarMaquinasEnfesto(); }
+
+function renderizarMaquinasEnfesto() {
+    if (!$('subaba-maquinas')) return;
+    const esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const mapa = obterMapaMaquinasEnfesto();
+    const por = { '1': [], '2': [], 'SEM': [] };
+    dadosProgramacaoVisiveis.forEach(op => {
+        const v = maquinaDoProdutoEnfesto(chaveProdutoMaquina(op), mapa);
+        if (v === 'AMBAS') { por['1'].push(op); por['2'].push(op); } else por[v === '1' || v === '2' ? v : 'SEM'].push(op);
+    });
+    $('contMaquina1').textContent = por['1'].length; $('contMaquina2').textContent = por['2'].length; $('contMaquinaSem').textContent = por['SEM'].length;
+    [['1', 'btnMaquina1'], ['2', 'btnMaquina2'], ['SEM', 'btnMaquinaSem']].forEach(([m, id]) => $(id).classList.toggle('ativo', maquinaEnfestoSelecionada === m));
+
+    const sel = maquinaEnfestoSelecionada, ops = por[sel];
+    const pecas = ops.reduce((a, o) => a + (Number(o.qtd) || 0), 0), minutos = ops.reduce((a, o) => a + (Number(o.tempoCorte) || 0), 0);
+    $('tituloMaquinaEnfesto').textContent = sel === 'SEM' ? 'OPs SEM MÁQUINA DEFINIDA' : `OPs QUE CABEM NA MÁQUINA ${sel}`;
+    $('contListaMaquinaEnfesto').textContent = `${ops.length} OPs · ${pecas.toLocaleString('pt-BR')} pçs · ${Math.round(minutos).toLocaleString('pt-BR')} min`;
+
+    // Resumo: quais produtos essa máquina aceita (ou, em "sem definição", quais faltam decidir)
+    if (sel === 'SEM') {
+        const cont = new Map(); ops.forEach(o => { const k = chaveProdutoMaquina(o) || '(sem produto na descrição)'; cont.set(k, (cont.get(k) || 0) + 1); });
+        const lista = [...cont.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${esc(k)} (${n})`).join(' · ');
+        $('resumoMaquinaEnfesto').innerHTML = ops.length
+            ? `<b>Produtos que ainda precisam de uma máquina:</b> ${lista}.<br>Clique em <b>DEFINIR PRODUTOS</b> pra escolher a máquina de cada um.`
+            : 'Todos os produtos da lista já têm máquina definida.';
+    } else {
+        const chaves = new Set([...Object.keys(MAQUINAS_ENFESTO_PADRAO), ...Object.keys(mapa), ...bancoDadosOPs.map(chaveProdutoMaquina)]);
+        const aceitos = [...chaves].filter(k => k && (() => { const v = maquinaDoProdutoEnfesto(k, mapa); return v === sel || v === 'AMBAS'; })()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        $('resumoMaquinaEnfesto').innerHTML = `<b>Máquina ${sel} aceita:</b> ${aceitos.map(k => `<span class="pill" style="background:var(--cor-sugestao);">${esc(k)}${maquinaDoProdutoEnfesto(k, mapa) === 'AMBAS' ? ' ✱' : ''}</span>`).join(' ') || '(nenhum produto)'}`
+            + `<br><span style="font-size:11px;">${aceitos.some(k => maquinaDoProdutoEnfesto(k, mapa) === 'AMBAS') ? '✱ = aceito nas duas máquinas. ' : ''}Mostra as OPs da lista do Programar Lote, com os filtros de lá (Etapa, Local, Produto...).</span>`;
+    }
+
+    // A tabela só é desenhada com a sub-aba aberta
+    if ($('subaba-maquinas').style.display === 'none') return;
+    let loteAtual = null, html = '';
+    ops.forEach((o, i) => {
+        const mpOP = (o.codigoMP && o.codigoMP !== 'SEM CÓDIGO') ? o.codigoMP : 'SEM MP (LOTE MISTO)';
+        if (mpOP !== loteAtual) {
+            html += `<tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;"><td colspan="11" style="text-align:left; font-weight:bold; padding:10px 15px;"><i class="fas fa-layer-group" style="margin-right:8px;"></i> LOTE MATÉRIA-PRIMA: ${esc(mpOP)} <span style="font-weight:normal; font-size:0.9em; opacity:0.9;"> - ${esc(o.descMP || 'Descrição não cadastrada')}</span></td></tr>`;
+            loteAtual = mpOP;
+        }
+        const chave = chaveProdutoMaquina(o);
+        const ambas = maquinaDoProdutoEnfesto(chave, mapa) === 'AMBAS';
+        html += `<tr>
+            <td>${i + 1}º</td><td>${esc(o.ciclo)}</td><td><strong>${esc(o.id)}</strong></td>
+            <td><span class="pill" style="background:var(--cor-historico);">${esc(nomesEtapas[o.etapa])}</span>${o.laser ? ' <span class="pill" style="background:var(--cor-roxo);"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
+            <td><span class="pill" style="background:var(--cor-sugestao);">${esc(chave || '—')}</span>${ambas ? ' <small title="Aceito nas duas máquinas">✱</small>' : ''}</td>
+            <td title="${esc(o.descMP)}"><span style="background:#eee; color:#333; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; cursor:help;">${esc(mpOP)}</span></td>
+            <td>${esc(o.desc)}</td><td>${o.temDublado ? 'SIM' : 'NÃO'}</td><td><b>${esc(o.tempoCorte)}</b> min</td><td>${esc(o.qtd)}</td>
+            <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
+        </tr>`;
+    });
+    $('listaMaquinaEnfesto').innerHTML = ops.length ? html
+        : `<tr><td colspan="11" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>${dadosProgramacaoVisiveis.length ? 'Nenhuma OP da lista cabe nessa opção.' : 'A lista do Programar Lote está vazia — ajuste os filtros de lá.'}</td></tr>`;
+}
+
+// Tela "DEFINIR PRODUTOS": uma linha por produto que existe nas OPs (os sem
+// definição vêm primeiro), com a máquina de cada um.
+function renderizarModalMaquinasEnfesto() {
+    const esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const mapa = obterMapaMaquinasEnfesto();
+    const contagem = new Map();
+    bancoDadosOPs.forEach(op => { const k = chaveProdutoMaquina(op); if (k) contagem.set(k, (contagem.get(k) || 0) + 1); });
+    Object.keys(MAQUINAS_ENFESTO_PADRAO).forEach(k => { if (!contagem.has(k)) contagem.set(k, 0); });
+    const linhas = [...contagem.entries()].map(([k, n]) => ({ k, n, v: maquinaDoProdutoEnfesto(k, mapa) }))
+        .sort((a, b) => ((a.v === 'SEM') !== (b.v === 'SEM')) ? (a.v === 'SEM' ? -1 : 1) : (b.n - a.n) || a.k.localeCompare(b.k, 'pt-BR'));
+    const opcoes = v => [['1', 'Máquina 1'], ['2', 'Máquina 2'], ['AMBAS', 'Qualquer uma'], ['SEM', 'Sem definição']].map(([val, rot]) => `<option value="${val}" ${v === val ? 'selected' : ''}>${rot}</option>`).join('');
+    const semDef = linhas.filter(l => l.v === 'SEM').length;
+
+    $('modalMaquinasEnfesto').innerHTML = `
+        <div class="modal-card" style="width:560px; max-width:92vw; border-top:5px solid var(--cor-primaria); max-height:85vh;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px;">
+                <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px; font-size:16px;"><i class="fas fa-industry" style="color:var(--cor-primaria);"></i> MÁQUINA DE CADA PRODUTO</h2>
+                <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:12px;">
+                Já vem com a regra da reunião (inferiores + blazer/paletó na Máquina 1; jaqueta, camisa e blusa na Máquina 2). O produto é a 1ª palavra da descrição da OP. Mudou aqui, vale na hora.
+                ${semDef ? `<br><b style="color:#E07B39;">${semDef} produto(s) ainda sem máquina.</b>` : ''}
+            </div>
+            <div style="overflow-y:auto; flex:1; margin-bottom:12px; border:1px solid var(--borda-cor); border-radius:8px;">
+                <table class="tabela-dados" style="width:100%;">
+                    <thead><tr><th>PRODUTO</th><th style="text-align:right;">OPs</th><th>MÁQUINA</th></tr></thead>
+                    <tbody>${linhas.map(l => `<tr style="${l.v === 'SEM' ? 'background:rgba(224,123,57,0.12);' : ''}"><td><strong>${esc(l.k)}</strong></td><td style="text-align:right;">${l.n}</td><td><select data-chave="${esc(l.k)}" style="width:100%;">${opcoes(l.v)}</select></td></tr>`).join('')}</tbody>
+                </table>
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+                <button id="btnRestaurarMaquinasPadrao" class="btn" style="background:var(--cor-historico); color:white;" title="Volta tudo pra regra que a reunião decidiu"><i class="fas fa-rotate-left"></i> RESTAURAR REGRA DA REUNIÃO</button>
+                <button onclick="fecharModais()" class="btn btn-sugestao">FECHAR</button>
+            </div>
+        </div>`;
+}
+
+function definirMaquinaProdutoEnfesto(chave, valor) {
+    const mapa = obterMapaMaquinasEnfesto();
+    if (valor === (MAQUINAS_ENFESTO_PADRAO[chave] || 'SEM')) delete mapa[chave]; else mapa[chave] = valor; // só guarda o que difere do padrão
+    salvarMapaMaquinasEnfesto(mapa);
+    renderizarMaquinasEnfesto();
+}
+
 function renderizarTudoImediato() {
     const bCic = $('filtroCiclo').value.trim().toLowerCase(), bOP = $('filtroOP').value.trim().toLowerCase(), bMP = $('filtroMP').value.trim().toLowerCase();
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
@@ -6664,6 +6823,7 @@ function renderizarTudoImediato() {
     // coladas (regra completa em ordenarProgramacaoPorInclusao). Estrela de
     // prioridade e vínculo com pedido não mexem mais na posição da OP.
     dDados = ordenarProgramacaoPorInclusao(dDados, ordemCorteAsc);
+    dadosProgramacaoVisiveis = dDados; // a sub-aba Máquinas de Enfesto usa essa mesma lista
 
     if ($('setaOrdenacao')) $('setaOrdenacao').innerText = ordemCorteAsc ? "▲" : "▼";
 
@@ -6743,6 +6903,7 @@ function renderizarTudoImediato() {
 
     renderizarSidebarPrioridades();
     renderizarAbaPrioridades();
+    renderizarMaquinasEnfesto();
     renderizarHistorico();
     calcularSomaLoteImediato();
     renderizarOPsVinculadas(pendentesPorReferencia);
@@ -8098,6 +8259,20 @@ function inicializarEventosUI() {
         wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor(); });
         wireEvento('btnLimparMovimentacoesKPI', 'click', () => { limparMovimentacoesKPI(); });
         wireEvento('btnBaixarMesKPI', 'click', () => { baixarMesKPIExcel(); });
+        wireEvento('btnSubabaProgramarLote', 'click', () => { abrirSubabaProgramacao('lote'); });
+        wireEvento('btnSubabaMaquinas', 'click', () => { abrirSubabaProgramacao('maquinas'); });
+        wireEvento('btnMaquina1', 'click', () => { selecionarMaquinaEnfesto('1'); });
+        wireEvento('btnMaquina2', 'click', () => { selecionarMaquinaEnfesto('2'); });
+        wireEvento('btnMaquinaSem', 'click', () => { selecionarMaquinaEnfesto('SEM'); });
+        wireEvento('btnDefinirMaquinas', 'click', () => { renderizarModalMaquinasEnfesto(); $('modalMaquinasEnfesto').style.display = 'flex'; });
+        wireEvento('modalMaquinasEnfesto', 'change', (e) => {
+            const sel = e.target.closest('select[data-chave]'); if (!sel) return;
+            definirMaquinaProdutoEnfesto(sel.dataset.chave, sel.value);
+            sel.closest('tr').style.background = sel.value === 'SEM' ? 'rgba(224,123,57,0.12)' : '';
+        });
+        wireEvento('modalMaquinasEnfesto', 'click', (e) => {
+            if (e.target.closest('#btnRestaurarMaquinasPadrao')) { salvarMapaMaquinasEnfesto({}); renderizarModalMaquinasEnfesto(); renderizarMaquinasEnfesto(); }
+        });
         ['id', 'numeroPrioridade', 'desc', 'etapa', 'qtd', 'diasLocal', 'mesDestino'].forEach(campo => {
             wireEvento(`thOrdenarPrioridades-${campo}`, 'click', () => { ordenarPrioridadesPor(campo); });
         });
