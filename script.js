@@ -1306,10 +1306,10 @@ function registrarEstado() { const e = JSON.stringify(bancoDadosOPs); if (pilhaU
 function desfazerAcao() { if (pilhaUndo.length > 0) { pilhaRedo.push(JSON.stringify(bancoDadosOPs)); bancoDadosOPs = JSON.parse(pilhaUndo.pop()); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); cacheGruposPorReferencia = null; renderizarTudoImediato(); showToast("<i class='fas fa-undo'></i> Ação Desfeita"); } }
 function refazerAcao() { if (pilhaRedo.length > 0) { pilhaUndo.push(JSON.stringify(bancoDadosOPs)); bancoDadosOPs = JSON.parse(pilhaRedo.pop()); localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); cacheGruposPorReferencia = null; renderizarTudoImediato(); showToast("<i class='fas fa-redo'></i> Ação Refeita"); } }
 
-function showToast(html, err = false) {
+function showToast(html, err = false, duracaoMs = 2000) {
     let t = $('toast-atalhos'); if (!t) { t = document.createElement('div'); t.id = 'toast-atalhos'; t.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); color:white; padding:12px 25px; border-radius:30px; font-weight:800; font-size:14px; z-index:10000; transition:all 0.3s; opacity:0; pointer-events:none; display:flex; gap:10px; align-items:center;'; document.body.appendChild(t); }
     t.style.background = err ? 'var(--cor-alerta)' : 'var(--cor-sugestao)'; t.innerHTML = html; t.style.opacity = '1'; t.style.bottom = '40px';
-    clearTimeout(t.timer); t.timer = setTimeout(() => { t.style.opacity = '0'; t.style.bottom = '20px'; }, 2000);
+    clearTimeout(t.timer); t.timer = setTimeout(() => { t.style.opacity = '0'; t.style.bottom = '20px'; }, duracaoMs);
 }
 
 // EVENTOS GLOBAIS (TECLADO E MOUSE)
@@ -3052,13 +3052,40 @@ function salvarMovimentacoesPorSetor(obj) {
 // pelo mesmo setor em dias diferentes colide na mesma linha da nuvem e
 // uma sobrescreve a outra (mesmo bug que existia no armazenamento local,
 // corrigido junto).
+function linhaSupabaseDeMovimentoKPI(setor, m) {
+    const dataSlice = m.data ? new Date(m.data).toISOString().slice(0, 10) : 'semdata';
+    return { id: `${setor}|${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, atualizado_em: new Date().toISOString() };
+}
+
+// Depois de importar um relatório de movimentação, publica na nuvem SÓ o que
+// veio nessa importação (não a base local inteira): antes o dado ficava só
+// neste navegador até alguém lembrar de clicar em PUBLICAR — e uma limpeza
+// local (ou trocar de computador) perdia o que nunca tinha subido. Não mexe em
+// "dados de: há X min" do visitante (esse carimbo é da publicação GERAL; marcar
+// aqui faria parecer que as OPs também foram atualizadas). Falha na nuvem NÃO
+// desfaz a importação local — só avisa, e o PUBLICAR do menu Sistema continua valendo.
+async function publicarMovimentacoesImportadasNaNuvem(movimentos) {
+    if (!movimentos || !movimentos.length) return;
+    if (!supabaseClient || !sessaoAdminAtual) {
+        showToast('<i class="fas fa-triangle-exclamation"></i> Importado só neste navegador: você não está logado, então não foi pra nuvem. Entre e use PUBLICAR.', true, 7000);
+        return;
+    }
+    try {
+        const r = await publicarSemApagar('movimentacoes_kpi', movimentos.map(({ setor, m }) => linhaSupabaseDeMovimentoKPI(setor, m)));
+        showToast(`<i class="fas fa-cloud-upload-alt"></i> KPI publicado na nuvem (${r.publicados.toLocaleString('pt-BR')} movimentações).`, false, 4000);
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao publicar o KPI importado: ' + e.message]);
+        showToast('<i class="fas fa-triangle-exclamation"></i> Importou, mas NÃO foi pra nuvem (' + (e.message || 'erro') + '). Os dados estão só neste navegador — use PUBLICAR no menu Sistema.', true, 9000);
+    }
+}
+
 function movimentacoesParaLinhasSupabase() {
     const todas = obterMovimentacoesPorSetor();
     const linhas = [];
     Object.entries(todas).forEach(([setor, porOP]) => {
         Object.values(porOP).forEach(m => {
             const dataSlice = m.data ? new Date(m.data).toISOString().slice(0, 10) : 'semdata';
-            linhas.push({ id: `${setor}|${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, atualizado_em: new Date().toISOString() });
+            linhas.push(linhaSupabaseDeMovimentoKPI(setor, m));
         });
     });
     return linhas;
@@ -3166,6 +3193,7 @@ function processarMovimentacaoSetor() {
             // produzida; (2) o destino é um setor que vem ANTES do de
             // origem na esteira (voltou pra trás, é retrabalho/correção,
             // não produção nova).
+            const movimentosImportados = [];   // o que ESTA importação gravou — vai pra nuvem logo depois
             const todas = obterMovimentacoesPorSetor();
             const setoresEncontrados = new Set();
             let linhasLidas = 0, linhasComLocalDesconhecido = 0, linhasSemDestino = 0, linhasRetrocedendo = 0, linhasComMultiplicador = 0;
@@ -3210,7 +3238,9 @@ function processarMovimentacaoSetor() {
                 // pelo usuário: OP 3612 no Corte em 04/09 E 11/09, só a
                 // segunda sobrevivia).
                 const chaveMovimento = `${opId}|${data.toISOString().slice(0, 10)}`;
-                todas[setor][chaveMovimento] = { op: opId, ciclo, data: data.toISOString(), qtd };
+                const movimentoLido = { op: opId, ciclo, data: data.toISOString(), qtd };
+                todas[setor][chaveMovimento] = movimentoLido;
+                movimentosImportados.push({ setor, m: movimentoLido });
                 setoresEncontrados.add(setor);
                 linhasLidas++;
             }
@@ -3226,6 +3256,7 @@ function processarMovimentacaoSetor() {
             else if (idxDescricao === -1) msg += ' Não achei a coluna de descrição da peça — o multiplicador de camadas (Paletó/Blazer/Jaqueta) não foi aplicado nessa importação.';
             showToast(msg);
             renderizarGraficoKPI();
+            publicarMovimentacoesImportadasNaNuvem(movimentosImportados);   // sem await: a importação já terminou
         } catch (err) {
             console.error('Erro ao processar movimentação de setor:', err);
             alert("❌ Não foi possível processar o relatório de movimentação.\n\nVerifique se ele tem as colunas Nr. Op, Ciclo, Dt. Movimento, Qt. Movimento e Ds. Localorigem no cabeçalho.\n\nDetalhe técnico: " + err.message);
@@ -4904,6 +4935,7 @@ function processarImplantacao() {
             reconciliarFiltroLocalUrgencias();
             renderizarUrgencias();
             showToast(`<i class="fas fa-check"></i> ${lista.length} OPs importadas da aba Implantação.`);
+            marcarUrgenciasPendentesEPublicar();   // sobe pra nuvem (sem await: a importação já terminou)
         } catch (err) {
             alert("Erro ao importar a planilha de Implantação: " + err.message);
         }
@@ -5114,6 +5146,7 @@ function processarPorOPParaUrgencias() {
             if (qtdSemCorrespondencia) msg += ` ${qtdSemCorrespondencia} OP(s) não encontrada(s) na POR_OP.`;
             showToast(msg);
             if (jaTinhaCruzamento) exibirBalancoUrgencias(compararUrgenciasAntesDepois(antes, resultado));
+            marcarUrgenciasPendentesEPublicar();
         } catch (err) {
             alert("Erro ao importar a POR_OP: " + err.message);
         }
@@ -5190,6 +5223,108 @@ function celulaTruncadaUrgencias(texto, larguraMaxPx) {
     if (!texto) return '';
     const escapado = String(texto).replace(/"/g, '&quot;');
     return `<span style="display:inline-block; vertical-align:middle; max-width:${larguraMaxPx}px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapado}">${texto}</span>`;
+}
+
+// ===== URGÊNCIAS NA NUVEM =====
+// A lista de Urgências (base da Implantação + resultado depois da POR_OP) vale
+// pra quem a importa E pra quem só olha, em computadores diferentes — então fica
+// numa linha só da tabela `urgencias_estado` (SQL 25). A importação SUBSTITUI a
+// lista inteira, igual já acontecia localmente.
+// REGRAS PRA NÃO PERDER DADO:
+//  - O carimbo de "qual versão é mais nova" vem do SERVIDOR (trigger no SQL), nunca
+//    do relógio do computador — relógio errado já deu problema por aqui.
+//  - Se a importação não chegou na nuvem (falha, sem login, tabela ainda não criada),
+//    fica marcada como PENDENTE: ao abrir a aba o sistema tenta subir DE NOVO e, enquanto
+//    estiver pendente, NUNCA troca a lista local por uma versão mais antiga da nuvem.
+//  - Falha na nuvem não atrapalha o uso local da aba.
+let urgenciasSincronizando = false;
+let urgenciasAvisoTabelaDado = false;
+
+function urgenciasTabelaFaltando(e) {
+    const t = `${e && e.code || ''} ${e && e.message || ''}`;
+    return /PGRST205|42P01|schema cache|does not exist/i.test(t);
+}
+
+function atualizarInfoNuvemUrgencias() {
+    const el = $('urgenciasInfoNuvem'); if (!el) return;
+    let meta = null; try { meta = JSON.parse(localStorage.getItem('urgenciasMetaNuvem') || 'null'); } catch (e) { /* ignora */ }
+    if (localStorage.getItem('urgenciasPendentePublicar')) {
+        el.innerHTML = '<i class="fas fa-triangle-exclamation"></i> SÓ NESTE NAVEGADOR — ainda não foi salva na nuvem';
+        el.style.color = '#FFD08A'; el.title = 'A última importação não chegou na nuvem. Ao abrir esta aba o sistema tenta de novo.';
+    } else if (meta && meta.em) {
+        const d = new Date(meta.em);
+        el.innerHTML = `<i class="fas fa-cloud"></i> Atualizada${meta.por ? ' por ' + String(meta.por).replace(/[<&]/g, '') : ''} em ${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+        el.style.color = ''; el.title = 'Salva na nuvem: quem abrir esta aba vê a mesma lista.';
+    } else { el.textContent = ''; el.title = ''; }
+}
+
+function avisarFalhaNuvemUrgencias(e) {
+    registrarLogDebug('error', ['Urgências na nuvem: ' + (e && e.message)]);
+    if (urgenciasTabelaFaltando(e)) {
+        if (!urgenciasAvisoTabelaDado) { urgenciasAvisoTabelaDado = true; showToast('<i class="fas fa-triangle-exclamation"></i> A nuvem ainda não tem a tabela das Urgências (falta rodar o SQL 25 no Supabase). A lista está salva só neste navegador.', true, 9000); }
+    } else {
+        showToast('<i class="fas fa-triangle-exclamation"></i> Não consegui salvar a lista na nuvem (' + ((e && e.message) || 'erro') + '). Ela continua neste navegador e eu tento de novo quando você abrir a aba.', true, 8000);
+    }
+}
+
+// Chamado logo depois de uma importação: marca como pendente ANTES de tentar
+// (se a aba fechar no meio, a pendência não se perde) e tenta subir.
+function marcarUrgenciasPendentesEPublicar() {
+    localStorage.setItem('urgenciasPendentePublicar', '1');
+    atualizarInfoNuvemUrgencias();
+    return publicarUrgenciasNaNuvem();
+}
+
+async function publicarUrgenciasNaNuvem() {
+    if (!supabaseClient || !sessaoAdminAtual) { atualizarInfoNuvemUrgencias(); return false; }
+    try {
+        const por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase();
+        const { data, error } = await supabaseClient.from('urgencias_estado')
+            .upsert({ id: 'atual', base: obterImplantacaoBase(), ops: obterImplantacaoOPs(), atualizado_por: por }, { onConflict: 'id' })
+            .select('atualizado_em').single();
+        if (error) throw error;
+        localStorage.setItem('urgenciasAtualizadoEm', data.atualizado_em);
+        localStorage.setItem('urgenciasMetaNuvem', JSON.stringify({ por, em: data.atualizado_em }));
+        localStorage.removeItem('urgenciasPendentePublicar');
+        atualizarInfoNuvemUrgencias();
+        showToast('<i class="fas fa-cloud-upload-alt"></i> Lista de Urgências salva na nuvem.', false, 3000);
+        return true;
+    } catch (e) {
+        avisarFalhaNuvemUrgencias(e);
+        atualizarInfoNuvemUrgencias();
+        return false;
+    }
+}
+
+// Ao abrir a aba: pendente → tenta subir; nuvem mais nova (ou local vazio/sem carimbo) → baixa;
+// nuvem vazia e lista local existente → sobe (1ª vez depois dessa mudança).
+async function carregarUrgenciasDaNuvem() {
+    if (!supabaseClient || !sessaoAdminAtual || urgenciasSincronizando) { atualizarInfoNuvemUrgencias(); return; }
+    urgenciasSincronizando = true;
+    try {
+        if (localStorage.getItem('urgenciasPendentePublicar')) { await publicarUrgenciasNaNuvem(); return; }
+        const { data: meta, error } = await supabaseClient.from('urgencias_estado').select('atualizado_em, atualizado_por').eq('id', 'atual').maybeSingle();
+        if (error) { avisarFalhaNuvemUrgencias(error); return; }
+        const local = obterImplantacaoOPs();
+        if (!meta) { if (local.length) await marcarUrgenciasPendentesEPublicar(); return; }
+        const carimbo = localStorage.getItem('urgenciasAtualizadoEm');
+        const nuvemMs = new Date(meta.atualizado_em).getTime(), localMs = carimbo ? new Date(carimbo).getTime() : 0;
+        if (local.length && carimbo && nuvemMs <= localMs) return;   // já está igual
+        const { data: cheio, error: e2 } = await supabaseClient.from('urgencias_estado').select('base, ops, atualizado_em, atualizado_por').eq('id', 'atual').single();
+        if (e2) { avisarFalhaNuvemUrgencias(e2); return; }
+        if (!Array.isArray(cheio.ops) || !cheio.ops.length) { if (local.length) await marcarUrgenciasPendentesEPublicar(); return; } // nunca troca uma lista local por uma nuvem VAZIA
+        salvarImplantacaoBase(cheio.base || []); salvarImplantacaoOPs(cheio.ops);
+        localStorage.setItem('urgenciasAtualizadoEm', cheio.atualizado_em);
+        localStorage.setItem('urgenciasMetaNuvem', JSON.stringify({ por: cheio.atualizado_por || '', em: cheio.atualizado_em }));
+        reconciliarFiltroLocalUrgencias();
+        renderizarUrgencias();
+        showToast(`<i class="fas fa-cloud-download-alt"></i> Lista de Urgências atualizada pela nuvem (${cheio.ops.length} linhas).`, false, 3500);
+    } catch (e) {
+        avisarFalhaNuvemUrgencias(e);
+    } finally {
+        urgenciasSincronizando = false;
+        atualizarInfoNuvemUrgencias();
+    }
 }
 
 // Filtro de LOCAL da aba Urgências, de seleção múltipla (marcar vários de uma
@@ -8298,7 +8433,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
-        wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); renderizarUrgencias(); });
+        wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); renderizarUrgencias(); atualizarInfoNuvemUrgencias(); carregarUrgenciasDaNuvem(); });
         wireEvento('inputImplantacao', 'change', () => { processarImplantacao(); });
         wireEvento('inputPorOPUrgencias', 'change', () => { processarPorOPParaUrgencias(); });
         wireEvento('toggleMultiSelectLocalUrgencias', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectLocalUrgencias', 'listaFiltroLocalUrgencias', event); });
