@@ -6628,7 +6628,12 @@ function ordenarProgramacaoPorInclusao(ops, maisAntigaPrimeiro) {
 // Valores: '1' | '2' | 'AMBAS' (qualquer uma) | 'SEM' (sem definição).
 // A lista mostrada é a MESMA do Programar Lote (com os filtros de lá).
 // =========================================================================
-const MAQUINAS_ENFESTO_PADRAO = { CALCA: '1', BERMUDA: '1', SAIA: '1', BLAZER: '1', PALETO: '1', JAQUETA: '2', CAMISA: '2', BLUSA: '2' };
+const MAQUINAS_ENFESTO_PADRAO = {
+    CALCA: '1', BERMUDA: '1', SAIA: '1', BLAZER: '1', PALETO: '1',
+    JAQUETA: '2', CAMISA: '2', BLUSA: '2',
+    // Confirmados pelo usuário depois da reunião (todos peças superiores):
+    COLETE: '2', JALECO: '2', CAMISETA: '2', VESTIDO: '2', TUNICA: '2', AVENTAL: '2', PARKA: '2', TURBANTE: '2',
+};
 let dadosProgramacaoVisiveis = [];     // atualizado a cada renderizarTudoImediato
 let maquinaEnfestoSelecionada = '1';
 
@@ -6637,15 +6642,20 @@ function obterMapaMaquinasEnfesto() {
 }
 function salvarMapaMaquinasEnfesto(mapa) { localStorage.setItem('maquinasEnfestoMapa', JSON.stringify(mapa)); }
 
-// Produto da OP = 1ª palavra da descrição depois de "CORTE" (ex: "CORTE CAMISA
-// POLO MASC..." → CAMISA), sem acento e em maiúsculas. Descrição sem "CORTE" usa
-// a 1ª palavra mesmo. Só se a descrição não der palavra nenhuma usa a coluna de
-// produto da Sincronização.
+// Produto da OP, tirado da DESCRIÇÃO (sem acento, maiúsculas). A planilha tem 3
+// formatos de descrição: "CORTE AVENTAL UNX ..." (a maioria), "SEMI - ACABADO
+// CORTE AVENTAL UNX ..." (produto depois do CORTE) e "PRODUTO ACABADO CAMISA
+// MASC ..." (produto depois do ACABADO). Qualquer outro formato usa a 1ª
+// palavra. A palavra CORTE só conta no COMEÇO (ou depois do prefixo SEMI -
+// ACABADO) — no meio da frase ("... COM CORTE A LASER") não é produto. Erro de
+// célula do Excel ("#N/A") e descrição vazia não dão produto: aí usa a coluna de
+// produto da Sincronização, se existir.
 function chaveProdutoMaquina(op) {
     const sem = t => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
     const d = sem(op.desc);
-    const m = d.match(/^CORTE\s+(\S+)/);
-    return (m ? m[1] : (d.split(/\s+/)[0] || '')) || sem(op.produto);
+    const m = d.match(/^(?:SEMI[\s-]*ACABADO[\s-]*)?CORTE\s+(\S+)/) || d.match(/^PRODUTO[\s-]*ACABADO[\s-]*(?:CORTE\s+)?(\S+)/);
+    const palavra = m ? m[1] : (d.split(/\s+/)[0] || '');
+    return (palavra && !palavra.startsWith('#')) ? palavra : sem(op.produto);
 }
 function maquinaDoProdutoEnfesto(chave, mapa) {
     if (!chave) return 'SEM';
@@ -6739,7 +6749,7 @@ function renderizarModalMaquinasEnfesto() {
                 <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
             </div>
             <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:12px;">
-                Já vem com a regra da reunião (inferiores + blazer/paletó na Máquina 1; jaqueta, camisa e blusa na Máquina 2). O produto é a 1ª palavra da descrição da OP. Mudou aqui, vale na hora.
+                Já vem com a regra da reunião (inferiores + blazer/paletó na Máquina 1; jaqueta, camisa e blusa na Máquina 2). O produto vem da descrição da OP (a palavra depois de CORTE). Mudou aqui, vale na hora.
                 ${semDef ? `<br><b style="color:#E07B39;">${semDef} produto(s) ainda sem máquina.</b>` : ''}
             </div>
             <div style="overflow-y:auto; flex:1; margin-bottom:12px; border:1px solid var(--borda-cor); border-radius:8px;">
