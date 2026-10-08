@@ -7523,7 +7523,7 @@ function renderizarTudoImediato() {
         if (mpOP !== loteAtual) {
             htmlTabela += `
                 <tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;">
-                    <td colspan="14" style="text-align: left; font-weight: bold; padding: 10px 15px; border-radius: 4px;">
+                    <td colspan="13" style="text-align: left; font-weight: bold; padding: 10px 15px; border-radius: 4px;">
                         <i class="fas fa-layer-group" style="margin-right: 8px;"></i> LOTE MATÉRIA-PRIMA: ${mpOP} <span style="font-weight: normal; font-size: 0.9em; opacity: 0.9;">${descTexto}</span>
                     </td>
                 </tr>
