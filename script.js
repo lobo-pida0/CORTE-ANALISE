@@ -386,7 +386,7 @@ let papelUsuarioAtual = null; // 'admin' ou 'usuario' — só tem valor quando s
 // colunas da tabela "ops" no Supabase (snake_case)
 function opParaLinhaSupabase(op) {
     return {
-        id: String(op.id), ciclo: op.ciclo || '', descricao: op.desc || '',
+        id: montarChaveOP(op.ciclo, op.id), ciclo: op.ciclo || '', descricao: op.desc || '',
         qtd: parseInt(op.qtd) || 0, tempo_corte: parseFloat(op.tempoCorte) || 0,
         etapa: op.etapa, data_corte: op.dataCorte ? new Date(op.dataCorte).toISOString().slice(0, 10) : null,
         local_destino: op.localDestino || '', local_excel: op.localExcel || '',
@@ -410,7 +410,7 @@ function opParaLinhaSupabase(op) {
 // Converte de volta: linha do Supabase -> formato usado no sistema
 function linhaSupabaseParaOP(l) {
     return {
-        id: l.id, ciclo: l.ciclo || '', desc: l.descricao || '', qtd: l.qtd || 0,
+        id: numeroDaChaveNuvem(l.id, l.ciclo), ciclo: l.ciclo || '', desc: l.descricao || '', qtd: l.qtd || 0,
         tempoCorte: l.tempo_corte || 0, etapa: l.etapa, dataCorte: l.data_corte,
         localDestino: l.local_destino || '', localExcel: l.local_excel || '',
         temDublado: !!l.tem_dublado, prioridade: !!(l.prioridade_urgencia || l.prioridade_manual),
@@ -711,7 +711,7 @@ function linhasSupabaseParaSequenciaCompleta(linhas) {
 // não precisar de um botão pra cada tabela.
 function opManualParaLinhaSupabase(op) {
     return {
-        id: String(op.id), descricao: op.desc || '', etapa: op.etapa,
+        id: montarChaveOP(op.ciclo, op.id), descricao: op.desc || '', etapa: op.etapa,
         qtd: parseInt(op.qtd) || 0, dias_local: parseInt(op.diasLocal) || 0,
         mes_destino: op.mesDestino || null, numero_prioridade: op.numeroPrioridade || null,
         destaque: !!op.destaque,
@@ -721,7 +721,8 @@ function opManualParaLinhaSupabase(op) {
     };
 }
 function linhaSupabaseParaOpManual(l) {
-    return { id: l.id, desc: l.descricao || '', etapa: l.etapa, qtd: l.qtd || 0, diasLocal: l.dias_local || 0, mesDestino: l.mes_destino || null, numeroPrioridade: l.numero_prioridade || null, destaque: !!l.destaque, localDestinoDetalhado: l.local_destino_detalhado || null, automaticaDoDestino: l.origem === 'auto' };
+    const parteId = separarChaveOP(l.id);
+    return { id: parteId.op, ciclo: parteId.ciclo, desc: l.descricao || '', etapa: l.etapa, qtd: l.qtd || 0, diasLocal: l.dias_local || 0, mesDestino: l.mes_destino || null, numeroPrioridade: l.numero_prioridade || null, destaque: !!l.destaque, localDestinoDetalhado: l.local_destino_detalhado || null, automaticaDoDestino: l.origem === 'auto' };
 }
 
 async function publicarTudoNoSupabase() {
@@ -791,7 +792,15 @@ async function publicarTudoNoSupabase() {
         if (porOPCostura.length) {
             const linhasPorOPCostura = porOPCostura.map(porOPCosturaParaLinhaSupabase);
             if (status) status.innerText = `Publicando ${linhasPorOPCostura.length} linhas do Sequenciamento da Produção...`;
-            const r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura);
+            let r;
+            try {
+                r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura);
+            } catch (eCor) {
+                // Coluna "cor" ainda não criada no Supabase (SQL 26) — publica sem ela pra não travar o resto.
+                if (!/\bcor\b/i.test(String(eCor && eCor.message || eCor))) throw eCor;
+                r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura.map(({ cor, ...resto }) => resto));
+                registrarLogDebug('error', ['[NUVEM] Falta rodar o SQL 26 (coluna "cor"): Sequência publicada SEM a cor.']);
+            }
             resumo.push(`${r.publicados} linhas do Sequenciamento da Produção`);
         }
         const linhasMovimentacoesKPI = movimentacoesParaLinhasSupabase();
@@ -938,7 +947,7 @@ async function carregarOpsManuaisDaNuvemParaVisitante() {
         const todas = (data || []).map(linhaSupabaseParaOpManual);
         salvarOpsManuaisPrioridade(todas.filter(o => !o.automaticaDoDestino));
         const automaticasObj = {};
-        todas.filter(o => o.automaticaDoDestino).forEach(o => { automaticasObj[o.id] = o; });
+        todas.filter(o => o.automaticaDoDestino).forEach(o => { automaticasObj[chaveDaOP(o)] = o; });
         salvarOpsDestinoAutomaticas(automaticasObj);
     } catch (e) {
         registrarLogDebug('error', ['Falha ao carregar OPs manuais da nuvem: ' + e.message]);
@@ -1840,7 +1849,7 @@ function processarExcel() {
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
         const colunasSinc = detectarColunasProdutoELaser(rows); // onde estão LASER e PRODUTO (a planilha mudou de layout)
         const lerProduto = r => (colunasSinc.idxProduto !== -1 && r[colunasSinc.idxProduto]) ? String(r[colunasSinc.idxProduto]).trim().toUpperCase() : '';
-        let mapA = {}; bancoDadosOPs.forEach(o => mapA[o.id] = o); bancoDadosOPs = [];
+        let mapA = {}; bancoDadosOPs.forEach(o => mapA[chaveDaOP(o)] = o); bancoDadosOPs = [];   // pela chave ciclo-OP: o mesmo número em 2 ciclos são OPs diferentes
         const sincronizacaoInicial = Object.keys(mapA).length === 0; // primeira vez que sincroniza nesse navegador
         let movimentacoes = []; // OPs que trocaram de etapa nessa sincronização
         // OPs em "Aguardando Matéria Prima" — fica ANTES da Programação no
@@ -1874,7 +1883,7 @@ function processarExcel() {
                 if (loc.includes("CORTE") && !loc.includes("PROG") && !loc.includes("ENFESTO")) idxE = 7; else if (loc.includes("ENFESTO")) idxE = 6; else if (loc.includes("DUBLA")) idxE = 5; else if (loc.includes("ALMOX") && loc.includes("TECIDO")) idxE = 4; else if (loc.includes("PROG") && loc.includes("CORTE")) idxE = 3; else if (loc.includes("CAD")) idxE = 2; else if (loc.includes("ANALISE") || loc.includes("MEDIDA")) idxE = 1; else if (loc.includes("PROGRAMACAO")) idxE = 0;
 
                 if (idxE !== -1) {
-                    const idOP = String(r[5]).trim(), old = mapA[idOP];
+                    const idOP = String(r[5]).trim(), cicloOP = String(r[4] || ""), chaveOP = montarChaveOP(cicloOP, idOP), old = mapA[chaveOP];
                     if (old && old.etapa !== idxE) movimentacoes.push({ id: idOP, ciclo: String(r[4] || ""), deIdx: old.etapa, paraIdx: idxE });
                     bancoDadosOPs.push({
                         id: idOP, ciclo: String(r[4] || ""), desc: String(r[3] || ""),
@@ -1883,11 +1892,11 @@ function processarExcel() {
                         localDestino: r[17] ? String(r[17]).trim().toUpperCase() : "N/D",
                         localExcel: r[21] ? String(r[21]).trim().toUpperCase() : "",
                         temDublado: r[18] ? String(r[18]).toUpperCase().includes("SIM") : false,
-                        prioridade: prioridadesDestino.has(idOP) || prioridadesManuais.has(idOP), // fonte: importação "Destino de Produção" OU marcação manual — antes vinha da aba URGENCIAS
-                        mesDestino: mesesDestino[idOP] || null, // "AAAA-MM" informado na importação de Destino — planilha não tem data que sirva pra isso
-                        numeroPrioridade: numerosPrioridade[idOP] || null, // valor bruto da coluna Prioridade — só exibição
-                        localDestinoDetalhado: locaisDestinoPorOP[idOP] || null, // "Descrição Local" do Destino — cobre etapas fora das 8 rastreadas
-                        destaque: opsDestacadas.has(idOP), // "faça essa primeiro" — marcado na aba Prioridades
+                        prioridade: prioridadesDestino.has(chaveOP) || prioridadesManuais.has(chaveOP), // fonte: importação "Destino de Produção" OU marcação manual — antes vinha da aba URGENCIAS
+                        mesDestino: mesesDestino[chaveOP] || null, // "AAAA-MM" informado na importação de Destino — planilha não tem data que sirva pra isso
+                        numeroPrioridade: numerosPrioridade[chaveOP] || null, // valor bruto da coluna Prioridade — só exibição
+                        localDestinoDetalhado: locaisDestinoPorOP[chaveOP] || null, // "Descrição Local" do Destino — cobre etapas fora das 8 rastreadas
+                        destaque: opsDestacadas.has(chaveOP), // "faça essa primeiro" — marcado na aba Prioridades
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
                         diasLocal: parseInt(r[25]) || 0,
                         codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
@@ -1929,9 +1938,9 @@ function processarExcel() {
         // planilha — só faz sentido comparar se já existia uma sincronização
         // anterior pra comparar contra.
         if (!sincronizacaoInicial) {
-            const idsNovos = new Set(bancoDadosOPs.map(o => o.id));
-            const entradas = bancoDadosOPs.filter(o => !mapA[o.id]);
-            const saidas = Object.keys(mapA).filter(id => !idsNovos.has(id)).map(id => ({ id, ciclo: mapA[id].ciclo, deIdx: mapA[id].etapa }));
+            const chavesNovas = new Set(bancoDadosOPs.map(chaveDaOP));
+            const entradas = bancoDadosOPs.filter(o => !mapA[chaveDaOP(o)]);
+            const saidas = Object.keys(mapA).filter(k => !chavesNovas.has(k)).map(k => ({ id: mapA[k].id, ciclo: mapA[k].ciclo, deIdx: mapA[k].etapa }));
             exibirBalancoSincronizacao(movimentacoes, entradas, saidas);
         }
       } catch (err) {
@@ -2202,6 +2211,7 @@ function processarDestino() {
             const idxDescricaoProduto = cab.findIndex(c => c === 'DESCRIÇÃO' || c === 'DESCRICAO');
             const idxQtdDestino = cab.findIndex(c => c.includes('QT') && c.includes('DESTINO') && c.includes('LOCAL') && !c.includes('DIFER') && !c.includes('FECHA'));
             const idxDiasLocalDestino = cab.findIndex(c => c === 'DIAS LOCAL');
+            const idxCiclo = cab.findIndex(c => c === 'CICLO');   // o mesmo número de OP existe em ciclos diferentes — o ciclo faz parte da identidade
             if (idxOP === -1) {
                 throw new Error("Não encontrei a coluna OP no cabeçalho da planilha (primeira linha).");
             }
@@ -2232,10 +2242,21 @@ function processarDestino() {
             // Peças, Dias Parado) pra montar a linha, sem precisar dessas
             // OPs existirem em bancoDadosOPs.
             const opsAutomaticas = obterOpsDestinoAutomaticas();
-            let linhasLidas = 0;
+            let linhasLidas = 0, linhasAmbiguasSemCiclo = 0;
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || !row[idxOP]) continue;
-                const opId = String(row[idxOP]).trim();
+                const opNumero = String(row[idxOP]).trim();
+                let ciclo = idxCiclo !== -1 ? normalizarParteChaveOP(row[idxCiclo]) : '';
+                // Sem ciclo na linha (ou planilha sem a coluna): só dá pra cruzar se o número for ÚNICO na
+                // Sincronização; se existe em 2+ ciclos não dá pra saber qual é — pula a linha em vez de chutar.
+                if (!ciclo) {
+                    const candidatas = [...new Set(bancoDadosOPs.filter(o => o.id === opNumero).map(chaveDaOP))];
+                    if (candidatas.length === 1) ciclo = separarChaveOP(candidatas[0]).ciclo;
+                    else if (candidatas.length > 1) { linhasAmbiguasSemCiclo++; continue; }
+                }
+                // OP da Sincronização que é essa (mesmo número e mesmo ciclo — ou sem ciclo gravado): usa a chave dela
+                const opNaSinc = bancoDadosOPs.find(o => o.id === opNumero && (!normalizarParteChaveOP(o.ciclo) || normalizarParteChaveOP(o.ciclo) === ciclo));
+                const opId = opNaSinc ? chaveDaOP(opNaSinc) : montarChaveOP(ciclo, opNumero);   // a "chave" (nome mantido pra não mexer no resto do bloco)
                 prioritarias.add(opId);
                 mesPorOP[opId] = mes; // se essa OP já tinha mês de uma importação anterior, o mais recente vence
                 if (idxPrioridade !== -1 && row[idxPrioridade] !== undefined && row[idxPrioridade] !== null && row[idxPrioridade] !== '') {
@@ -2244,9 +2265,10 @@ function processarDestino() {
                 const localDetalhado = idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : null;
                 if (localDetalhado) localPorOP[opId] = localDetalhado;
 
-                if (!bancoDadosOPs.find(o => o.id === opId)) {
+                if (opId !== opNumero) delete opsAutomaticas[opNumero];   // versão antiga dessa OP, de antes do ciclo ser guardado
+                if (!opNaSinc) {
                     opsAutomaticas[opId] = {
-                        id: opId,
+                        id: opNumero, ciclo,
                         desc: idxDescricaoProduto !== -1 && row[idxDescricaoProduto] ? String(row[idxDescricaoProduto]).trim() : '(sem descrição)',
                         qtd: idxQtdDestino !== -1 ? (parseInt(row[idxQtdDestino]) || 0) : 0,
                         diasLocal: idxDiasLocalDestino !== -1 ? (parseInt(row[idxDiasLocalDestino]) || 0) : 0,
@@ -2274,10 +2296,11 @@ function processarDestino() {
             // hora).
             let mudou = 0;
             bancoDadosOPs.forEach(op => {
-                const novaPrioridade = prioritarias.has(op.id);
-                const novoMes = mesPorOP[op.id] || null;
-                const novoNumero = numeroPorOP[op.id] || null;
-                const novoLocal = localPorOP[op.id] || null;
+                const chaveOPAtual = chaveDaOP(op);
+                const novaPrioridade = prioritarias.has(chaveOPAtual);
+                const novoMes = mesPorOP[chaveOPAtual] || null;
+                const novoNumero = numeroPorOP[chaveOPAtual] || null;
+                const novoLocal = localPorOP[chaveOPAtual] || null;
                 if (op.prioridade !== novaPrioridade || op.mesDestino !== novoMes || op.numeroPrioridade !== novoNumero || op.localDestinoDetalhado !== novoLocal) {
                     op.prioridade = novaPrioridade; op.mesDestino = novoMes; op.numeroPrioridade = novoNumero; op.localDestinoDetalhado = novoLocal; mudou++;
                 }
@@ -2290,7 +2313,7 @@ function processarDestino() {
             reconstruirFiltrosPrioridades();
             renderizarTudoImediato();
             registrarAtualizacao('destino'); atualizarIndicadoresDeAtualizacao();
-            showToast(`<i class="fas fa-check-double"></i> Destino de ${mes} importado! ${prioritarias.size} OP(s) com prioridade${mudou > 0 ? ` — ${mudou} OP(s) já na tela foram atualizadas agora` : ''}.`);
+            showToast(`<i class="fas fa-check-double"></i> Destino de ${mes} importado! ${prioritarias.size} OP(s) com prioridade${mudou > 0 ? ` — ${mudou} OP(s) já na tela foram atualizadas agora` : ''}.${linhasAmbiguasSemCiclo ? ` ⚠ ${linhasAmbiguasSemCiclo} linha(s) sem ciclo foram puladas: o número existe em mais de um ciclo.` : ''}${idxCiclo === -1 ? ' ⚠ A planilha não tem a coluna Ciclo.' : ''}`);
         } catch (err) {
             console.error('Erro ao processar destino:', err);
             alert("❌ Não foi possível processar a planilha de destino.\n\nVerifique se ela tem as colunas OP e Prioridade no cabeçalho.\n\nDetalhe técnico: " + err.message);
@@ -2298,6 +2321,63 @@ function processarDestino() {
         }
     };
     r.readAsArrayBuffer(input.files[0]);
+}
+
+// =========================================================================
+// 🔑 IDENTIDADE DA OP NA PRIORIDADE: CICLO + NÚMERO
+// O mesmo número de OP existe em ciclos diferentes (ex: 111 e 211 — são OPs
+// distintas). Tudo que guarda estado de prioridade (Destino, mês, número,
+// local, OPs automáticas, manuais, estrela) usa a chave "ciclo-OP" ("211-4293");
+// OP sem ciclo gravado usa só o número. Antes era só o número, e uma OP
+// herdava a prioridade/mês/local da OP de OUTRO ciclo com o mesmo número.
+// =========================================================================
+function normalizarParteChaveOP(v) { return (v === undefined || v === null) ? '' : String(v).trim().replace(/\.0+$/, ''); }
+function montarChaveOP(ciclo, op) { const c = normalizarParteChaveOP(ciclo), o = normalizarParteChaveOP(op); return c ? `${c}-${o}` : o; }
+function chaveDaOP(o) { return o ? montarChaveOP(o.ciclo, o.id) : ''; }
+// "211-4293" → { ciclo: "211", op: "4293" }; "4293" → { ciclo: "", op: "4293" } (ciclo = 3 dígitos)
+function separarChaveOP(chave) { const m = String(chave).match(/^(\d{3})-(.+)$/); return m ? { ciclo: m[1], op: m[2] } : { ciclo: '', op: String(chave) }; }
+// Acha a OP da Sincronização pelo número + ciclo. Sem ciclo informado, só devolve se o número for ÚNICO.
+function acharOPNaSincronizacao(opId, ciclo) {
+    const c = normalizarParteChaveOP(ciclo), id = String(opId);
+    if (c) return bancoDadosOPs.find(o => o.id === id && normalizarParteChaveOP(o.ciclo) === c) || bancoDadosOPs.find(o => o.id === id && !normalizarParteChaveOP(o.ciclo)) || null;
+    const mesmas = bancoDadosOPs.filter(o => o.id === id);
+    return mesmas.length === 1 ? mesmas[0] : null;
+}
+// Id que vai pra nuvem: "ciclo-OP". Ao voltar, tira o prefixo do ciclo (a tabela `ops` já tem coluna ciclo; a de OPs manuais não, aí o ciclo viaja dentro do id).
+function numeroDaChaveNuvem(id, ciclo) { const s = String(id), c = normalizarParteChaveOP(ciclo); return (c && s.startsWith(c + '-')) ? s.slice(c.length + 1) : s; }
+
+// Roda UMA vez (e só com a lista de OPs carregada): converte o que já estava salvo
+// pelo número pro formato "ciclo-OP". Número que existe em UM único ciclo na lista
+// atual vira a chave dessa OP; número que não está mais na lista (a OP já saiu) ou
+// que existe em 2+ ciclos (não dá pra saber de qual era) é DESCARTADO — mantê-lo
+// faria a prioridade antiga "grudar" numa OP nova que reaproveite o número.
+// Não mexe nas OPs automáticas/manuais cadastradas (têm o dado todo dentro delas).
+function migrarPrioridadesParaChaveComposta() {
+    if (localStorage.getItem('prioridadeChaveV2')) return;
+    if (!bancoDadosOPs.length) return;
+    const porNumero = new Map();
+    bancoDadosOPs.forEach(o => { const n = String(o.id); if (!porNumero.has(n)) porNumero.set(n, new Set()); porNumero.get(n).add(chaveDaOP(o)); });
+    const convertidas = new Set(), descartadas = new Set();   // OPs DISTINTAS (a mesma OP aparece em várias listas)
+    const converter = k => {
+        k = String(k);
+        if (separarChaveOP(k).ciclo) return k;                       // já está no formato novo
+        const cand = porNumero.get(k);
+        if (cand && cand.size === 1) { convertidas.add(k); return [...cand][0]; }
+        descartadas.add(k); return null;
+    };
+    const ler = (nome, padrao) => { try { return JSON.parse(localStorage.getItem(nome) || padrao); } catch (e) { return JSON.parse(padrao); } };
+    ['prioridadesDestino', 'prioridadesManuais', 'opsDestacadasPrioridade'].forEach(nome => {
+        const novo = []; ler(nome, '[]').forEach(k => { const n = converter(k); if (n && !novo.includes(n)) novo.push(n); });
+        localStorage.setItem(nome, JSON.stringify(novo));
+    });
+    ['opsMesDestino', 'numerosPrioridade', 'locaisDestinoPorOP'].forEach(nome => {
+        const novo = {}; Object.entries(ler(nome, '{}')).forEach(([k, v]) => { const n = converter(k); if (n) novo[n] = v; });
+        localStorage.setItem(nome, JSON.stringify(novo));
+    });
+    localStorage.setItem('prioridadeChaveV2', '1');
+    if (convertidas.size || descartadas.size) {
+        showToast(`<i class="fas fa-key"></i> Prioridades atualizadas pro novo formato (OP + ciclo): ${convertidas.size} OP(s) mantida(s)${descartadas.size ? `, ${descartadas.size} descartada(s) (já saíram da Sincronização ou o número existe em 2 ciclos — reimporte o Destino se faltar alguma)` : ''}.`, false, 9000);
+    }
 }
 
 function obterPrioridadesDestino() {
@@ -2416,7 +2496,7 @@ function obterPorOPCosturaDetalhado() {
 function porOPCosturaParaLinhaSupabase(item) {
     return {
         id: chaveOPCostura(item.op, item.ciclo), op: item.op, ciclo: item.ciclo || '',
-        local: item.local || '', ref: item.ref || '', desc_ref: item.descRef || '',
+        local: item.local || '', ref: item.ref || '', desc_ref: item.descRef || '', cor: item.cor || '',
         tipo_produto: item.tipoProduto || '', prioridade: item.prioridade ?? null, qtd: item.qtd || 0,
         minutos_costura: item.minutosCostura ?? null, minutos_acabamento: item.minutosAcabamento ?? null,
         minutos_enfesto: item.minutosEnfesto ?? null, data_finalizacao: item.dataFinalizacao || null,
@@ -2425,7 +2505,7 @@ function porOPCosturaParaLinhaSupabase(item) {
 }
 function linhaSupabaseParaPorOPCostura(l) {
     return {
-        op: l.op, ciclo: l.ciclo || '', local: l.local || '', ref: l.ref || '', descRef: l.desc_ref || '',
+        op: l.op, ciclo: l.ciclo || '', local: l.local || '', ref: l.ref || '', descRef: l.desc_ref || '', cor: l.cor || '',
         tipoProduto: l.tipo_produto || '', prioridade: l.prioridade, qtd: l.qtd || 0,
         minutosCostura: l.minutos_costura, minutosAcabamento: l.minutos_acabamento,
         minutosEnfesto: l.minutos_enfesto, dataFinalizacao: l.data_finalizacao,
@@ -2458,14 +2538,15 @@ function chaveOPCostura(op, ciclo) { return `${op}|${ciclo || ''}`; }
 // (fonte totalmente separada — vem de uma importação diferente) só pra
 // puxar o Mês Destino, quando existir. Confere as 3 fontes que Prioridades
 // já usa, na mesma ordem de prioridade que a tela de lá usa.
-function obterMesDestinoDaOP(opId) {
-    const doSincronizado = bancoDadosOPs.find(o => o.id === opId);
+function obterMesDestinoDaOP(opId, ciclo) {
+    const chave = montarChaveOP(ciclo, opId);
+    const doSincronizado = acharOPNaSincronizacao(opId, ciclo);
     if (doSincronizado && doSincronizado.mesDestino) return doSincronizado.mesDestino;
-    const manuais = obterOpsManuaisPrioridade();
-    const daManual = manuais.find(o => o.id === opId);
+    const daManual = obterOpsManuaisPrioridade().find(o => String(o.id) === String(opId) && (!normalizarParteChaveOP(ciclo) || !normalizarParteChaveOP(o.ciclo) || normalizarParteChaveOP(o.ciclo) === normalizarParteChaveOP(ciclo)));
     if (daManual && daManual.mesDestino) return daManual.mesDestino;
     const automaticas = obterOpsDestinoAutomaticas();
-    if (automaticas[opId] && automaticas[opId].mesDestino) return automaticas[opId].mesDestino;
+    const auto = automaticas[chave] || automaticas[String(opId)];   // as antigas (de antes do ciclo ser guardado) ficam só pelo número
+    if (auto && auto.mesDestino) return auto.mesDestino;
     return null;
 }
 
@@ -2640,6 +2721,7 @@ function processarPorOPCostura() {
             const idxDataFinalizacao = cab.findIndex(c => c.includes('DATA') && c.includes('FINALIZ'));
             const idxDataInclusao = cab.findIndex(c => c.includes('DATA') && c.includes('INCLUS'));
             const idxCiclo = cab.findIndex(c => c === 'CICLO');
+            const idxCor = cab.findIndex(c => c === 'COR' || c === 'COR PRODUTO');
 
             const faltando = [];
             if (idxDescLocal === -1) faltando.push('Descrição Local');
@@ -2676,6 +2758,7 @@ function processarPorOPCostura() {
                     local: local,
                     ref: idxRef !== -1 && row[idxRef] ? String(row[idxRef]).trim().toUpperCase() : '',
                     descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '',
+                    cor: idxCor !== -1 && row[idxCor] ? String(row[idxCor]).trim().toUpperCase() : '',
                     tipoProduto: idxTipo !== -1 && row[idxTipo] ? String(row[idxTipo]).trim().toUpperCase() : '',
                     prioridade: idxPrioridade !== -1 && row[idxPrioridade] !== null && row[idxPrioridade] !== undefined ? parseInt(row[idxPrioridade]) : null,
                     qtd: idxQtd !== -1 ? (parseFloat(row[idxQtd]) || 0) : 0,
@@ -3925,7 +4008,7 @@ function obterPrioridadesManuais() {
 function obterOPsDestacadas() {
     try { return new Set(JSON.parse(localStorage.getItem('opsDestacadasPrioridade') || '[]')); } catch (e) { return new Set(); }
 }
-function toggleDestaquePrioridade(id) {
+function toggleDestaquePrioridade(id) {   // `id` aqui é a chave "ciclo-OP" (ou só o número, pra OP sem ciclo)
     if (!exigirAdmin('destacar essa OP')) return;
     const destacadas = obterOPsDestacadas();
     const novoValor = !destacadas.has(id);
@@ -3935,11 +4018,11 @@ function toggleDestaquePrioridade(id) {
     // Reaplica na hora, direto no objeto — igual já fazemos com
     // prioridade/mês/número — pra já refletir sem esperar sincronizar de
     // novo, e pra viajar certo pra nuvem quando publicar.
-    const op = bancoDadosOPs.find(o => o.id === id);
+    const op = bancoDadosOPs.find(o => chaveDaOP(o) === id);
     if (op) { op.destaque = novoValor; localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs)); }
     else {
         const lista = obterOpsManuaisPrioridade();
-        const item = lista.find(o => o.id === id);
+        const item = lista.find(o => chaveDaOP(o) === id);
         if (item) {
             item.destaque = novoValor; salvarOpsManuaisPrioridade(lista);
         } else {
@@ -3976,6 +4059,10 @@ function abrirModalPrioridadeManual() {
                     <label>NÚMERO DA OP</label>
                     <input type="text" id="inputOPManualNumero" placeholder="Ex: 4594">
                 </div>
+                <div class="campo-meta">
+                    <label>CICLO (preencha se o número existir em mais de um ciclo)</label>
+                    <input type="text" id="inputOPManualCiclo" placeholder="Ex: 211">
+                </div>
                 <div id="statusOPManual" style="font-size:11px;"></div>
                 <div id="camposOPManual" style="display:flex; flex-direction:column; gap:10px;">
                     <div class="campo-meta"><label>DESCRIÇÃO</label><input type="text" id="inputOPManualDesc"></div>
@@ -3991,6 +4078,7 @@ function abrirModalPrioridadeManual() {
     `;
     $('modalPrioridadeManual').style.display = 'flex';
     $('inputOPManualNumero').oninput = conferirOPManualExistente;
+    $('inputOPManualCiclo').oninput = conferirOPManualExistente;
     $('btnSalvarOPManual').onclick = salvarOPManual;
     conferirOPManualExistente();
 }
@@ -4000,13 +4088,24 @@ function abrirModalPrioridadeManual() {
 // digitar de novo seria redundante e podia até contradizer o dado real.
 function conferirOPManualExistente() {
     const numero = $('inputOPManualNumero').value.trim();
+    const cicloDigitado = normalizarParteChaveOP($('inputOPManualCiclo') ? $('inputOPManualCiclo').value : '');
     const camposDiv = $('camposOPManual');
     const statusDiv = $('statusOPManual');
     if (!numero) { statusDiv.innerHTML = ''; camposDiv.style.display = 'flex'; return; }
 
+    // Mesmo número em ciclos diferentes são OPs diferentes: se existe em 2+ ciclos na
+    // Sincronização e o ciclo não foi informado, pede o ciclo em vez de adivinhar.
+    const ciclosDoNumero = [...new Set(bancoDadosOPs.filter(o => o.id === numero).map(o => normalizarParteChaveOP(o.ciclo)))];
+    if (!cicloDigitado && ciclosDoNumero.length > 1) {
+        statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Esse número existe em mais de um ciclo (${ciclosDoNumero.join(', ')}) — preencha o CICLO.</span>`;
+        camposDiv.style.display = 'none';
+        return;
+    }
+    const chave = montarChaveOP(cicloDigitado, numero);
+
     // Caso 1: já existe na Sincronização — dado vem de lá, esconde os
     // campos redundantes (mesmo comportamento de antes).
-    const opExistente = bancoDadosOPs.find(o => o.id === numero);
+    const opExistente = acharOPNaSincronizacao(numero, cicloDigitado);
     if (opExistente) {
         statusDiv.innerHTML = `<span style="color:var(--cor-despacho);"><i class="fas fa-check-circle"></i> Essa OP já existe no sistema (${opExistente.desc}) — Descrição/Etapa/Peças/Dias Parado vêm de lá automaticamente.</span>`;
         camposDiv.style.display = 'none';
@@ -4019,7 +4118,7 @@ function conferirOPManualExistente() {
     // com o que já existe, em vez de deixar como se fosse novo (antes
     // dizia "não encontrada" mesmo quando já existia, arriscando
     // sobrescrever sem avisar).
-    const itemManual = obterOpsManuaisPrioridade().find(o => o.id === numero);
+    const itemManual = obterOpsManuaisPrioridade().find(o => chaveDaOP(o) === (opExistente ? chaveDaOP(opExistente) : chave));
     if (itemManual) {
         statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Essa OP já tem um cadastro manual (${itemManual.desc}) — os campos já vêm preenchidos com o que existe. Salvar vai ATUALIZAR esse cadastro, não criar um novo.</span>`;
         camposDiv.style.display = 'flex';
@@ -4034,7 +4133,7 @@ function conferirOPManualExistente() {
 
     // Caso 3: já existe como automática do Destino (OP que só existe na
     // costura, montada sozinha) — mesma ideia do caso 2.
-    const itemAutomatico = obterOpsDestinoAutomaticas()[numero];
+    const itemAutomatico = obterOpsDestinoAutomaticas()[chave] || obterOpsDestinoAutomaticas()[numero];
     if (itemAutomatico) {
         statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Essa OP já foi importada automaticamente do relatório de Destino (${itemAutomatico.desc}) — os campos já vêm preenchidos com o que existe. Salvar vai ATUALIZAR essa entrada.</span>`;
         camposDiv.style.display = 'flex';
@@ -4067,22 +4166,26 @@ function salvarOPManual() {
     const mes = $('inputOPManualMes').value.trim() || null;
     if (mes && !/^\d{4}-\d{2}$/.test(mes)) { showToast('<i class="fas fa-triangle-exclamation"></i> Mês Destino precisa ser no formato AAAA-MM.', true); return; }
 
-    const opExistente = bancoDadosOPs.find(o => o.id === numero);
+    const cicloDigitado = normalizarParteChaveOP($('inputOPManualCiclo') ? $('inputOPManualCiclo').value : '');
+    const ciclosDoNumero = [...new Set(bancoDadosOPs.filter(o => o.id === numero).map(o => normalizarParteChaveOP(o.ciclo)))];
+    if (!cicloDigitado && ciclosDoNumero.length > 1) { showToast(`<i class="fas fa-triangle-exclamation"></i> O número ${numero} existe em mais de um ciclo (${ciclosDoNumero.join(', ')}) — informe o CICLO.`, true, 6000); return; }
+    const opExistente = acharOPNaSincronizacao(numero, cicloDigitado);
+    const chave = opExistente ? chaveDaOP(opExistente) : montarChaveOP(cicloDigitado, numero);
 
     if (opExistente) {
         // Caso 1: a OP já existe — só marca prioridade e guarda o que é
         // extra (número/mês), sem duplicar o resto do dado.
         const manuais = obterPrioridadesManuais();
-        manuais.add(numero);
+        manuais.add(chave);
         localStorage.setItem('prioridadesManuais', JSON.stringify([...manuais]));
         opExistente.prioridade = true;
         if (numPrioridade) {
             opExistente.numeroPrioridade = numPrioridade;
-            const n = obterNumerosPrioridade(); n[numero] = numPrioridade; localStorage.setItem('numerosPrioridade', JSON.stringify(n));
+            const n = obterNumerosPrioridade(); n[chave] = numPrioridade; localStorage.setItem('numerosPrioridade', JSON.stringify(n));
         }
         if (mes) {
             opExistente.mesDestino = mes;
-            const m = obterOpsMesDestino(); m[numero] = mes; localStorage.setItem('opsMesDestino', JSON.stringify(m));
+            const m = obterOpsMesDestino(); m[chave] = mes; localStorage.setItem('opsMesDestino', JSON.stringify(m));
         }
         localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
     } else {
@@ -4099,8 +4202,8 @@ function salvarOPManual() {
         if (valorEtapa.startsWith('local:')) localDestinoDetalhado = valorEtapa.slice('local:'.length);
         else etapa = parseInt(valorEtapa);
         const lista = obterOpsManuaisPrioridade();
-        const jaExiste = lista.findIndex(o => o.id === numero);
-        const entrada = { id: numero, desc, etapa, qtd, diasLocal, mesDestino: mes, numeroPrioridade: numPrioridade, localDestinoDetalhado };
+        const jaExiste = lista.findIndex(o => chaveDaOP(o) === chave);
+        const entrada = { id: numero, ciclo: cicloDigitado, desc, etapa, qtd, diasLocal, mesDestino: mes, numeroPrioridade: numPrioridade, localDestinoDetalhado };
         if (jaExiste !== -1) lista[jaExiste] = entrada; else lista.push(entrada);
         salvarOpsManuaisPrioridade(lista);
     }
@@ -4114,26 +4217,27 @@ function salvarOPManual() {
 // Remove uma marcação manual — se a OP existe no sistema, só desmarca a
 // prioridade (não some com a OP, ela continua existindo normal); se for um
 // cadastro 100% manual, remove da lista de vez.
-function removerPrioridadeManual(numero) {
+function removerPrioridadeManual(chave) {   // chave "ciclo-OP" (ou só o número, pra OP sem ciclo)
     if (!exigirAdmin('remover prioridade manual')) return;
-    if (!confirm(`Remover a marcação de prioridade da OP ${numero}? Se ela ainda estiver no próximo relatório de Destino, pode voltar a aparecer.`)) return;
+    const { ciclo: cicloDaChave, op: numero } = separarChaveOP(chave);
+    if (!confirm(`Remover a marcação de prioridade da OP ${numero}${cicloDaChave ? ` (ciclo ${cicloDaChave})` : ''}? Se ela ainda estiver no próximo relatório de Destino, pode voltar a aparecer.`)) return;
 
     const manuais = obterPrioridadesManuais();
     const automaticas = obterOpsDestinoAutomaticas();
-    if (manuais.has(numero)) {
-        manuais.delete(numero);
+    if (manuais.has(chave)) {
+        manuais.delete(chave);
         localStorage.setItem('prioridadesManuais', JSON.stringify([...manuais]));
-        const op = bancoDadosOPs.find(o => o.id === numero);
+        const op = bancoDadosOPs.find(o => chaveDaOP(o) === chave);
         if (op) {
             const prioridadesDestino = obterPrioridadesDestino();
-            op.prioridade = prioridadesDestino.has(numero); // volta a valer só o que o Destino diz
+            op.prioridade = prioridadesDestino.has(chave); // volta a valer só o que o Destino diz
             localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
         }
-    } else if (automaticas[numero]) {
-        delete automaticas[numero];
+    } else if (automaticas[chave]) {
+        delete automaticas[chave];
         salvarOpsDestinoAutomaticas(automaticas);
     } else {
-        const lista = obterOpsManuaisPrioridade().filter(o => o.id !== numero);
+        const lista = obterOpsManuaisPrioridade().filter(o => chaveDaOP(o) !== chave);
         salvarOpsManuaisPrioridade(lista);
     }
     cacheGruposPorReferencia = null;
@@ -4495,15 +4599,16 @@ function renderizarAbaPrioridades() {
     }
 
     $('listaPrioridadesTab').innerHTML = prioritarias.map(op => {
-        const ehManual = op.manualCompleta || manuaisSet.has(op.id);
+        const chaveDestaOP = chaveDaOP(op);
+        const ehManual = op.manualCompleta || manuaisSet.has(chaveDestaOP);
         const ehAutomatica = !!op.automaticaDoDestino;
-        const botaoRemover = (ehManual || ehAutomatica) ? `<button class="btn somente-admin" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerPrioridadeManual('${op.id}')" title="Remover essa marcação"><i class="fas fa-times"></i></button>` : '';
+        const botaoRemover = (ehManual || ehAutomatica) ? `<button class="btn somente-admin" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerPrioridadeManual('${chaveDestaOP}')" title="Remover essa marcação"><i class="fas fa-times"></i></button>` : '';
         const localProducao = localProducaoPorOP.get(op.id);
         const destacada = !!op.destaque;
-        const estrela = `<i class="fas fa-star" style="cursor:pointer; color:${destacada ? '#B8862A' : 'var(--borda-cor)'};" onclick="toggleDestaquePrioridade('${op.id}')" title="${destacada ? 'Tirar destaque' : 'Destacar — faça essa primeiro'}"></i>`;
+        const estrela = `<i class="fas fa-star" style="cursor:pointer; color:${destacada ? '#B8862A' : 'var(--borda-cor)'};" onclick="toggleDestaquePrioridade('${chaveDestaOP}')" title="${destacada ? 'Tirar destaque' : 'Destacar — faça essa primeiro'}"></i>`;
         return `
         <tr style="${destacada ? 'background:rgba(184, 134, 42, 0.15);' : ''}">
-            <td>${estrela} <strong>${op.id}</strong>${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}${ehAutomatica ? ' <i class="fas fa-file-import" style="font-size:9px; color:var(--texto-secundario);" title="Não existe na Sincronização — montada com dado do Destino"></i>' : ''}</td>
+            <td>${estrela} <strong>${op.id}</strong>${op.ciclo ? ` <span style="font-size:10px; color:var(--texto-secundario);" title="Ciclo">${op.ciclo}</span>` : ''}${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}${ehAutomatica ? ' <i class="fas fa-file-import" style="font-size:9px; color:var(--texto-secundario);" title="Não existe na Sincronização — montada com dado do Destino"></i>' : ''}</td>
             <td>${op.numeroPrioridade !== null && op.numeroPrioridade !== undefined ? op.numeroPrioridade : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.desc}</td>
             <td><span class="pill" style="background:var(--cor-primaria); font-size:10px;">${obterSetorExibicaoPrioridade(op)}</span></td>
@@ -6054,7 +6159,7 @@ function renderizarSequenciamentoCostura() {
     renderizarResumoAtrasosPorGrupo();
 
     if (!filaComResultado.length) {
-        $('seqCostListaOPs').innerHTML = `<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
 
@@ -6104,7 +6209,7 @@ function renderizarSequenciamentoCostura() {
         // coluna Situação linha por linha.
         const linhaAnterior = filaComResultado[indice - 1];
         const separador = (indice > 0 && linhaAnterior.situacaoCostura === 'Em andamento' && op.situacaoCostura === 'Aguardando')
-            ? `<tr><td colspan="11" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
+            ? `<tr><td colspan="12" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
             : '';
         return separador + `<tr style="${comecaHoje ? '' : 'opacity:0.6;'}">
             <td><input type="checkbox" class="check-imprimir-seq" data-id="${chaveLinha}"></td>
@@ -6112,8 +6217,9 @@ function renderizarSequenciamentoCostura() {
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
             <td>${op.prioridade ?? '—'}</td>
             <td>${dataFinalizacaoHtml}</td>
-            <td>${obterMesDestinoDaOP(op.op) || '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td>${obterMesDestinoDaOP(op.op, op.ciclo) || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.descRef || ''}</td>
+            <td style="white-space:nowrap;">${op.cor || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${tempoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
@@ -8610,6 +8716,8 @@ window.onload = function () {
     // que é assíncrono) — evita mostrar todas as abas por um instante antes
     // de esconder de novo.
     aplicarRestricaoDeAbaVisitante();
+
+    migrarPrioridadesParaChaveComposta();   // 1ª vez depois da mudança: converte prioridade/mês/estrela salvos só por número pro formato ciclo-OP
 
     // 1. Inicia o sistema normalmente
     inicializarFiltroEtapa();
