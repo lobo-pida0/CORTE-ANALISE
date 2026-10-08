@@ -3261,7 +3261,7 @@ function limparMovimentacoesKPI() {
 // costura). Minutos produzidos = peças × tempo por peça do local (o mesmo
 // valor do "Tempo Peca Costura" do POR_OP). Eficiência = minutos
 // produzidos ÷ (pessoas × minutos por pessoa). Pessoas é digitado por LOCAL, por dia.
-// Guardado SÓ no navegador (localStorage 'eficienciaCostura'):
+// Guardado no navegador (localStorage 'eficienciaCostura') E na nuvem (tabela eficiencia_costura_dias, SQL 27):
 // { 'AAAA-MM-DD': { locais: { LOCAL: {pecas, minutos, ops, semTempo} }, pessoasLocal: { LOCAL: n } } }
 // Reimportar um dia SUBSTITUI os números daquele dia (o relatório é do dia
 // inteiro) e mantém as pessoas já digitadas.
@@ -3285,12 +3285,88 @@ function numeroBR(txt) {
     return isNaN(n) ? null : n;
 }
 
+
+// ☁️ Nuvem da eficiência da costura — tabela `eficiencia_costura_dias` (SQL 27), 1 linha por dia,
+// só usuário logado (admin/usuario). Dia que não chegou na nuvem fica em
+// `eficienciaCosturaPendentes` e NUNCA é trocado pela versão da nuvem até subir.
+let efCosturaSincronizando = false, efCosturaAvisouFalha = false;
+function obterEfCosturaPendentes() { try { return JSON.parse(localStorage.getItem('eficienciaCosturaPendentes') || '[]'); } catch (e) { return []; } }
+function salvarEfCosturaPendentes(arr) { try { localStorage.setItem('eficienciaCosturaPendentes', JSON.stringify([...new Set(arr)])); } catch (e) { /* ignora */ } }
+function avisarFalhaNuvemEfCostura(e) {
+    registrarLogDebug('error', ['[NUVEM] Eficiência da costura: ' + (e && e.message ? e.message : e)]);
+    const faltaTabela = e && (e.code === 'PGRST205' || e.code === '42P01');
+    if (efCosturaAvisouFalha) return;
+    efCosturaAvisouFalha = true;
+    showToast(faltaTabela
+        ? '<i class="fas fa-triangle-exclamation"></i> Eficiência da costura só no seu navegador: falta rodar o SQL 27 no Supabase.'
+        : '<i class="fas fa-triangle-exclamation"></i> Não consegui salvar a eficiência da costura na nuvem — ela ficou só neste navegador e será reenviada depois.', true, 8000);
+}
+async function publicarDiasEfCostura(dias) {
+    if (!dias || !dias.length) return true;
+    if (!supabaseClient || !sessaoAdminAtual) { salvarEfCosturaPendentes([...obterEfCosturaPendentes(), ...dias]); return false; }
+    const todos = obterEficienciaCostura();
+    const por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase();
+    try {   // mescla as pessoas que outra pessoa já digitou na nuvem (o valor local ganha em caso de conflito)
+        const { data: naNuvem } = await supabaseClient.from('eficiencia_costura_dias').select('id, dados').in('id', dias);
+        let mesclou = false;
+        (naNuvem || []).forEach(l => {
+            if (!todos[l.id] || !l.dados || !l.dados.pessoasLocal) return;
+            const merged = { ...l.dados.pessoasLocal, ...(todos[l.id].pessoasLocal || {}) };
+            if (JSON.stringify(merged) !== JSON.stringify(todos[l.id].pessoasLocal || {})) { todos[l.id].pessoasLocal = merged; mesclou = true; }
+        });
+        if (mesclou) { salvarEficienciaCostura(todos); renderizarEficienciaCostura(); }
+    } catch (e) { /* sem a mescla, segue com o dado local */ }
+    const linhas = dias.filter(d => todos[d]).map(d => ({ id: d, dados: { locais: todos[d].locais, opsTotal: todos[d].opsTotal ?? null, pessoasLocal: todos[d].pessoasLocal || {} }, atualizado_por: por }));
+    try {
+        for (let i = 0; i < linhas.length; i += 200) {
+            const { error } = await supabaseClient.from('eficiencia_costura_dias').upsert(linhas.slice(i, i + 200), { onConflict: 'id' });
+            if (error) throw error;
+        }
+        salvarEfCosturaPendentes(obterEfCosturaPendentes().filter(d => !dias.includes(d)));
+        return true;
+    } catch (e) {
+        salvarEfCosturaPendentes([...obterEfCosturaPendentes(), ...dias]);
+        avisarFalhaNuvemEfCostura(e);
+        return false;
+    }
+}
+async function carregarEfCosturaDaNuvem() {
+    if (!supabaseClient || !sessaoAdminAtual || efCosturaSincronizando) return;
+    efCosturaSincronizando = true;
+    try {
+        const pendentes = obterEfCosturaPendentes().filter(d => obterEficienciaCostura()[d]);
+        if (pendentes.length) await publicarDiasEfCostura(pendentes);
+        const { data, error } = await supabaseClient.from('eficiencia_costura_dias').select('id, dados');
+        if (error) { avisarFalhaNuvemEfCostura(error); return; }
+        const todos = obterEficienciaCostura();
+        const aindaPendentes = new Set(obterEfCosturaPendentes());
+        const naNuvem = new Set();
+        let mudou = false;
+        (data || []).forEach(l => {
+            naNuvem.add(l.id);
+            if (aindaPendentes.has(l.id) || !l.dados || !l.dados.locais) return;
+            const novo = { locais: l.dados.locais, opsTotal: l.dados.opsTotal ?? null, pessoasLocal: l.dados.pessoasLocal || {} };
+            if (JSON.stringify(todos[l.id] || null) !== JSON.stringify(novo)) { todos[l.id] = novo; mudou = true; }
+        });
+        if (mudou) salvarEficienciaCostura(todos);
+        const soLocais = Object.keys(todos).filter(d => !naNuvem.has(d));   // dias que só existem neste navegador → sobem
+        if (soLocais.length) await publicarDiasEfCostura(soLocais);
+        popularSeletorMesEfCostura();
+        renderizarEficienciaCostura();
+    } catch (e) {
+        avisarFalhaNuvemEfCostura(e);
+    } finally {
+        efCosturaSincronizando = false;
+    }
+}
+
 function processarEficienciaCostura() {
     if (!exigirAdminOuUsuario('importar a movimentação da costura')) return;
     const input = $('inputEfCostura'); if (!input || !input.files[0]) return;
     const r = new FileReader();
-    r.onload = function (e) {
+    r.onload = async function (e) {
         try {
+            await carregarEfCosturaDaNuvem();   // traz o que os outros já digitaram (pessoas) antes de mesclar
             const buf = new Uint8Array(e.target.result);
             let texto;
             try { texto = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (err) { texto = new TextDecoder('windows-1252').decode(buf); }
@@ -3337,6 +3413,7 @@ function processarEficienciaCostura() {
             salvarEficienciaCostura(todos);
             input.value = '';
             const dias = Object.keys(novosDias).sort();
+            publicarDiasEfCostura(dias).then(ok => { if (ok) showToast('<i class="fas fa-cloud-upload-alt"></i> Eficiência da costura salva na nuvem.', false, 2500); });
             popularSeletorMesEfCostura(dias[dias.length - 1].slice(0, 7));
             renderizarEficienciaCostura();
             showToast(`<i class="fas fa-check-double"></i> ${linhasCostura} linhas de costura em ${dias.length} dia(s) importadas.${linhasSemTempo ? ` ⚠ ${linhasSemTempo} sem tempo (contam peças, não minutos).` : ''}`, false, linhasSemTempo ? 7000 : 3000);
@@ -3363,9 +3440,10 @@ function definirPessoasEfCostura(dia, local, valor) {
     const todos = obterEficienciaCostura(); if (!todos[dia]) return;
     const n = parseFloat(String(valor).replace(',', '.'));
     todos[dia].pessoasLocal = todos[dia].pessoasLocal || {};
-    if (isNaN(n) || n <= 0) delete todos[dia].pessoasLocal[local]; else todos[dia].pessoasLocal[local] = n;
+    todos[dia].pessoasLocal[local] = (isNaN(n) || n <= 0) ? 0 : n;   // 0 = apagado (guardado pra não ressuscitar na mescla com a nuvem)
     salvarEficienciaCostura(todos);
     renderizarEficienciaCostura();
+    publicarDiasEfCostura([dia]);
 }
 
 // Um bloco por dia: linha de TOTAL do dia + uma linha por LOCAL de costura,
@@ -8743,7 +8821,7 @@ function inicializarEventosUI() {
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
-        wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); });
+        wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); carregarEfCosturaDaNuvem(); });
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); renderizarUrgencias(); atualizarInfoNuvemUrgencias(); carregarUrgenciasDaNuvem(); });
         wireEvento('inputImplantacao', 'change', () => { processarImplantacao(); });
