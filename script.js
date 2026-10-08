@@ -6233,7 +6233,7 @@ function renderizarSequenciamentoCostura() {
             <td style="white-space:nowrap;">${op.cor || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
             <td style="text-align:right; white-space:nowrap;" title="Tempo de costura por peça (coluna 'Tempo Peca Costura' do POR_OP)">${op.tempoPecaCostura ? op.tempoPecaCostura.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--texto-secundario);">—</span>'}</td>
-            <td style="text-align:right;">${tempoTexto}</td>
+            <td class="col-tempo-total-seq" style="text-align:right;">${tempoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">
                 <button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-historico);" onclick="ocultarOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Ocultar essa OP (continua existindo, só some da lista e do tempo — reversível na hora)"><i class="fas fa-eye-slash"></i></button>

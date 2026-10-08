@@ -1217,6 +1217,12 @@ body.modo-tv #controles-tv {
         display: none;
     }
 
+    /* Sequência: na folha impressa fica só o MIN/PEÇA — o TEMPO (MIN) total
+       da OP (min/peça × peças) não é impresso */
+    #areaImpressaoGenerica .col-tempo-total-seq {
+        display: none !important;
+    }
+
     /* coluna de checkbox (usada só pra escolher o que imprimir) também não
        faz sentido no papel — ela é sempre a PRIMEIRA coluna onde existe */
     #areaImpressaoGenerica th:first-child:has(input[type="checkbox"]),
