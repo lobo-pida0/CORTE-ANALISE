@@ -7560,7 +7560,6 @@ function renderizarTudoImediato() {
                 <td>${o.localDestino}</td>
                 <td>${o.desc}</td>
                 <td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${o.mesDestino}</span>` : '—'}</td>
-                <td><b>${o.tempoCorte}</b> min</td>
                 <td>${o.qtd}</td>
                 <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
                 <td>${o.dataCorteSuposta && formatarDataBR(o.dataCorteSuposta) ? `<span style="color:var(--cor-roxo);" title="Estimado a partir da finalização (${formatarDataBR(o.dataFinalizacao)})">${formatarDataBR(o.dataCorteSuposta)}</span>` : '—'}</td>
@@ -7569,7 +7568,7 @@ function renderizarTudoImediato() {
     });
 
     if ($('listaDespacho')) $('listaDespacho').innerHTML = dDados.length === 0
-        ? `<tr><td colspan="14" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
+        ? `<tr><td colspan="13" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
         : htmlTabela;
     // =========================================================================
     filaGeralDadosGlobais = fDados; renderizarTabelaFilaGeral();
