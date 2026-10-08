@@ -3271,7 +3271,7 @@ function normalizarCabecalhoEf(c) {
 }
 function ehLocalCosturaEficiencia(local) {
     const l = normalizarCabecalhoEf(local);
-    return /^(PNP|SLV) COST (SUP|INF|CEL)/.test(l) && !l.includes('AGUARD');
+    return /^(PNP|SLV) COST (SUP|INF|CEL)/.test(l) && !l.includes('AGUARD') && !l.includes('PALETO'); // SLV COST CEL PALETO fica de fora (pedido do usuário)
 }
 function obterEficienciaCostura() {
     try { return JSON.parse(localStorage.getItem('eficienciaCostura') || '{}'); } catch (e) { return {}; }
@@ -3391,7 +3391,9 @@ function renderizarEficienciaCostura() {
     corpo.innerHTML = dias.map(dia => {
         const d = todos[dia];
         const pl = d.pessoasLocal || {};
-        const locais = Object.entries(d.locais).sort((a, b) => a[0].localeCompare(b[0]));
+        // filtra de novo ao mostrar: dias importados antes de um local sair da lista também deixam de contá-lo
+        const locais = Object.entries(d.locais).filter(([n]) => ehLocalCosturaEficiencia(n)).sort((a, b) => a[0].localeCompare(b[0]));
+        if (!locais.length) return '';
         const [ano, m, dd] = dia.split('-');
         let dPecas = 0, dMin = 0, dMinOk = 0, dDisp = 0, dSemTempo = 0, dPessoas = 0;
         const linhasLocais = locais.map(([nome, l]) => {
@@ -3419,7 +3421,7 @@ function renderizarEficienciaCostura() {
             <td><strong>${dd}/${m}/${ano}</strong></td>
             <td><strong>TOTAL DO DIA</strong></td>
             <td style="text-align:right; font-weight:700;">${fmt(dPecas)}${dSemTempo ? ' <span style="color:var(--cor-alerta);" title="Há peças sem tempo no relatório">⚠</span>' : ''}</td>
-            <td style="text-align:right;">${d.opsTotal ?? '—'}</td>
+            <td style="text-align:right;">${locais.reduce((a, [, l]) => a + l.ops, 0)}</td>
             <td style="text-align:right; font-weight:700;">${fmt(dMin)}</td>
             <td style="text-align:center;">${dPessoas || '—'}</td>
             <td style="text-align:right;">${dDisp ? fmt(dDisp) : '—'}</td>
