@@ -3260,9 +3260,9 @@ function limparMovimentacoesKPI() {
 // (preparação), o acabamento e os terceirizados (pedido do usuário: só a
 // costura). Minutos produzidos = peças × tempo por peça do local (o mesmo
 // valor do "Tempo Peca Costura" do POR_OP). Eficiência = minutos
-// produzidos ÷ (pessoas × minutos por pessoa). Pessoas é digitado por dia.
+// produzidos ÷ (pessoas × minutos por pessoa). Pessoas é digitado por LOCAL, por dia.
 // Guardado SÓ no navegador (localStorage 'eficienciaCostura'):
-// { 'AAAA-MM-DD': { locais: { LOCAL: {pecas, minutos, ops, semTempo} }, pessoas: n|null } }
+// { 'AAAA-MM-DD': { locais: { LOCAL: {pecas, minutos, ops, semTempo} }, pessoasLocal: { LOCAL: n } } }
 // Reimportar um dia SUBSTITUI os números daquele dia (o relatório é do dia
 // inteiro) e mantém as pessoas já digitadas.
 // =========================================================================
@@ -3332,7 +3332,7 @@ function processarEficienciaCostura() {
             const todos = obterEficienciaCostura();
             Object.entries(novosDias).forEach(([dia, v]) => {
                 Object.values(v.locais).forEach(l => { l.minutos = Math.round(l.minutos * 100) / 100; });
-                todos[dia] = { locais: v.locais, opsTotal: Object.keys(v.ops).length, pessoas: todos[dia] ? todos[dia].pessoas ?? null : null };
+                todos[dia] = { locais: v.locais, opsTotal: Object.keys(v.ops).length, pessoasLocal: todos[dia] ? (todos[dia].pessoasLocal || {}) : {} };
             });
             salvarEficienciaCostura(todos);
             input.value = '';
@@ -3358,15 +3358,20 @@ function popularSeletorMesEfCostura(preferido) {
     else if (meses.length) sel.value = meses[meses.length - 1];
 }
 
-function definirPessoasEfCostura(dia, valor) {
+function definirPessoasEfCostura(dia, local, valor) {
     if (!exigirAdminOuUsuario('informar as pessoas do dia')) { renderizarEficienciaCostura(); return; }
     const todos = obterEficienciaCostura(); if (!todos[dia]) return;
     const n = parseFloat(String(valor).replace(',', '.'));
-    todos[dia].pessoas = (isNaN(n) || n <= 0) ? null : n;
+    todos[dia].pessoasLocal = todos[dia].pessoasLocal || {};
+    if (isNaN(n) || n <= 0) delete todos[dia].pessoasLocal[local]; else todos[dia].pessoasLocal[local] = n;
     salvarEficienciaCostura(todos);
     renderizarEficienciaCostura();
 }
 
+// Um bloco por dia: linha de TOTAL do dia + uma linha por LOCAL de costura,
+// cada local com as SUAS pessoas (cada local tem equipe própria, então a
+// eficiência é por local). O total do dia usa só os locais que têm pessoas
+// informadas (minutos desses locais ÷ pessoas × jornada deles).
 function renderizarEficienciaCostura() {
     const corpo = $('efCosturaCorpo'); if (!corpo) return;
     const todos = obterEficienciaCostura();
@@ -3375,43 +3380,67 @@ function renderizarEficienciaCostura() {
     const dias = Object.keys(todos).filter(d => d.startsWith(mes)).sort();
     if (!dias.length) {
         corpo.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhum dado ainda — importe o relatório de movimentação.</td></tr>';
-        $('efCosturaResumo').innerHTML = '';
+        $('efCosturaResumo').innerHTML = ''; if ($('efCosturaPorLocal')) $('efCosturaPorLocal').innerHTML = '';
         return;
     }
-    let totPecas = 0, totMin = 0, minProdComPessoas = 0, minDisp = 0;
+    const nomeCurto = n => n.replace(/^(PNP|SLV) /, '');
+    const fmt = (v, c = 0) => v.toLocaleString('pt-BR', { maximumFractionDigits: c });
+    const efTxt = e => e === null ? '<span style="color:var(--texto-secundario); font-weight:400;">informe as pessoas</span>' : fmt(e, 1) + '%';
+    let totPecas = 0, totMin = 0, minComPessoas = 0, minDisp = 0;
     const porLocalMes = {};
     corpo.innerHTML = dias.map(dia => {
         const d = todos[dia];
-        const locais = Object.entries(d.locais);
-        const pecas = locais.reduce((a, [, l]) => a + l.pecas, 0);
-        const min = locais.reduce((a, [, l]) => a + l.minutos, 0);
-        const semTempo = locais.reduce((a, [, l]) => a + (l.semTempo || 0), 0);
-        locais.forEach(([nome, l]) => { const p = porLocalMes[nome] = porLocalMes[nome] || { pecas: 0, minutos: 0 }; p.pecas += l.pecas; p.minutos += l.minutos; });
-        totPecas += pecas; totMin += min;
-        const disp = d.pessoas ? d.pessoas * minPessoa : null;
-        const efic = disp ? (min / disp) * 100 : null;
-        if (disp) { minProdComPessoas += min; minDisp += disp; }
-        const [a, m, dd] = dia.split('-');
-        const detalhe = locais.map(([n, l]) => `${n.replace(/^(PNP|SLV) /, '')}: ${l.pecas.toLocaleString('pt-BR')} pç`).join(' · ');
-        return `<tr>
-            <td><strong>${dd}/${m}/${a}</strong></td>
-            <td style="text-align:right;">${pecas.toLocaleString('pt-BR')}${semTempo ? ` <span title="${semTempo} peças sem tempo no relatório (não entram nos minutos)" style="color:var(--cor-alerta);">⚠</span>` : ''}</td>
+        const pl = d.pessoasLocal || {};
+        const locais = Object.entries(d.locais).sort((a, b) => a[0].localeCompare(b[0]));
+        const [ano, m, dd] = dia.split('-');
+        let dPecas = 0, dMin = 0, dMinOk = 0, dDisp = 0, dSemTempo = 0, dPessoas = 0;
+        const linhasLocais = locais.map(([nome, l]) => {
+            const pessoas = pl[nome] || null;
+            const disp = pessoas ? pessoas * minPessoa : null;
+            const efic = disp ? (l.minutos / disp) * 100 : null;
+            dPecas += l.pecas; dMin += l.minutos; dSemTempo += (l.semTempo || 0);
+            if (disp) { dMinOk += l.minutos; dDisp += disp; dPessoas += pessoas; }
+            const p = porLocalMes[nome] = porLocalMes[nome] || { pecas: 0, minutos: 0, minOk: 0, disp: 0, dias: 0 };
+            p.pecas += l.pecas; p.minutos += l.minutos; if (disp) { p.minOk += l.minutos; p.disp += disp; p.dias++; }
+            return `<tr>
+                <td style="padding-left:24px; color:var(--texto-secundario);">${dd}/${m}</td>
+                <td><strong>${nomeCurto(nome)}</strong></td>
+                <td style="text-align:right;">${fmt(l.pecas)}${l.semTempo ? ` <span title="${l.semTempo} peças sem tempo no relatório (não entram nos minutos)" style="color:var(--cor-alerta);">⚠</span>` : ''}</td>
+                <td style="text-align:right;">${l.ops}</td>
+                <td style="text-align:right;">${fmt(l.minutos)}</td>
+                <td style="text-align:center;"><input type="number" min="0" step="1" value="${pessoas ?? ''}" placeholder="—" style="width:64px; text-align:center;" onchange="definirPessoasEfCostura('${dia}', '${nome.replace(/'/g, "\\'")}', this.value)"></td>
+                <td style="text-align:right;">${disp ? fmt(disp) : '—'}</td>
+                <td style="text-align:right; font-weight:700;">${efTxt(efic)}</td>
+            </tr>`;
+        }).join('');
+        totPecas += dPecas; totMin += dMin; minComPessoas += dMinOk; minDisp += dDisp;
+        const dEfic = dDisp ? (dMinOk / dDisp) * 100 : null;
+        const cab = `<tr style="background:var(--bg-painel); border-top:2px solid var(--borda-cor);">
+            <td><strong>${dd}/${m}/${ano}</strong></td>
+            <td><strong>TOTAL DO DIA</strong></td>
+            <td style="text-align:right; font-weight:700;">${fmt(dPecas)}${dSemTempo ? ' <span style="color:var(--cor-alerta);" title="Há peças sem tempo no relatório">⚠</span>' : ''}</td>
             <td style="text-align:right;">${d.opsTotal ?? '—'}</td>
-            <td style="text-align:right;">${Math.round(min).toLocaleString('pt-BR')}</td>
-            <td style="text-align:center;"><input type="number" min="0" step="1" value="${d.pessoas ?? ''}" placeholder="—" style="width:70px; text-align:center;" onchange="definirPessoasEfCostura('${dia}', this.value)"></td>
-            <td style="text-align:right;">${disp ? Math.round(disp).toLocaleString('pt-BR') : '—'}</td>
-            <td style="text-align:right; font-weight:700;">${efic !== null ? efic.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '<span style="color:var(--texto-secundario); font-weight:400;">informe as pessoas</span>'}</td>
-            <td style="font-size:11px; color:var(--texto-secundario);">${detalhe}</td>
+            <td style="text-align:right; font-weight:700;">${fmt(dMin)}</td>
+            <td style="text-align:center;">${dPessoas || '—'}</td>
+            <td style="text-align:right;">${dDisp ? fmt(dDisp) : '—'}</td>
+            <td style="text-align:right; font-weight:700;">${efTxt(dEfic)}${dDisp && dMinOk < dMin ? ' <span title="Só os locais com pessoas informadas entram nessa %" style="color:var(--cor-alerta); font-weight:400;">*</span>' : ''}</td>
         </tr>`;
+        return cab + linhasLocais;
     }).join('');
-    const eficMes = minDisp ? (minProdComPessoas / minDisp) * 100 : null;
-    const diasComPessoas = dias.filter(d => todos[d].pessoas).length;
+
+    const eficMes = minDisp ? (minComPessoas / minDisp) * 100 : null;
     const card = (titulo, valor, sub) => `<div class="kpi-card" style="flex:1; min-width:180px; border-top:4px solid #35505C; padding:14px; background:var(--bg-card); border-radius:8px;"><div style="font-size:11px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">${titulo}</div><div style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">${valor}</div><div style="font-size:11px; color:var(--texto-secundario);">${sub}</div></div>`;
-    const locaisMesTxt = Object.entries(porLocalMes).sort((a, b) => b[1].minutos - a[1].minutos).map(([n, p]) => `${n.replace(/^(PNP|SLV) /, '')}: ${Math.round(p.minutos).toLocaleString('pt-BR')} min`).join(' · ');
     $('efCosturaResumo').innerHTML =
-        card('Eficiência do mês', eficMes !== null ? eficMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '—', diasComPessoas ? `${diasComPessoas} de ${dias.length} dias com pessoas informadas` : 'informe as pessoas por dia') +
-        card('Peças no mês', totPecas.toLocaleString('pt-BR'), `${dias.length} dia(s) importados`) +
-        card('Minutos produzidos', Math.round(totMin).toLocaleString('pt-BR'), locaisMesTxt || '');
+        card('Eficiência do mês (todos os locais)', eficMes !== null ? fmt(eficMes, 1) + '%' : '—', minDisp ? 'só locais/dias com pessoas informadas' : 'informe as pessoas por local') +
+        card('Peças no mês', fmt(totPecas), `${dias.length} dia(s) importados`) +
+        card('Minutos produzidos', fmt(totMin), '');
+    if ($('efCosturaPorLocal')) {
+        $('efCosturaPorLocal').innerHTML = `<div style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase; margin:18px 0 8px;">Resumo do mês por local</div>
+        <table class="tabela-dados" style="width:100%;"><thead><tr><th>LOCAL</th><th>PEÇAS</th><th>MIN. PRODUZIDOS</th><th>DIAS COM PESSOAS</th><th>EFICIÊNCIA</th></tr></thead><tbody>` +
+        Object.entries(porLocalMes).sort((a, b) => b[1].minutos - a[1].minutos).map(([n, p]) =>
+            `<tr><td><strong>${nomeCurto(n)}</strong></td><td style="text-align:right;">${fmt(p.pecas)}</td><td style="text-align:right;">${fmt(p.minutos)}</td><td style="text-align:center;">${p.dias} de ${dias.length}</td><td style="text-align:right; font-weight:700;">${efTxt(p.disp ? (p.minOk / p.disp) * 100 : null)}</td></tr>`).join('') +
+        '</tbody></table>';
+    }
 }
 
 function processarMovimentacaoSetor() {
