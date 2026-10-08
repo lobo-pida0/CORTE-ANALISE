@@ -3271,7 +3271,7 @@ function normalizarCabecalhoEf(c) {
 }
 function ehLocalCosturaEficiencia(local) {
     const l = normalizarCabecalhoEf(local);
-    return /^(PNP|SLV) COST (SUP|INF|CEL)/.test(l) && !l.includes('AGUARD') && !l.includes('PALETO') && !l.includes('CEL SOC'); // SLV COST CEL PALETO e SLV COST INF CEL SOC ficam de fora (pedido do usuário)
+    return /^(PNP|SLV) COST (SUP|INF|CEL)/.test(l) && !l.includes('AGUARD') && !l.includes('PALETO') && !l.includes('CEL SOC') && !/COST SUP CEL 1\b/.test(l); // SLV COST CEL PALETO e SLV COST INF CEL SOC e COST SUP CEL 1 ficam de fora (pedido do usuário)
 }
 function obterEficienciaCostura() {
     try { return JSON.parse(localStorage.getItem('eficienciaCostura') || '{}'); } catch (e) { return {}; }
