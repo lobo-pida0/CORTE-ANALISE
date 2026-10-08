@@ -3450,6 +3450,52 @@ function definirPessoasEfCostura(dia, local, valor) {
 // cada local com as SUAS pessoas (cada local tem equipe própria, então a
 // eficiência é por local). O total do dia usa só os locais que têm pessoas
 // informadas (minutos desses locais ÷ pessoas × jornada deles).
+
+const NOMES_LOCAIS_EF_COSTURA = { 'PNP COST SUP CAMISA': 'Camisa', 'PNP COST SUP MALHA': 'Malha', 'PNP COST INF CALCA': 'Calça', 'PNP COST CEL HIBRIDA': 'Híbrida' };
+function nomeLocalEfCostura(n) { return NOMES_LOCAIS_EF_COSTURA[n] || String(n).replace(/^(PNP|SLV) /, ''); }
+let graficoEfCosturaInstance = null;
+const CORES_LOCAIS_EF_COSTURA = { 'PNP COST SUP CAMISA': '#4472C4', 'PNP COST SUP MALHA': '#ED7D31', 'PNP COST INF CALCA': '#4C8C4A', 'PNP COST CEL HIBRIDA': '#8E5EA2' };
+// Linhas: uma por local + TOTAL (mais grossa) + linha tracejada em 100%.
+// Dia sem pessoas informadas naquele local não tem ponto (a linha liga os dias que têm).
+function desenharGraficoEficienciaCostura(dias, serieEf) {
+    const canvas = $('graficoEfCostura'); if (!canvas) return;
+    if (graficoEfCosturaInstance) { graficoEfCosturaInstance.destroy(); graficoEfCosturaInstance = null; }
+    const aviso = $('graficoEfCosturaAviso');
+    const nomes = [...new Set(dias.flatMap(d => Object.keys(serieEf[d].locais)))].sort();
+    const temDado = dias.some(d => serieEf[d].total !== null || nomes.some(n => serieEf[d].locais[n] && serieEf[d].locais[n].efic !== null));
+    if (aviso) aviso.style.display = temDado ? 'none' : '';
+    canvas.parentElement.style.display = temDado ? '' : 'none';
+    if (!temDado) return;
+    const arred = v => v === null || v === undefined ? null : Math.round(v * 10) / 10;
+    const datasets = nomes.map(n => ({
+        label: nomeLocalEfCostura(n),
+        data: dias.map(d => serieEf[d].locais[n] ? arred(serieEf[d].locais[n].efic) : null),
+        borderColor: CORES_LOCAIS_EF_COSTURA[n] || '#999', backgroundColor: CORES_LOCAIS_EF_COSTURA[n] || '#999',
+        tension: 0.25, fill: false, spanGaps: true, borderWidth: 2, pointRadius: 3,
+    }));
+    datasets.push({ label: 'TOTAL', data: dias.map(d => arred(serieEf[d].total)), borderColor: '#2B2620', backgroundColor: '#2B2620', tension: 0.25, fill: false, spanGaps: true, borderWidth: 4, pointRadius: 4 });
+    datasets.push({ label: '100%', data: dias.map(() => 100), borderColor: '#999', borderDash: [6, 6], borderWidth: 1, pointRadius: 0, fill: false });
+    graficoEfCosturaInstance = new Chart(canvas, {
+        type: 'line',
+        data: { labels: dias.map(formatarChaveDataBR), datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: true },
+                datalabels: { display: false },
+                tooltip: { callbacks: { label: c => {
+                    if (c.dataset.label === '100%') return null;
+                    const dia = dias[c.dataIndex];
+                    const info = c.dataset.label === 'TOTAL' ? serieEf[dia] : Object.entries(serieEf[dia].locais).find(([n]) => nomeLocalEfCostura(n) === c.dataset.label)?.[1];
+                    const det = info && info.disp ? ` (${Math.round(info.min).toLocaleString('pt-BR')} ÷ ${Math.round(info.disp).toLocaleString('pt-BR')} min)` : '';
+                    return `${c.dataset.label}: ${(c.parsed.y ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%${det}`;
+                } } },
+            },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Eficiência (%)' } } },
+        },
+    });
+}
+
 function renderizarEficienciaCostura() {
     const corpo = $('efCosturaCorpo'); if (!corpo) return;
     const todos = obterEficienciaCostura();
@@ -3461,14 +3507,16 @@ function renderizarEficienciaCostura() {
         $('efCosturaResumo').innerHTML = ''; if ($('efCosturaPorLocal')) $('efCosturaPorLocal').innerHTML = '';
         return;
     }
-    const nomeCurto = n => n.replace(/^(PNP|SLV) /, '');
+    const nomeCurto = nomeLocalEfCostura;
     const fmt = (v, c = 0) => v.toLocaleString('pt-BR', { maximumFractionDigits: c });
     const efTxt = e => e === null ? '<span style="color:var(--texto-secundario); font-weight:400;">informe as pessoas</span>' : fmt(e, 1) + '%';
     let totPecas = 0, totMin = 0, minComPessoas = 0, minDisp = 0;
     const porLocalMes = {};
+    const serieEf = {};   // dia → { total, locais: { nome: {efic, min, disp} } } — alimenta o gráfico
     corpo.innerHTML = dias.map(dia => {
         const d = todos[dia];
         const pl = d.pessoasLocal || {};
+        serieEf[dia] = { total: null, locais: {} };
         // filtra de novo ao mostrar: dias importados antes de um local sair da lista também deixam de contá-lo
         const locais = Object.entries(d.locais).filter(([n]) => ehLocalCosturaEficiencia(n)).sort((a, b) => a[0].localeCompare(b[0]));
         if (!locais.length) return '';
@@ -3478,6 +3526,7 @@ function renderizarEficienciaCostura() {
             const pessoas = pl[nome] || null;
             const disp = pessoas ? pessoas * minPessoa : null;
             const efic = disp ? (l.minutos / disp) * 100 : null;
+            serieEf[dia].locais[nome] = { efic, min: l.minutos, disp };
             dPecas += l.pecas; dMin += l.minutos; dSemTempo += (l.semTempo || 0);
             if (disp) { dMinOk += l.minutos; dDisp += disp; dPessoas += pessoas; }
             const p = porLocalMes[nome] = porLocalMes[nome] || { pecas: 0, minutos: 0, minOk: 0, disp: 0, dias: 0 };
@@ -3495,6 +3544,7 @@ function renderizarEficienciaCostura() {
         }).join('');
         totPecas += dPecas; totMin += dMin; minComPessoas += dMinOk; minDisp += dDisp;
         const dEfic = dDisp ? (dMinOk / dDisp) * 100 : null;
+        serieEf[dia].total = dEfic; serieEf[dia].min = dMinOk; serieEf[dia].disp = dDisp;
         const cab = `<tr style="background:var(--bg-painel); border-top:2px solid var(--borda-cor);">
             <td><strong>${dd}/${m}/${ano}</strong></td>
             <td><strong>TOTAL DO DIA</strong></td>
@@ -3508,6 +3558,7 @@ function renderizarEficienciaCostura() {
         return cab + linhasLocais;
     }).join('');
 
+    desenharGraficoEficienciaCostura(dias, serieEf);
     const eficMes = minDisp ? (minComPessoas / minDisp) * 100 : null;
     const card = (titulo, valor, sub) => `<div class="kpi-card" style="flex:1; min-width:180px; border-top:4px solid #35505C; padding:14px; background:var(--bg-card); border-radius:8px;"><div style="font-size:11px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">${titulo}</div><div style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">${valor}</div><div style="font-size:11px; color:var(--texto-secundario);">${sub}</div></div>`;
     $('efCosturaResumo').innerHTML =
