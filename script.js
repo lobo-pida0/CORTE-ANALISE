@@ -796,10 +796,10 @@ async function publicarTudoNoSupabase() {
             try {
                 r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura);
             } catch (eCor) {
-                // Coluna "cor" ainda não criada no Supabase (SQL 26) — publica sem ela pra não travar o resto.
-                if (!/\bcor\b/i.test(String(eCor && eCor.message || eCor))) throw eCor;
-                r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura.map(({ cor, ...resto }) => resto));
-                registrarLogDebug('error', ['[NUVEM] Falta rodar o SQL 26 (coluna "cor"): Sequência publicada SEM a cor.']);
+                // Coluna "cor" ainda não criada no Supabase (SQL 26) — publica sem ela e sem o MIN/PEÇA pra não travar o resto.
+                if (!/\b(cor|tempo_peca_costura)\b/i.test(String(eCor && eCor.message || eCor))) throw eCor;
+                r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura.map(({ cor, tempo_peca_costura, ...resto }) => resto));
+                registrarLogDebug('error', ['[NUVEM] Falta rodar o SQL 26 (colunas "cor" e "tempo_peca_costura"): Sequência publicada SEM elas.']);
             }
             resumo.push(`${r.publicados} linhas do Sequenciamento da Produção`);
         }
@@ -2505,7 +2505,7 @@ function obterPorOPCosturaDetalhado() {
 function porOPCosturaParaLinhaSupabase(item) {
     return {
         id: chaveOPCostura(item.op, item.ciclo), op: item.op, ciclo: item.ciclo || '',
-        local: item.local || '', ref: item.ref || '', desc_ref: item.descRef || '', cor: item.cor || '',
+        local: item.local || '', ref: item.ref || '', desc_ref: item.descRef || '', cor: item.cor || '', tempo_peca_costura: item.tempoPecaCostura ?? null,
         tipo_produto: item.tipoProduto || '', prioridade: item.prioridade ?? null, qtd: item.qtd || 0,
         minutos_costura: item.minutosCostura ?? null, minutos_acabamento: item.minutosAcabamento ?? null,
         minutos_enfesto: item.minutosEnfesto ?? null, data_finalizacao: item.dataFinalizacao || null,
@@ -2514,7 +2514,7 @@ function porOPCosturaParaLinhaSupabase(item) {
 }
 function linhaSupabaseParaPorOPCostura(l) {
     return {
-        op: l.op, ciclo: l.ciclo || '', local: l.local || '', ref: l.ref || '', descRef: l.desc_ref || '', cor: l.cor || '',
+        op: l.op, ciclo: l.ciclo || '', local: l.local || '', ref: l.ref || '', descRef: l.desc_ref || '', cor: l.cor || '', tempoPecaCostura: l.tempo_peca_costura ?? null,
         tipoProduto: l.tipo_produto || '', prioridade: l.prioridade, qtd: l.qtd || 0,
         minutosCostura: l.minutos_costura, minutosAcabamento: l.minutos_acabamento,
         minutosEnfesto: l.minutos_enfesto, dataFinalizacao: l.data_finalizacao,
@@ -2730,6 +2730,7 @@ function processarPorOPCostura() {
             const idxDataFinalizacao = cab.findIndex(c => c.includes('DATA') && c.includes('FINALIZ'));
             const idxDataInclusao = cab.findIndex(c => c.includes('DATA') && c.includes('INCLUS'));
             const idxCiclo = cab.findIndex(c => c === 'CICLO');
+            const idxTempoPecaCostura = cab.findIndex(c => c.includes('TEMPO') && /PE[CÇ]A/.test(c) && c.includes('COSTURA'));
             const idxCor = cab.findIndex(c => c === 'COR' || c === 'COR PRODUTO');
 
             const faltando = [];
@@ -2767,6 +2768,7 @@ function processarPorOPCostura() {
                     local: local,
                     ref: idxRef !== -1 && row[idxRef] ? String(row[idxRef]).trim().toUpperCase() : '',
                     descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '',
+                    tempoPecaCostura: idxTempoPecaCostura !== -1 && row[idxTempoPecaCostura] !== null && row[idxTempoPecaCostura] !== undefined && row[idxTempoPecaCostura] !== '' ? (parseFloat(row[idxTempoPecaCostura]) || null) : null,
                     cor: idxCor !== -1 && row[idxCor] ? String(row[idxCor]).trim().toUpperCase() : '',
                     tipoProduto: idxTipo !== -1 && row[idxTipo] ? String(row[idxTipo]).trim().toUpperCase() : '',
                     prioridade: idxPrioridade !== -1 && row[idxPrioridade] !== null && row[idxPrioridade] !== undefined ? parseInt(row[idxPrioridade]) : null,
@@ -6168,7 +6170,7 @@ function renderizarSequenciamentoCostura() {
     renderizarResumoAtrasosPorGrupo();
 
     if (!filaComResultado.length) {
-        $('seqCostListaOPs').innerHTML = `<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="13" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
 
@@ -6218,7 +6220,7 @@ function renderizarSequenciamentoCostura() {
         // coluna Situação linha por linha.
         const linhaAnterior = filaComResultado[indice - 1];
         const separador = (indice > 0 && linhaAnterior.situacaoCostura === 'Em andamento' && op.situacaoCostura === 'Aguardando')
-            ? `<tr><td colspan="12" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
+            ? `<tr><td colspan="13" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
             : '';
         return separador + `<tr style="${comecaHoje ? '' : 'opacity:0.6;'}">
             <td><input type="checkbox" class="check-imprimir-seq" data-id="${chaveLinha}"></td>
@@ -6230,6 +6232,7 @@ function renderizarSequenciamentoCostura() {
             <td>${op.descRef || ''}</td>
             <td style="white-space:nowrap;">${op.cor || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
+            <td style="text-align:right; white-space:nowrap;" title="Tempo de costura por peça (coluna 'Tempo Peca Costura' do POR_OP)">${op.tempoPecaCostura ? op.tempoPecaCostura.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td style="text-align:right;">${tempoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">
