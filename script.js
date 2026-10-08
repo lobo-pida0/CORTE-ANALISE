@@ -3251,6 +3251,169 @@ function limparMovimentacoesKPI() {
     showToast(`<i class="fas fa-check"></i> ${rotulo} limpo (${aApagar.toLocaleString('pt-BR')} movimentações). Os outros meses foram mantidos.`);
 }
 
+
+// =========================================================================
+// 🧵 EFICIÊNCIA DA COSTURA (KPI) — a partir do relatório de movimentação
+// (CSV com "Ds Local", "Qt. Movimento", "Cod. Tempolocal"). Só conta as
+// linhas dos locais de COSTURA em produção (PNP/SLV COST SUP|INF|CEL) —
+// de fora ficam as filas "AGUARD DEFINICAO", a "COSTURA PROGAMADA"
+// (preparação), o acabamento e os terceirizados (pedido do usuário: só a
+// costura). Minutos produzidos = peças × tempo por peça do local (o mesmo
+// valor do "Tempo Peca Costura" do POR_OP). Eficiência = minutos
+// produzidos ÷ (pessoas × minutos por pessoa). Pessoas é digitado por dia.
+// Guardado SÓ no navegador (localStorage 'eficienciaCostura'):
+// { 'AAAA-MM-DD': { locais: { LOCAL: {pecas, minutos, ops, semTempo} }, pessoas: n|null } }
+// Reimportar um dia SUBSTITUI os números daquele dia (o relatório é do dia
+// inteiro) e mantém as pessoas já digitadas.
+// =========================================================================
+function normalizarCabecalhoEf(c) {
+    return String(c || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\./g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+}
+function ehLocalCosturaEficiencia(local) {
+    const l = normalizarCabecalhoEf(local);
+    return /^(PNP|SLV) COST (SUP|INF|CEL)/.test(l) && !l.includes('AGUARD');
+}
+function obterEficienciaCostura() {
+    try { return JSON.parse(localStorage.getItem('eficienciaCostura') || '{}'); } catch (e) { return {}; }
+}
+function salvarEficienciaCostura(obj) {
+    try { localStorage.setItem('eficienciaCostura', JSON.stringify(obj)); } catch (e) { showToast('<i class="fas fa-triangle-exclamation"></i> Não consegui salvar a eficiência (armazenamento cheio).', true, 6000); }
+}
+function numeroBR(txt) {
+    if (txt === undefined || txt === null || String(txt).trim() === '') return null;
+    const n = parseFloat(String(txt).trim().replace(/\./g, '').replace(',', '.'));
+    return isNaN(n) ? null : n;
+}
+
+function processarEficienciaCostura() {
+    if (!exigirAdminOuUsuario('importar a movimentação da costura')) return;
+    const input = $('inputEfCostura'); if (!input || !input.files[0]) return;
+    const r = new FileReader();
+    r.onload = function (e) {
+        try {
+            const buf = new Uint8Array(e.target.result);
+            let texto;
+            try { texto = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (err) { texto = new TextDecoder('windows-1252').decode(buf); }
+            const linhas = texto.replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+            if (linhas.length < 2) throw new Error('Arquivo vazio ou só com cabeçalho.');
+            const cab = linhas[0].split(';').map(normalizarCabecalhoEf);
+            const idxLocal = cab.findIndex(c => c === 'DS LOCAL');
+            const idxOP = cab.findIndex(c => c === 'OP' || c === 'NR OP');
+            const idxData = cab.findIndex(c => c === 'DT MOVIMENTO');
+            const idxQtd = cab.findIndex(c => c === 'QT MOVIMENTO');
+            const idxTempo = cab.findIndex(c => c === 'COD TEMPOLOCAL');
+            const faltando = [];
+            if (idxLocal === -1) faltando.push('Ds Local');
+            if (idxOP === -1) faltando.push('Op');
+            if (idxData === -1) faltando.push('Dt. Movimento');
+            if (idxQtd === -1) faltando.push('Qt. Movimento');
+            if (idxTempo === -1) faltando.push('Cod. Tempolocal');
+            if (faltando.length) throw new Error('Não encontrei as colunas: ' + faltando.join(', ') + '. Esse é o relatório de movimentação com "Cod. Tempolocal"?');
+
+            const novosDias = {};
+            let linhasCostura = 0, linhasSemTempo = 0;
+            for (let i = 1; i < linhas.length; i++) {
+                const c = linhas[i].split(';');
+                const op = (c[idxOP] || '').trim(), dataStr = (c[idxData] || '').trim(), local = (c[idxLocal] || '').trim();
+                if (!op || !dataStr || !ehLocalCosturaEficiencia(local)) continue;
+                const d = parsearDataBR(dataStr); if (!d) continue;
+                const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                const qtd = numeroBR(c[idxQtd]) || 0;
+                const tempo = numeroBR(c[idxTempo]);
+                linhasCostura++;
+                const nomeLocal = normalizarCabecalhoEf(local);
+                const reg = ((novosDias[dia] = novosDias[dia] || { locais: {}, ops: {} }).locais[nomeLocal] = novosDias[dia].locais[nomeLocal] || { pecas: 0, minutos: 0, ops: 0, semTempo: 0 });
+                reg.pecas += qtd; reg.ops++;
+                novosDias[dia].ops[op] = true;
+                if (tempo === null) { reg.semTempo += qtd; linhasSemTempo++; } else reg.minutos += qtd * tempo;
+            }
+            if (!linhasCostura) throw new Error('Não achei nenhuma linha de costura (locais PNP/SLV COST SUP, INF ou CEL) nesse arquivo.');
+
+            const todos = obterEficienciaCostura();
+            Object.entries(novosDias).forEach(([dia, v]) => {
+                Object.values(v.locais).forEach(l => { l.minutos = Math.round(l.minutos * 100) / 100; });
+                todos[dia] = { locais: v.locais, opsTotal: Object.keys(v.ops).length, pessoas: todos[dia] ? todos[dia].pessoas ?? null : null };
+            });
+            salvarEficienciaCostura(todos);
+            input.value = '';
+            const dias = Object.keys(novosDias).sort();
+            popularSeletorMesEfCostura(dias[dias.length - 1].slice(0, 7));
+            renderizarEficienciaCostura();
+            showToast(`<i class="fas fa-check-double"></i> ${linhasCostura} linhas de costura em ${dias.length} dia(s) importadas.${linhasSemTempo ? ` ⚠ ${linhasSemTempo} sem tempo (contam peças, não minutos).` : ''}`, false, linhasSemTempo ? 7000 : 3000);
+        } catch (err) {
+            input.value = '';
+            alert('❌ Não foi possível importar a movimentação da costura.\n\n' + err.message);
+        }
+    };
+    r.readAsArrayBuffer(input.files[0]);
+}
+
+function popularSeletorMesEfCostura(preferido) {
+    const sel = $('seletorMesEfCostura'); if (!sel) return;
+    const meses = [...new Set(Object.keys(obterEficienciaCostura()).map(d => d.slice(0, 7)))].sort();
+    const anterior = sel.value;
+    sel.innerHTML = meses.map(m => `<option value="${m}">${formatarMesLegivelKPI ? formatarMesLegivelKPI(m) : m}</option>`).join('');
+    if (preferido && meses.includes(preferido)) sel.value = preferido;
+    else if (meses.includes(anterior)) sel.value = anterior;
+    else if (meses.length) sel.value = meses[meses.length - 1];
+}
+
+function definirPessoasEfCostura(dia, valor) {
+    if (!exigirAdminOuUsuario('informar as pessoas do dia')) { renderizarEficienciaCostura(); return; }
+    const todos = obterEficienciaCostura(); if (!todos[dia]) return;
+    const n = parseFloat(String(valor).replace(',', '.'));
+    todos[dia].pessoas = (isNaN(n) || n <= 0) ? null : n;
+    salvarEficienciaCostura(todos);
+    renderizarEficienciaCostura();
+}
+
+function renderizarEficienciaCostura() {
+    const corpo = $('efCosturaCorpo'); if (!corpo) return;
+    const todos = obterEficienciaCostura();
+    const mes = $('seletorMesEfCostura') ? $('seletorMesEfCostura').value : '';
+    const minPessoa = parseFloat($('efCosturaMinPessoa') ? $('efCosturaMinPessoa').value : 528) || 528;
+    const dias = Object.keys(todos).filter(d => d.startsWith(mes)).sort();
+    if (!dias.length) {
+        corpo.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhum dado ainda — importe o relatório de movimentação.</td></tr>';
+        $('efCosturaResumo').innerHTML = '';
+        return;
+    }
+    let totPecas = 0, totMin = 0, minProdComPessoas = 0, minDisp = 0;
+    const porLocalMes = {};
+    corpo.innerHTML = dias.map(dia => {
+        const d = todos[dia];
+        const locais = Object.entries(d.locais);
+        const pecas = locais.reduce((a, [, l]) => a + l.pecas, 0);
+        const min = locais.reduce((a, [, l]) => a + l.minutos, 0);
+        const semTempo = locais.reduce((a, [, l]) => a + (l.semTempo || 0), 0);
+        locais.forEach(([nome, l]) => { const p = porLocalMes[nome] = porLocalMes[nome] || { pecas: 0, minutos: 0 }; p.pecas += l.pecas; p.minutos += l.minutos; });
+        totPecas += pecas; totMin += min;
+        const disp = d.pessoas ? d.pessoas * minPessoa : null;
+        const efic = disp ? (min / disp) * 100 : null;
+        if (disp) { minProdComPessoas += min; minDisp += disp; }
+        const [a, m, dd] = dia.split('-');
+        const detalhe = locais.map(([n, l]) => `${n.replace(/^(PNP|SLV) /, '')}: ${l.pecas.toLocaleString('pt-BR')} pç`).join(' · ');
+        return `<tr>
+            <td><strong>${dd}/${m}/${a}</strong></td>
+            <td style="text-align:right;">${pecas.toLocaleString('pt-BR')}${semTempo ? ` <span title="${semTempo} peças sem tempo no relatório (não entram nos minutos)" style="color:var(--cor-alerta);">⚠</span>` : ''}</td>
+            <td style="text-align:right;">${d.opsTotal ?? '—'}</td>
+            <td style="text-align:right;">${Math.round(min).toLocaleString('pt-BR')}</td>
+            <td style="text-align:center;"><input type="number" min="0" step="1" value="${d.pessoas ?? ''}" placeholder="—" style="width:70px; text-align:center;" onchange="definirPessoasEfCostura('${dia}', this.value)"></td>
+            <td style="text-align:right;">${disp ? Math.round(disp).toLocaleString('pt-BR') : '—'}</td>
+            <td style="text-align:right; font-weight:700;">${efic !== null ? efic.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '<span style="color:var(--texto-secundario); font-weight:400;">informe as pessoas</span>'}</td>
+            <td style="font-size:11px; color:var(--texto-secundario);">${detalhe}</td>
+        </tr>`;
+    }).join('');
+    const eficMes = minDisp ? (minProdComPessoas / minDisp) * 100 : null;
+    const diasComPessoas = dias.filter(d => todos[d].pessoas).length;
+    const card = (titulo, valor, sub) => `<div class="kpi-card" style="flex:1; min-width:180px; border-top:4px solid #35505C; padding:14px; background:var(--bg-card); border-radius:8px;"><div style="font-size:11px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">${titulo}</div><div style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">${valor}</div><div style="font-size:11px; color:var(--texto-secundario);">${sub}</div></div>`;
+    const locaisMesTxt = Object.entries(porLocalMes).sort((a, b) => b[1].minutos - a[1].minutos).map(([n, p]) => `${n.replace(/^(PNP|SLV) /, '')}: ${Math.round(p.minutos).toLocaleString('pt-BR')} min`).join(' · ');
+    $('efCosturaResumo').innerHTML =
+        card('Eficiência do mês', eficMes !== null ? eficMes.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '—', diasComPessoas ? `${diasComPessoas} de ${dias.length} dias com pessoas informadas` : 'informe as pessoas por dia') +
+        card('Peças no mês', totPecas.toLocaleString('pt-BR'), `${dias.length} dia(s) importados`) +
+        card('Minutos produzidos', Math.round(totMin).toLocaleString('pt-BR'), locaisMesTxt || '');
+}
+
 function processarMovimentacaoSetor() {
     if (!exigirAdmin('importar movimentação de setor')) return;
     const input = $('inputMovimentacaoKPI'); if (!input.files[0]) return;
@@ -8588,6 +8751,10 @@ function inicializarEventosUI() {
         wireEvento('seletorMesKPI', 'change', () => { renderizarGraficoKPI(); });
         wireEvento('seletorParAcertividadeKPI', 'change', () => { renderizarGraficoAcertividadeKPI(); });
         wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor(); });
+        wireEvento('inputEfCostura', 'change', () => { processarEficienciaCostura(); });
+        wireEvento('seletorMesEfCostura', 'change', () => { renderizarEficienciaCostura(); });
+        wireEvento('efCosturaMinPessoa', 'input', () => { renderizarEficienciaCostura(); });
+        popularSeletorMesEfCostura(); renderizarEficienciaCostura();
         wireEvento('btnLimparMovimentacoesKPI', 'click', () => { limparMovimentacoesKPI(); });
         wireEvento('btnBaixarMesKPI', 'click', () => { baixarMesKPIExcel(); });
         wireEvento('btnSubabaProgramarLote', 'click', () => { abrirSubabaProgramacao('lote'); });

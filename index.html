@@ -870,6 +870,31 @@
                 </div>
             </div>
         </div>
+
+        <div class="secao somente-admin tambem-usuario" id="secaoEficienciaCostura" style="margin-top:var(--espaco-md);">
+            <div class="secao-header" style="background:#35505C;"><span><i class="fas fa-gauge-high"></i> EFICIÊNCIA DA COSTURA</span></div>
+            <div style="display:flex; align-items:flex-end; gap:var(--espaco-sm); padding:14px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
+                <div class="campo-meta" style="width:160px;"><label>MÊS</label>
+                    <select id="seletorMesEfCostura"></select>
+                </div>
+                <div class="campo-meta" style="width:150px;"><label>MIN. POR PESSOA/DIA</label>
+                    <input type="number" id="efCosturaMinPessoa" min="1" step="1" value="528" title="Jornada de cada pessoa, em minutos (528 = 8h48)">
+                </div>
+                <label class="btn" style="background:#35505C; color:white; cursor:pointer; margin:0;"><i class="fas fa-file-import"></i> IMPORTAR MOVIMENTAÇÃO
+                    <input id="inputEfCostura" type="file" accept=".csv" style="display:none;">
+                </label>
+                <span style="font-size:11px; color:var(--texto-secundario); flex:1; min-width:260px;">Importe o relatório de movimentação do dia (o CSV com "Cod. Tempolocal"). Só entram os locais de COSTURA (cost. sup/inf/cel); minutos = peças × tempo do local. Digite quantas pessoas trabalharam em cada dia.</span>
+            </div>
+            <div class="secao-corpo" style="padding:20px;">
+                <div id="efCosturaResumo" style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px;"></div>
+                <div style="overflow-x:auto; max-height:420px;">
+                    <table class="tabela-dados" style="width:100%;">
+                        <thead><tr><th>DATA</th><th>PEÇAS</th><th>OPs</th><th>MIN. PRODUZIDOS</th><th>PESSOAS</th><th>MIN. DISPONÍVEIS</th><th>EFICIÊNCIA</th><th>POR LOCAL</th></tr></thead>
+                        <tbody id="efCosturaCorpo"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="aba-sequenciamento" class="aba-conteudo">
