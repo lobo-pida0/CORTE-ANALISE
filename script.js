@@ -2485,6 +2485,15 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
         aguardando: null, filtroAguardando: null,
         campoTempo: 'minutosEnfesto',
     },
+    ETIQUETACAO: {
+        rotulo: 'Etiquetação',
+        // Igual ao Enfesto: um local só, sem fila de espera e SEM tempo
+        // ("minutosEtiquetacao" nunca é preenchido — tempo/previsão
+        // aparecem como "sem tempo"/"—"). Só a fila ordenada.
+        emAndamento: 'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA', filtroEmAndamento: null,
+        aguardando: null, filtroAguardando: null,
+        campoTempo: 'minutosEtiquetacao',
+    },
 };
 
 function obterPorOPCosturaDetalhado() {
