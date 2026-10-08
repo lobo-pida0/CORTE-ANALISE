@@ -1957,6 +1957,25 @@ function processarExcel() {
 // trocaram de setor desde a última vez, quais são novas, e quais saíram da
 // planilha (normalmente porque finalizaram o corte e seguiram pra costura).
 // =========================================================================
+// A OP aparece hoje na aba Prioridades? (marcada no Destino, marcada à mão, OP manual cadastrada,
+// ou OP "automática" do Destino que já saiu da sincronização) — mesma fonte que a aba usa.
+function opEstaNaAbaPrioridades(ciclo, id) {
+    const chave = montarChaveOP(ciclo, id);
+    if (obterPrioridadesDestino().has(chave) || obterPrioridadesManuais().has(chave)) return true;
+    if (obterOpsDestinoAutomaticas()[chave]) return true;
+    if (obterOpsManuaisPrioridade().some(o => chaveDaOP(o) === chave)) return true;
+    const naSinc = bancoDadosOPs.find(o => chaveDaOP(o) === chave);
+    return !!(naSinc && naSinc.prioridade);
+}
+// Selo de OP do balanço: padrão (neutro) ou DESTACADO (⭐, cor própria) se estiver na aba Prioridades.
+function seloOPBalanco(ciclo, id, texto, estiloNormal, classeNormal) {
+    if (opEstaNaAbaPrioridades(ciclo, id)) {
+        return `<span class="pill" title="Essa OP está na aba Prioridades" style="background:var(--cor-selecao); color:white; font-weight:700; margin:2px 3px 0 0; display:inline-block; box-shadow:0 0 0 2px rgba(0,0,0,0.12);"><i class="fas fa-star" style="font-size:9px;"></i> ${texto}</span>`;
+    }
+    return `<span class="pill ${classeNormal || ''}" style="${estiloNormal}">${texto}</span>`;
+}
+const ordenarPrioridadesPrimeiro = (lista, pegar) => [...lista].sort((a, b) => (opEstaNaAbaPrioridades(...pegar(b)) ? 1 : 0) - (opEstaNaAbaPrioridades(...pegar(a)) ? 1 : 0));
+
 function exibirBalancoSincronizacao(movimentacoes, entradas, saidas) {
     if (movimentacoes.length === 0 && entradas.length === 0 && saidas.length === 0) {
         $('modalBalancoSincronizacao').innerHTML = `
@@ -1988,22 +2007,24 @@ function exibirBalancoSincronizacao(movimentacoes, entradas, saidas) {
                 <span class="pill" style="background:var(--cor-sugestao);">${nomesEtapas[g.paraIdx]}</span>
                 <span style="color:var(--texto-secundario); font-weight:400;">(${g.ops.length} OP${g.ops.length > 1 ? 's' : ''})</span>
             </div>
-            <div>${g.ops.map(m => `<span class="pill" style="background:var(--bg-card); border:1px solid var(--borda-cor); color:var(--texto-cor); margin:2px 3px 0 0; display:inline-block;">${m.id}${m.ciclo ? ' · ' + m.ciclo : ''}</span>`).join('')}</div>
+            <div>${ordenarPrioridadesPrimeiro(g.ops, m => [m.ciclo, m.id]).map(m => seloOPBalanco(m.ciclo, m.id, `${m.id}${m.ciclo ? ' · ' + m.ciclo : ''}`, 'background:var(--bg-card); border:1px solid var(--borda-cor); color:var(--texto-cor); margin:2px 3px 0 0; display:inline-block;')).join('')}</div>
         </div>
     `).join('');
 
     const entradasHtml = entradas.length === 0 ? '' : `
         <div style="margin-top:14px;">
             <div style="font-size:12px; font-weight:700; color:var(--cor-despacho); margin-bottom:6px;"><i class="fas fa-plus-circle"></i> NOVAS NA PLANILHA (${entradas.length})</div>
-            <div>${entradas.map(o => `<span class="pill pill-ok" style="margin:2px 3px 0 0; display:inline-block;">${o.id} · ${nomesEtapas[o.etapa]}</span>`).join('')}</div>
+            <div>${ordenarPrioridadesPrimeiro(entradas, o => [o.ciclo, o.id]).map(o => seloOPBalanco(o.ciclo, o.id, `${o.id} · ${nomesEtapas[o.etapa]}`, 'margin:2px 3px 0 0; display:inline-block;', 'pill-ok')).join('')}</div>
         </div>`;
 
     const saidasHtml = saidas.length === 0 ? '' : `
         <div style="margin-top:14px;">
             <div style="font-size:12px; font-weight:700; color:var(--texto-secundario); margin-bottom:6px;"><i class="fas fa-sign-out-alt"></i> SAÍRAM DA PLANILHA (${saidas.length}) <span style="font-weight:400;">— provavelmente terminaram o corte e seguiram pra costura</span></div>
-            <div>${saidas.map(o => `<span class="pill" style="background:var(--cor-historico); margin:2px 3px 0 0; display:inline-block;">${o.id} · estava em ${nomesEtapas[o.deIdx]}</span>`).join('')}</div>
+            <div>${ordenarPrioridadesPrimeiro(saidas, o => [o.ciclo, o.id]).map(o => seloOPBalanco(o.ciclo, o.id, `${o.id} · estava em ${nomesEtapas[o.deIdx]}`, 'background:var(--cor-historico); margin:2px 3px 0 0; display:inline-block;')).join('')}</div>
         </div>`;
 
+    const totalPrioNoBalanco = movimentacoes.filter(m => opEstaNaAbaPrioridades(m.ciclo, m.id)).length + entradas.filter(o => opEstaNaAbaPrioridades(o.ciclo, o.id)).length + saidas.filter(o => opEstaNaAbaPrioridades(o.ciclo, o.id)).length;
+    const legendaPrioridadesBalanco = `<div style="display:flex; align-items:center; gap:8px; font-size:11px; color:var(--texto-secundario); margin-bottom:10px;"><span class="pill" style="background:var(--cor-selecao); color:white; font-weight:700;"><i class="fas fa-star" style="font-size:9px;"></i> 0000</span> = OP que está na aba Prioridades${totalPrioNoBalanco ? ` — <strong style="color:var(--texto-cor);">${totalPrioNoBalanco} neste balanço</strong>` : ' — nenhuma neste balanço'}</div>`;
     $('modalBalancoSincronizacao').innerHTML = `
         <div class="modal-card" style="width:640px; max-width:92vw; border-top:5px solid var(--cor-sugestao); max-height:85vh;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px; flex-shrink:0;">
@@ -2011,6 +2032,7 @@ function exibirBalancoSincronizacao(movimentacoes, entradas, saidas) {
                 <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
             </div>
             <div style="overflow-y:auto; flex:1;">
+                ${legendaPrioridadesBalanco}
                 ${movimentacoesHtml || '<div style="text-align:center; padding:10px; color:var(--texto-secundario); font-size:12px;">Nenhuma OP trocou de setor.</div>'}
                 ${entradasHtml}
                 ${saidasHtml}
