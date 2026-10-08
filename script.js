@@ -7559,7 +7559,7 @@ function renderizarTudoImediato() {
                 
                 <td>${o.localDestino}</td>
                 <td>${o.desc}</td>
-                <td>${o.temDublado ? 'SIM' : 'NÃO'}</td>
+                <td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${o.mesDestino}</span>` : '—'}</td>
                 <td><b>${o.tempoCorte}</b> min</td>
                 <td>${o.qtd}</td>
                 <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
