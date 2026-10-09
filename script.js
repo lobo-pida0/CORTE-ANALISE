@@ -3400,6 +3400,7 @@ function processarEficienciaCostura() {
             const idxData = cab.findIndex(c => c === 'DT MOVIMENTO');
             const idxQtd = cab.findIndex(c => c === 'QT MOVIMENTO');
             const idxTempo = cab.findIndex(c => c === 'COD TEMPOLOCAL');
+            const idxTipoMov = cab.findIndex(c => c === 'TIPO MOV' || c === 'TIPO MOVIMENTACAO' || c === 'TIPO MOVIMENTO');   // NORMAL / PARTE — movimentação de PARTE não conta
             const faltando = [];
             if (idxLocal === -1) faltando.push('Ds Local');
             if (idxOP === -1) faltando.push('Op');
@@ -3409,9 +3410,10 @@ function processarEficienciaCostura() {
             if (faltando.length) throw new Error('Não encontrei as colunas: ' + faltando.join(', ') + '. Esse é o relatório de movimentação com "Cod. Tempolocal"?');
 
             const novosDias = {};
-            let linhasCostura = 0, linhasSemTempo = 0;
+            let linhasCostura = 0, linhasSemTempo = 0, linhasParte = 0;
             for (let i = 1; i < linhas.length; i++) {
                 const c = linhas[i].split(';');
+                if (idxTipoMov !== -1 && normalizarCabecalhoEf(c[idxTipoMov] || '') === 'PARTE' && ehLocalCosturaEficiencia((c[idxLocal] || '').trim())) { linhasParte++; continue; }
                 const op = (c[idxOP] || '').trim(), dataStr = (c[idxData] || '').trim(), local = (c[idxLocal] || '').trim();
                 if (!op || !dataStr || !ehLocalCosturaEficiencia(local)) continue;
                 const d = parsearDataBR(dataStr); if (!d) continue;
@@ -3438,7 +3440,7 @@ function processarEficienciaCostura() {
             publicarDiasEfCostura(dias).then(ok => { if (ok) showToast('<i class="fas fa-cloud-upload-alt"></i> Eficiência da costura salva na nuvem.', false, 2500); });
             popularSeletorMesEfCostura(dias[dias.length - 1].slice(0, 7));
             renderizarEficienciaCostura();
-            showToast(`<i class="fas fa-check-double"></i> ${linhasCostura} linhas de costura em ${dias.length} dia(s) importadas.${linhasSemTempo ? ` ⚠ ${linhasSemTempo} sem tempo (contam peças, não minutos).` : ''}`, false, linhasSemTempo ? 7000 : 3000);
+            showToast(`<i class="fas fa-check-double"></i> ${linhasCostura} linhas de costura em ${dias.length} dia(s) importadas.${linhasParte ? ` ${linhasParte} de PARTE ignorada(s).` : ''}${linhasSemTempo ? ` ⚠ ${linhasSemTempo} sem tempo (contam peças, não minutos).` : ''}`, false, linhasSemTempo ? 7000 : 3000);
         } catch (err) {
             input.value = '';
             alert('❌ Não foi possível importar a movimentação da costura.\n\n' + err.message);
