@@ -6567,7 +6567,9 @@ function renderizarSequenciamentoCostura() {
         const separador = (indice > 0 && linhaAnterior.situacaoCostura === 'Em andamento' && op.situacaoCostura === 'Aguardando')
             ? `<tr><td colspan="13" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
             : '';
-        return separador + `<tr style="${comecaHoje ? '' : 'opacity:0.6;'}">
+        // Enfesto e Etiquetação não têm tempo → não têm previsão → nunca "começam hoje"; ficavam todos apagados. Aqui não apaga.
+        const semTempoNoGrupo = grupo === 'ENFESTO' || grupo === 'ETIQUETACAO';
+        return separador + `<tr style="${(comecaHoje || semTempoNoGrupo) ? '' : 'opacity:0.6;'}">
             <td><input type="checkbox" class="check-imprimir-seq" data-id="${chaveLinha}"></td>
             <td>${setasHtml}<strong>${op.op}</strong></td>
             <td><span style="color:${situacaoCor}; font-weight:700; font-size:11px;">${op.situacaoCostura}</span></td>
