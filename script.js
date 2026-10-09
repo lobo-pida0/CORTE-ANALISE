@@ -6555,7 +6555,7 @@ function renderizarSequenciamentoCostura() {
         const isEnfesto = grupo === 'ENFESTO';
         const podeSubir = indice > 0;
         const podeDescer = indice < filaComResultado.length - 1;
-        const setasHtml = isEnfesto ? `<span style="display:inline-flex; flex-direction:column; gap:1px; margin-right:6px; vertical-align:middle;">
+        const setasHtml = isEnfesto ? `<span class="data-limite-costura-esconde-impressao" style="display:inline-flex; flex-direction:column; gap:1px; margin-right:6px; vertical-align:middle;">
             <button class="btn somente-admin tambem-usuario" style="padding:0 4px; font-size:9px; line-height:1.4; background:var(--cor-historico); ${podeSubir ? '' : 'opacity:0.25;'}" ${podeSubir ? '' : 'disabled'} onclick="moverOPEnfesto('${chaveLinha}', -1)" title="Mover pra cima"><i class="fas fa-caret-up"></i></button>
             <button class="btn somente-admin tambem-usuario" style="padding:0 4px; font-size:9px; line-height:1.4; background:var(--cor-historico); ${podeDescer ? '' : 'opacity:0.25;'}" ${podeDescer ? '' : 'disabled'} onclick="moverOPEnfesto('${chaveLinha}', 1)" title="Mover pra baixo"><i class="fas fa-caret-down"></i></button>
         </span>` : '';
