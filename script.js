@@ -7305,7 +7305,7 @@ function renderizarMaquinasEnfesto() {
     ops.forEach((o, i) => {
         const mpOP = (o.codigoMP && o.codigoMP !== 'SEM CÓDIGO') ? o.codigoMP : 'SEM MP (LOTE MISTO)';
         if (mpOP !== loteAtual) {
-            html += `<tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;"><td colspan="12" style="text-align:left; font-weight:bold; padding:10px 15px;"><i class="fas fa-layer-group" style="margin-right:8px;"></i> LOTE MATÉRIA-PRIMA: ${esc(mpOP)} <span style="font-weight:normal; font-size:0.9em; opacity:0.9;"> - ${esc(o.descMP || 'Descrição não cadastrada')}</span></td></tr>`;
+            html += `<tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;"><td colspan="11" style="text-align:left; font-weight:bold; padding:10px 15px;"><i class="fas fa-layer-group" style="margin-right:8px;"></i> LOTE MATÉRIA-PRIMA: ${esc(mpOP)} <span style="font-weight:normal; font-size:0.9em; opacity:0.9;"> - ${esc(o.descMP || 'Descrição não cadastrada')}</span></td></tr>`;
             loteAtual = mpOP;
         }
         const chave = chaveProdutoMaquina(o);
@@ -7316,12 +7316,12 @@ function renderizarMaquinasEnfesto() {
             <td><span class="pill" style="background:var(--cor-historico);">${esc(nomesEtapas[o.etapa])}</span>${o.laser ? ' <span class="pill" style="background:var(--cor-roxo);"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
             <td><span class="pill" style="background:var(--cor-sugestao);">${esc(chave || '—')}</span>${ambas ? ' <small title="Aceito nas duas máquinas">✱</small>' : ''}</td>
             <td title="${esc(o.descMP)}"><span style="background:#eee; color:#333; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; cursor:help;">${esc(mpOP)}</span></td>
-            <td>${esc(o.desc)}</td><td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${esc(o.mesDestino)}</span>` : '—'}</td><td><b>${esc(o.tempoCorte)}</b> min</td><td>${esc(o.qtd)}</td>
+            <td>${esc(o.desc)}</td><td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${esc(o.mesDestino)}</span>` : '—'}</td><td>${esc(o.qtd)}</td>
             <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
         </tr>`;
     });
     $('listaMaquinaEnfesto').innerHTML = ops.length ? html
-        : `<tr><td colspan="12" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>${dadosProgramacaoVisiveis.length ? 'Nenhuma OP da lista cabe nessa opção.' : 'A lista do Programar Lote está vazia — ajuste os filtros de lá.'}</td></tr>`;
+        : `<tr><td colspan="11" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>${dadosProgramacaoVisiveis.length ? 'Nenhuma OP da lista cabe nessa opção.' : 'A lista do Programar Lote está vazia — ajuste os filtros de lá.'}</td></tr>`;
     atualizarSelecaoMaquinaEnfesto();
 }
 
