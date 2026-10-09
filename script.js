@@ -7316,7 +7316,7 @@ function renderizarMaquinasEnfesto() {
             <td><span class="pill" style="background:var(--cor-historico);">${esc(nomesEtapas[o.etapa])}</span>${o.laser ? ' <span class="pill" style="background:var(--cor-roxo);"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
             <td><span class="pill" style="background:var(--cor-sugestao);">${esc(chave || '—')}</span>${ambas ? ' <small title="Aceito nas duas máquinas">✱</small>' : ''}</td>
             <td title="${esc(o.descMP)}"><span style="background:#eee; color:#333; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; cursor:help;">${esc(mpOP)}</span></td>
-            <td>${esc(o.desc)}</td><td>${o.temDublado ? 'SIM' : 'NÃO'}</td><td><b>${esc(o.tempoCorte)}</b> min</td><td>${esc(o.qtd)}</td>
+            <td>${esc(o.desc)}</td><td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${esc(o.mesDestino)}</span>` : '—'}</td><td><b>${esc(o.tempoCorte)}</b> min</td><td>${esc(o.qtd)}</td>
             <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
         </tr>`;
     });
