@@ -6579,7 +6579,7 @@ function renderizarSequenciamentoCostura() {
             <td>${op.descRef || ''}</td>
             <td style="white-space:nowrap;">${op.cor || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
-            <td style="text-align:right; white-space:nowrap;" title="Tempo de costura por peça (coluna 'Tempo Peca Costura' do POR_OP)">${op.tempoPecaCostura ? op.tempoPecaCostura.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td style="text-align:right; white-space:nowrap;" title="Tempo de costura por peça (coluna 'Tempo Peca Costura' do POR_OP)">${(op.tempoPecaCostura && grupo !== 'ENFESTO' && grupo !== 'ETIQUETACAO') ? op.tempoPecaCostura.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td class="col-tempo-total-seq" style="text-align:right;">${tempoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">
