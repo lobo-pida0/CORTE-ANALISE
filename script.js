@@ -3803,6 +3803,7 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
             totalOPs: opsDaSemana.size,
             diasComMovimento,
             mediaDiaria: diasComMovimento ? Math.round(totalSemana / diasComMovimento) : 0,
+            mediaOPsDia: diasComMovimento ? Math.round((opsDaSemana.size / diasComMovimento) * 10) / 10 : 0,   // OPs distintas da semana ÷ dias com movimento
         };
     });
 }
@@ -4183,7 +4184,7 @@ function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
                 <span style="color:var(--texto-secundario);">${s.rotulo}</span>
                 <span style="text-align:right;">
                     <strong style="font-size:14px;">${s.mediaDiaria.toLocaleString('pt-BR')}<span style="font-size:10px; font-weight:400; color:var(--texto-secundario);"> peças/dia</span></strong>
-                    <span style="font-size:10px; color:var(--texto-secundario); display:block;">${s.totalOPs.toLocaleString('pt-BR')} OP(s)</span>
+                    <span style="font-size:10px; color:var(--texto-secundario); display:block;">${s.totalOPs.toLocaleString('pt-BR')} OP(s) · <b>${s.mediaOPsDia.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</b> OPs/dia</span>
                 </span>
             </div>`).join('')
             : `<div style="font-size:11px; color:var(--texto-secundario); padding:8px 0;">Sem dados importados pra esse mês ainda.</div>`;
@@ -4272,14 +4273,14 @@ function montarPlanilhasMesKPI(anoMes) {
         [],
         ['SETOR', 'TOTAL DO MÊS (peças, dias úteis)', 'OPs DISTINTAS (dias úteis)', 'DIAS ÚTEIS COM MOVIMENTO', 'MÉDIA POR DIA COM MOVIMENTO', 'PEÇAS EM FIM DE SEMANA (fora do total)', 'LEAD TIME MÉDIO (dias)', 'OPs COM LEAD TIME CALCULADO', 'OPs QUE CHEGARAM NO SETOR NO MÊS'],
     ];
-    const semanas = [['SETOR', 'SEMANA', 'TOTAL (peças)', 'OPs DISTINTAS', 'DIAS COM MOVIMENTO', 'MÉDIA POR DIA']];
+    const semanas = [['SETOR', 'SEMANA', 'TOTAL (peças)', 'OPs DISTINTAS', 'DIAS COM MOVIMENTO', 'MÉDIA POR DIA', 'MÉDIA DE OPs POR DIA']];
     SETORES_KPI.forEach(setor => {
         const sem = calcularMediaPorSemanaDoMes(setor, anoMes).filter(x => x.diasComMovimento > 0);
         const total = sem.reduce((a, x) => a + x.totalSemana, 0);
         const dias = sem.reduce((a, x) => a + x.diasComMovimento, 0);
         const lead = calcularLeadTimeSetorNoMes(setor, anoMes);
         resumo.push([setor, total, porSetor[setor].opsUteis.size, dias, dias ? Math.round(total / dias) : 0, porSetor[setor].foraDoTotal, lead.mediaLeadTime === null ? '' : lead.mediaLeadTime, lead.opsComDado, lead.opsQueChegaramNoMes]);
-        sem.forEach(x => semanas.push([setor, x.rotulo, x.totalSemana, x.totalOPs, x.diasComMovimento, x.mediaDiaria]));
+        sem.forEach(x => semanas.push([setor, x.rotulo, x.totalSemana, x.totalOPs, x.diasComMovimento, x.mediaDiaria, x.mediaOPsDia]));
     });
 
     // ---- DIA A DIA (uma coluna de peças e uma de OPs por setor)
@@ -4326,7 +4327,7 @@ function baixarMesKPIExcel() {
         XLSX.utils.book_append_sheet(wb, ws, nome);
     };
     aba('RESUMO', dados.resumo, [26, 20, 20, 18, 20, 22, 16, 18, 22]);
-    aba('SEMANAS', dados.semanas, [26, 26, 16, 16, 18, 16]);
+    aba('SEMANAS', dados.semanas, [26, 26, 16, 16, 18, 16, 20]);
     aba('DIA A DIA', dados.diaADia, [12, 14, ...SETORES_KPI.flatMap(() => [14, 8])]);
     aba('ACERTIVIDADE', dados.acertividade, [52, 14, 24, 34]);
     aba('MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24]);
