@@ -1867,14 +1867,16 @@ function processarExcel() {
             if (r[5] && !['OP', 'ORDEM'].includes(String(r[5]).trim().toUpperCase())) {
                 const loc = (r[21] ? String(r[21]).toUpperCase() : "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
-                if (loc.includes("AGUARD") && loc.includes("MATERIA") && loc.includes("PRIMA")) {
+                // "PNP ANALISE DE MATERIA PRIMA" também cai aqui (antes caía em ANALISE DE MEDIDAS por causa da palavra ANALISE)
+                if ((loc.includes("AGUARD") || loc.includes("ANALISE")) && loc.includes("MATERIA") && loc.includes("PRIMA")) {
                     opsAguardandoMP.push({
                         id: String(r[5]).trim(), ciclo: String(r[4] || ""), desc: String(r[3] || ""),
                         qtd: parseInt(r[6]) || 0, diasLocal: parseInt(r[25]) || 0,
                         codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
                         referencia: r[40] ? String(r[40]).trim().toUpperCase() : "",
                         produto: lerProduto(r),
-                        sobMedida: mapaSBM.has(String(r[5]).trim())
+                        sobMedida: mapaSBM.has(String(r[5]).trim()),
+                        analiseMP: loc.includes("ANALISE")
                     });
                     continue; // não passa pela lógica de etapa 0-7 abaixo
                 }
@@ -1940,7 +1942,8 @@ function processarExcel() {
         if (!sincronizacaoInicial) {
             const chavesNovas = new Set(bancoDadosOPs.map(chaveDaOP));
             const entradas = bancoDadosOPs.filter(o => !mapA[chaveDaOP(o)]);
-            const saidas = Object.keys(mapA).filter(k => !chavesNovas.has(k)).map(k => ({ id: mapA[k].id, ciclo: mapA[k].ciclo, deIdx: mapA[k].etapa }));
+            const chavesAindaNaPlanilhaMP = new Set(opsAguardandoMP.map(chaveDaOP));   // foi pra Aguard./Análise de Matéria Prima: continua na planilha, não "saiu"
+            const saidas = Object.keys(mapA).filter(k => !chavesNovas.has(k) && !chavesAindaNaPlanilhaMP.has(k)).map(k => ({ id: mapA[k].id, ciclo: mapA[k].ciclo, deIdx: mapA[k].etapa }));
             exibirBalancoSincronizacao(movimentacoes, entradas, saidas);
         }
       } catch (err) {
@@ -8105,7 +8108,7 @@ function calcularGruposPorReferencia() {
     // escala 0-7 normal)
     const candidatasAguardMP = obterOPsAguardandoMateriaPrima()
         .filter(op => op.referencia && !op.sobMedida)
-        .map(op => ({ ...op, etapaRotulo: 'AGUARD. MATÉRIA PRIMA', etapaCor: 'var(--cor-alerta)' }));
+        .map(op => ({ ...op, etapaRotulo: op.analiseMP ? 'ANÁLISE DE MATÉRIA PRIMA' : 'AGUARD. MATÉRIA PRIMA', etapaCor: 'var(--cor-alerta)' }));
     const candidatas = [...candidatasBanco, ...candidatasAguardMP];
 
     const porReferencia = new Map();
