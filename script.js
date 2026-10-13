@@ -7310,7 +7310,7 @@ function renderizarMaquinasEnfesto() {
     ops.forEach((o, i) => {
         const mpOP = (o.codigoMP && o.codigoMP !== 'SEM CÓDIGO') ? o.codigoMP : 'SEM MP (LOTE MISTO)';
         if (mpOP !== loteAtual) {
-            html += `<tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;"><td colspan="11" style="text-align:left; font-weight:bold; padding:10px 15px;"><i class="fas fa-layer-group" style="margin-right:8px;"></i> LOTE MATÉRIA-PRIMA: ${esc(mpOP)} <span style="font-weight:normal; font-size:0.9em; opacity:0.9;"> - ${esc(o.descMP || 'Descrição não cadastrada')}</span></td></tr>`;
+            html += `<tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;"><td colspan="12" style="text-align:left; font-weight:bold; padding:10px 15px;"><i class="fas fa-layer-group" style="margin-right:8px;"></i> LOTE MATÉRIA-PRIMA: ${esc(mpOP)} <span style="font-weight:normal; font-size:0.9em; opacity:0.9;"> - ${esc(o.descMP || 'Descrição não cadastrada')}</span></td></tr>`;
             loteAtual = mpOP;
         }
         const chave = chaveProdutoMaquina(o);
@@ -7321,12 +7321,12 @@ function renderizarMaquinasEnfesto() {
             <td><span class="pill" style="background:var(--cor-historico);">${esc(nomesEtapas[o.etapa])}</span>${o.laser ? ' <span class="pill" style="background:var(--cor-roxo);"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
             <td><span class="pill" style="background:var(--cor-sugestao);">${esc(chave || '—')}</span>${ambas ? ' <small title="Aceito nas duas máquinas">✱</small>' : ''}</td>
             <td title="${esc(o.descMP)}"><span style="background:#eee; color:#333; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; cursor:help;">${esc(mpOP)}</span></td>
-            <td>${esc(o.desc)}</td><td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${esc(o.mesDestino)}</span>` : '—'}</td><td>${esc(o.qtd)}</td>
+            <td>${esc(o.desc)}</td><td style="text-align:right; color:${(o.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${o.diasLocal || 0}</td><td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${esc(o.mesDestino)}</span>` : '—'}</td><td>${esc(o.qtd)}</td>
             <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
         </tr>`;
     });
     $('listaMaquinaEnfesto').innerHTML = ops.length ? html
-        : `<tr><td colspan="11" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>${dadosProgramacaoVisiveis.length ? 'Nenhuma OP da lista cabe nessa opção.' : 'A lista do Programar Lote está vazia — ajuste os filtros de lá.'}</td></tr>`;
+        : `<tr><td colspan="12" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>${dadosProgramacaoVisiveis.length ? 'Nenhuma OP da lista cabe nessa opção.' : 'A lista do Programar Lote está vazia — ajuste os filtros de lá.'}</td></tr>`;
     atualizarSelecaoMaquinaEnfesto();
 }
 
@@ -7363,7 +7363,7 @@ function atualizarSelecaoMaquinaEnfesto() {
 function montarExportacaoMaquinaEnfesto(ops, maquina) {
     const mapa = obterMapaMaquinasEnfesto();
     const comoNumero = v => { const t = String(v ?? '').trim(); return /^\d+$/.test(t) ? Number(t) : t; };
-    const cabecalho = ['ORDEM', 'CICLO', 'OP', 'ETAPA', 'PRODUTO', 'MÁQUINA', 'MATÉRIA-PRIMA', 'DESCRIÇÃO DA MATÉRIA-PRIMA', 'DESCRIÇÃO', 'DUBLAGEM', 'TEMPO (min)', 'PEÇAS', 'DATA CORTE', 'LOCAL DESTINO', 'LASER'];
+    const cabecalho = ['ORDEM', 'CICLO', 'OP', 'ETAPA', 'PRODUTO', 'MÁQUINA', 'MATÉRIA-PRIMA', 'DESCRIÇÃO DA MATÉRIA-PRIMA', 'DESCRIÇÃO', 'DUBLAGEM', 'TEMPO (min)', 'PEÇAS', 'DATA CORTE', 'LOCAL DESTINO', 'DIAS NO LOCAL', 'LASER'];
     let totalMin = 0, totalPecas = 0;
     const linhas = ops.map((o, i) => {
         const chave = chaveProdutoMaquina(o), v = maquinaDoProdutoEnfesto(chave, mapa);
@@ -7374,10 +7374,10 @@ function montarExportacaoMaquinaEnfesto(ops, maquina) {
         return [i + 1, comoNumero(o.ciclo), comoNumero(o.id), nomesEtapas[o.etapa] || '', chave || null,
             v === 'AMBAS' ? 'Qualquer uma' : (maquina === 'SEM' ? 'Sem definição' : `Máquina ${maquina}`),
             (o.codigoMP && o.codigoMP !== 'SEM CÓDIGO') ? o.codigoMP : 'SEM MP', o.descMP || null, o.desc || null,
-            o.temDublado ? 'SIM' : 'NÃO', tempo, qtd, dataCorte, o.localDestino || null, o.laser ? 'SIM' : null];
+            o.temDublado ? 'SIM' : 'NÃO', tempo, qtd, dataCorte, o.localDestino || null, Number(o.diasLocal) || 0, o.laser ? 'SIM' : null];
     });
     // linha em branco + totais no fim (fora do bloco de dados, pra não atrapalhar filtro/ordenação no Excel)
-    const totais = [null, null, null, null, null, null, null, null, `TOTAL — ${ops.length} OP${ops.length > 1 ? 's' : ''}`, null, Math.round(totalMin * 100) / 100, totalPecas, null, null, null];
+    const totais = [null, null, null, null, null, null, null, null, `TOTAL — ${ops.length} OP${ops.length > 1 ? 's' : ''}`, null, Math.round(totalMin * 100) / 100, totalPecas, null, null, null, null];
     return { cabecalho, linhas, totais };
 }
 
@@ -7391,7 +7391,7 @@ function exportarMaquinaEnfestoExcel() {
     const { cabecalho, linhas, totais } = montarExportacaoMaquinaEnfesto(aExportar, maquinaEnfestoSelecionada);
 
     const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas, [], totais]);
-    ws['!cols'] = [7, 7, 8, 18, 14, 14, 13, 40, 52, 10, 12, 8, 12, 18, 8].map(w => ({ wch: w }));
+    ws['!cols'] = [7, 7, 8, 18, 14, 14, 13, 40, 52, 10, 12, 8, 12, 18, 14, 8].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, rotulo);
     const hoje = new Date(), dois = n => String(n).padStart(2, '0');
@@ -7528,7 +7528,7 @@ function renderizarTudoImediato() {
         if (mpOP !== loteAtual) {
             htmlTabela += `
                 <tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;">
-                    <td colspan="13" style="text-align: left; font-weight: bold; padding: 10px 15px; border-radius: 4px;">
+                    <td colspan="14" style="text-align: left; font-weight: bold; padding: 10px 15px; border-radius: 4px;">
                         <i class="fas fa-layer-group" style="margin-right: 8px;"></i> LOTE MATÉRIA-PRIMA: ${mpOP} <span style="font-weight: normal; font-size: 0.9em; opacity: 0.9;">${descTexto}</span>
                     </td>
                 </tr>
@@ -7564,6 +7564,7 @@ function renderizarTudoImediato() {
                 
                 <td>${o.localDestino}</td>
                 <td>${o.desc}</td>
+                <td style="text-align:right; color:${(o.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${o.diasLocal || 0}</td>
                 <td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${o.mesDestino}</span>` : '—'}</td>
                 <td>${o.qtd}</td>
                 <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
@@ -7573,7 +7574,7 @@ function renderizarTudoImediato() {
     });
 
     if ($('listaDespacho')) $('listaDespacho').innerHTML = dDados.length === 0
-        ? `<tr><td colspan="13" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
+        ? `<tr><td colspan="14" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
         : htmlTabela;
     // =========================================================================
     filaGeralDadosGlobais = fDados; renderizarTabelaFilaGeral();
