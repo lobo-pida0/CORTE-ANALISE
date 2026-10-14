@@ -797,9 +797,9 @@ async function publicarTudoNoSupabase() {
                 r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura);
             } catch (eCor) {
                 // Coluna "cor" ainda não criada no Supabase (SQL 26) — publica sem ela e sem o MIN/PEÇA pra não travar o resto.
-                if (!/\b(cor|tempo_peca_costura)\b/i.test(String(eCor && eCor.message || eCor))) throw eCor;
-                r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura.map(({ cor, tempo_peca_costura, ...resto }) => resto));
-                registrarLogDebug('error', ['[NUVEM] Falta rodar o SQL 26 (colunas "cor" e "tempo_peca_costura"): Sequência publicada SEM elas.']);
+                if (!/\b(cor|tempo_peca_costura|dias_local)\b/i.test(String(eCor && eCor.message || eCor))) throw eCor;
+                r = await sincronizarTabelaSupabase('por_op_costura_detalhado', linhasPorOPCostura.map(({ cor, tempo_peca_costura, dias_local, ...resto }) => resto));
+                registrarLogDebug('error', ['[NUVEM] Falta rodar o SQL 26/28 (colunas "cor", "tempo_peca_costura", "dias_local"): Sequência publicada SEM elas.']);
             }
             resumo.push(`${r.publicados} linhas do Sequenciamento da Produção`);
         }
@@ -2530,7 +2530,7 @@ function obterPorOPCosturaDetalhado() {
 function porOPCosturaParaLinhaSupabase(item) {
     return {
         id: chaveOPCostura(item.op, item.ciclo), op: item.op, ciclo: item.ciclo || '',
-        local: item.local || '', ref: item.ref || '', desc_ref: item.descRef || '', cor: item.cor || '', tempo_peca_costura: item.tempoPecaCostura ?? null,
+        local: item.local || '', ref: item.ref || '', desc_ref: item.descRef || '', cor: item.cor || '', tempo_peca_costura: item.tempoPecaCostura ?? null, dias_local: item.diasLocal ?? null,
         tipo_produto: item.tipoProduto || '', prioridade: item.prioridade ?? null, qtd: item.qtd || 0,
         minutos_costura: item.minutosCostura ?? null, minutos_acabamento: item.minutosAcabamento ?? null,
         minutos_enfesto: item.minutosEnfesto ?? null, data_finalizacao: item.dataFinalizacao || null,
@@ -2539,7 +2539,7 @@ function porOPCosturaParaLinhaSupabase(item) {
 }
 function linhaSupabaseParaPorOPCostura(l) {
     return {
-        op: l.op, ciclo: l.ciclo || '', local: l.local || '', ref: l.ref || '', descRef: l.desc_ref || '', cor: l.cor || '', tempoPecaCostura: l.tempo_peca_costura ?? null,
+        op: l.op, ciclo: l.ciclo || '', local: l.local || '', ref: l.ref || '', descRef: l.desc_ref || '', cor: l.cor || '', tempoPecaCostura: l.tempo_peca_costura ?? null, diasLocal: l.dias_local ?? null,
         tipoProduto: l.tipo_produto || '', prioridade: l.prioridade, qtd: l.qtd || 0,
         minutosCostura: l.minutos_costura, minutosAcabamento: l.minutos_acabamento,
         minutosEnfesto: l.minutos_enfesto, dataFinalizacao: l.data_finalizacao,
@@ -2757,6 +2757,7 @@ function processarPorOPCostura() {
             const idxCiclo = cab.findIndex(c => c === 'CICLO');
             const idxTempoPecaCostura = cab.findIndex(c => c.includes('TEMPO') && /PE[CÇ]A/.test(c) && c.includes('COSTURA'));
             const idxCor = cab.findIndex(c => c === 'COR' || c === 'COR PRODUTO');
+            const idxDiasLocal = cab.findIndex(c => c === 'DIAS LOCAL');
 
             const faltando = [];
             if (idxDescLocal === -1) faltando.push('Descrição Local');
@@ -2795,6 +2796,7 @@ function processarPorOPCostura() {
                     descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '',
                     tempoPecaCostura: idxTempoPecaCostura !== -1 && row[idxTempoPecaCostura] !== null && row[idxTempoPecaCostura] !== undefined && row[idxTempoPecaCostura] !== '' ? (parseFloat(row[idxTempoPecaCostura]) || null) : null,
                     cor: idxCor !== -1 && row[idxCor] ? String(row[idxCor]).trim().toUpperCase() : '',
+                    diasLocal: idxDiasLocal !== -1 && row[idxDiasLocal] !== null && row[idxDiasLocal] !== undefined && row[idxDiasLocal] !== '' ? (parseInt(row[idxDiasLocal]) || 0) : null,
                     tipoProduto: idxTipo !== -1 && row[idxTipo] ? String(row[idxTipo]).trim().toUpperCase() : '',
                     prioridade: idxPrioridade !== -1 && row[idxPrioridade] !== null && row[idxPrioridade] !== undefined ? parseInt(row[idxPrioridade]) : null,
                     qtd: idxQtd !== -1 ? (parseFloat(row[idxQtd]) || 0) : 0,
@@ -6521,7 +6523,7 @@ function renderizarSequenciamentoCostura() {
     renderizarResumoAtrasosPorGrupo();
 
     if (!filaComResultado.length) {
-        $('seqCostListaOPs').innerHTML = `<tr><td colspan="13" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="14" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
 
@@ -6571,7 +6573,7 @@ function renderizarSequenciamentoCostura() {
         // coluna Situação linha por linha.
         const linhaAnterior = filaComResultado[indice - 1];
         const separador = (indice > 0 && linhaAnterior.situacaoCostura === 'Em andamento' && op.situacaoCostura === 'Aguardando')
-            ? `<tr><td colspan="13" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
+            ? `<tr><td colspan="14" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
             : '';
         // Enfesto e Etiquetação não têm tempo → não têm previsão → nunca "começam hoje"; ficavam todos apagados. Aqui não apaga.
         const semTempoNoGrupo = grupo === 'ENFESTO' || grupo === 'ETIQUETACAO';
@@ -6582,6 +6584,7 @@ function renderizarSequenciamentoCostura() {
             <td>${op.prioridade ?? '—'}</td>
             <td>${dataFinalizacaoHtml}</td>
             <td>${obterMesDestinoDaOP(op.op, op.ciclo) || '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal ?? '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.descRef || ''}</td>
             <td style="white-space:nowrap;">${op.cor || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
