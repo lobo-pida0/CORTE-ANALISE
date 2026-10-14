@@ -4975,10 +4975,10 @@ function renderizarAbaPrioridades() {
             <td>${estrela} <strong>${op.id}</strong>${op.ciclo ? ` <span style="font-size:10px; color:var(--texto-secundario);" title="Ciclo">${op.ciclo}</span>` : ''}${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}${ehAutomatica ? ' <i class="fas fa-file-import" style="font-size:9px; color:var(--texto-secundario);" title="Não existe na Sincronização — montada com dado do Destino"></i>' : ''}</td>
             <td>${op.numeroPrioridade !== null && op.numeroPrioridade !== undefined ? op.numeroPrioridade : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.desc}</td>
-            <td><span class="pill" style="background:var(--cor-primaria); font-size:10px;">${obterSetorExibicaoPrioridade(op)}</span></td>
+            <td><span class="pill selo-setor">${obterSetorExibicaoPrioridade(op)}</span></td>
             <td style="text-align:right;">${op.qtd}</td>
             <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
-            <td>${op.mesDestino ? `<span class="pill" style="background:#B8862A; font-size:12px;">${op.mesDestino}</span>` : '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td>${op.mesDestino ? `<span class="pill selo-mes">${op.mesDestino}</span>` : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td style="font-size:11px;">${localProducao || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${botaoRemover}</td>
         </tr>
@@ -6584,12 +6584,12 @@ function renderizarSequenciamentoCostura() {
             <td>${op.prioridade ?? '—'}</td>
             <td>${dataFinalizacaoHtml}</td>
             <td>${obterMesDestinoDaOP(op.op, op.ciclo) || '<span style="color:var(--texto-secundario);">—</span>'}</td>
-            <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal ?? '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td class="num" style="color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal ?? '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${op.descRef || ''}</td>
             <td style="white-space:nowrap;">${op.cor || '<span style="color:var(--texto-secundario);">—</span>'}</td>
-            <td style="text-align:right;">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
-            <td style="text-align:right; white-space:nowrap;" title="Tempo de costura por peça (coluna 'Tempo Peca Costura' do POR_OP)">${(op.tempoPecaCostura && grupo !== 'ENFESTO' && grupo !== 'ETIQUETACAO') ? op.tempoPecaCostura.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--texto-secundario);">—</span>'}</td>
-            <td class="col-tempo-total-seq" style="text-align:right;">${tempoTexto}</td>
+            <td class="num">${(op.qtd || 0).toLocaleString('pt-BR')}</td>
+            <td class="num" style="white-space:nowrap;" title="Tempo de costura por peça (coluna 'Tempo Peca Costura' do POR_OP)">${(op.tempoPecaCostura && grupo !== 'ENFESTO' && grupo !== 'ETIQUETACAO') ? op.tempoPecaCostura.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--texto-secundario);">—</span>'}</td>
+            <td class="col-tempo-total-seq num">${tempoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">
                 <button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-historico);" onclick="ocultarOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Ocultar essa OP (continua existindo, só some da lista e do tempo — reversível na hora)"><i class="fas fa-eye-slash"></i></button>
@@ -7324,10 +7324,10 @@ function renderizarMaquinasEnfesto() {
         html += `<tr>
             <td><input type="checkbox" class="check-maquina-enfesto" data-id="${esc(o.id)}" ${selecaoMaquinaEnfesto.has(o.id) ? 'checked' : ''}></td>
             <td>${i + 1}º</td><td>${esc(o.ciclo)}</td><td><strong>${esc(o.id)}</strong></td>
-            <td><span class="pill" style="background:var(--cor-historico);">${esc(nomesEtapas[o.etapa])}</span>${o.laser ? ' <span class="pill" style="background:var(--cor-roxo);"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
-            <td><span class="pill" style="background:var(--cor-sugestao);">${esc(chave || '—')}</span>${ambas ? ' <small title="Aceito nas duas máquinas">✱</small>' : ''}</td>
+            <td><span class="pill selo-etapa">${esc(nomesEtapas[o.etapa])}</span>${o.laser ? ' <span class="pill selo-laser"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
+            <td><span class="pill selo-produto">${esc(chave || '—')}</span>${ambas ? ' <small title="Aceito nas duas máquinas">✱</small>' : ''}</td>
             <td title="${esc(o.descMP)}"><span style="background:#eee; color:#333; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; cursor:help;">${esc(mpOP)}</span></td>
-            <td>${esc(o.desc)}</td><td style="text-align:right; color:${(o.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${o.diasLocal || 0}</td><td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${esc(o.mesDestino)}</span>` : '—'}</td><td>${esc(o.qtd)}</td>
+            <td>${esc(o.desc)}</td><td class="num" style="color:${(o.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${o.diasLocal || 0}</td><td>${o.prioridade && o.mesDestino ? `<span class="pill selo-mes">${esc(o.mesDestino)}</span>` : '—'}</td><td class="num">${esc(o.qtd)}</td>
             <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
         </tr>`;
     });
@@ -7564,15 +7564,15 @@ function renderizarTudoImediato() {
                 <td>${i + 1}º</td>
                 <td>${o.ciclo}</td>
                 <td><strong>${o.id}</strong>${badgePedido}${badgeMP}${badgeAgrupamento}</td>
-                <td><span class="pill" style="background:var(--cor-historico);">${nomesEtapas[o.etapa]}</span>${o.laser ? ' <span class="pill" style="background:var(--cor-roxo);" title="Vai pra máquina de corte a laser"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
+                <td><span class="pill selo-etapa">${nomesEtapas[o.etapa]}</span>${o.laser ? ' <span class="pill selo-laser" title="Vai pra máquina de corte a laser"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
                 
                 <td title="${o.descMP}"><span style="background: #eee; color: #333; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: help;">${mpOP}</span></td>
                 
                 <td>${o.localDestino}</td>
                 <td>${o.desc}</td>
-                <td style="text-align:right; color:${(o.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${o.diasLocal || 0}</td>
-                <td>${o.prioridade && o.mesDestino ? `<span class="pill" style="background:#B8862A;">${o.mesDestino}</span>` : '—'}</td>
-                <td>${o.qtd}</td>
+                <td class="num" style="color:${(o.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${o.diasLocal || 0}</td>
+                <td>${o.prioridade && o.mesDestino ? `<span class="pill selo-mes">${o.mesDestino}</span>` : '—'}</td>
+                <td class="num">${o.qtd}</td>
                 <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
                 <td>${o.dataCorteSuposta && formatarDataBR(o.dataCorteSuposta) ? `<span style="color:var(--cor-roxo);" title="Estimado a partir da finalização (${formatarDataBR(o.dataFinalizacao)})">${formatarDataBR(o.dataCorteSuposta)}</span>` : '—'}</td>
             </tr>
@@ -8392,6 +8392,51 @@ function initScrollV(sel) { const e = document.querySelector(sel); if (!e) retur
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('modo-tv')) { document.body.classList.remove('modo-tv'); clearInterval(scInt); abrirAba(null, 'aba-programacao'); } });
 
 // SISTEMA (TEMA, BACKUP, START)
+
+// =========================================================================
+// 📌 COLUNAS FIXAS — nas tabelas largas (Programação, Máquinas de Enfesto e
+// Sequência) as primeiras colunas (marcar / OP) ficam coladas à esquerda
+// quando se rola pro lado. O cabeçalho já era fixo em cima. Só liga em tela
+// larga (>= 1100px); em tela estreita a tabela rola normal. As posições
+// (left) são medidas pela largura real de cada coluna e refeitas sempre que
+// a tabela é redesenhada.
+// =========================================================================
+const CONFIG_COLUNAS_FIXAS = [
+    { tbody: 'listaDespacho', fixas: 5 },       // MOV, SEL, ORDEM, CICLO, OP
+    { tbody: 'listaMaquinaEnfesto', fixas: 4 }, // marcar, ORDEM, CICLO, OP
+    { tbody: 'seqCostListaOPs', fixas: 2 },     // marcar, OP
+];
+function ajustarColunasFixas() {
+    const larga = window.innerWidth >= 1100;
+    CONFIG_COLUNAS_FIXAS.forEach(cfg => {
+        const tbody = $(cfg.tbody); if (!tbody) return;
+        const tabela = tbody.closest('table'); if (!tabela) return;
+        tabela.classList.toggle('tabela-fixa-colunas', larga);
+        const ths = [...tabela.querySelectorAll('thead th')].slice(0, cfg.fixas);
+        const limpar = el => { el.classList.remove('col-fixa', 'col-fixa-ultima'); el.style.removeProperty('--esq'); };
+        if (!larga || tabela.offsetParent === null || ths.length < cfg.fixas) {   // tela estreita ou tabela escondida (largura 0): desliga
+            tabela.querySelectorAll('.col-fixa').forEach(limpar); return;
+        }
+        const esq = []; let acc = 0;
+        ths.forEach(th => { esq.push(acc); acc += th.getBoundingClientRect().width; });
+        const marcar = (el, i) => { el.classList.add('col-fixa'); el.classList.toggle('col-fixa-ultima', i === cfg.fixas - 1); el.style.setProperty('--esq', esq[i] + 'px'); };
+        ths.forEach(marcar);
+        tbody.querySelectorAll('tr').forEach(tr => {
+            if (tr.children.length < cfg.fixas || tr.querySelector('td[colspan]')) return;   // barra de lote / separador não entra
+            for (let i = 0; i < cfg.fixas; i++) marcar(tr.children[i], i);
+        });
+    });
+}
+function iniciarColunasFixas() {
+    let agendado = false;
+    const agendar = () => { if (agendado) return; agendado = true; requestAnimationFrame(() => { agendado = false; try { ajustarColunasFixas(); } catch (e) { console.error('colunas fixas:', e); } }); };
+    CONFIG_COLUNAS_FIXAS.forEach(cfg => { const tb = $(cfg.tbody); if (tb) new MutationObserver(agendar).observe(tb, { childList: true }); });
+    window.addEventListener('resize', agendar);
+    document.addEventListener('click', () => setTimeout(agendar, 30));   // trocar de aba/sub-aba mostra a tabela (antes escondida)
+    agendar();
+}
+
+function toggleDensidadeTabelas() { document.body.classList.toggle('tabelas-densas'); try { localStorage.setItem('tabelasDensas', document.body.classList.contains('tabelas-densas') ? '1' : '0'); } catch (e) {} setTimeout(ajustarColunasFixas, 50); }
 function toggleTema() { document.body.classList.toggle('dark-mode'); localStorage.setItem('temaEscuro', document.body.classList.contains('dark-mode')); }
 function exportarBackup() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(localStorage)], { type: "application/json" })); a.download = `Backup_${new Date().getDate()}.json`; a.click(); }
 
@@ -8817,6 +8862,7 @@ function inicializarEventosUI() {
         wireEvento('verificarEspacoNuvemBtn', 'click', () => { verificarEspacoNuvem(true); });
         wireEvento('ativarModoTV', 'click', () => { ativarModoTV(); });
         wireEvento('toggleTema', 'click', () => { toggleTema(); });
+        wireEvento('toggleDensidade', 'click', () => { toggleDensidadeTabelas(); });
         wireEvento('abrirBuscaGlobal', 'click', () => { abrirBuscaGlobal(); });
         wireEvento('abrirGuiaSistema', 'click', () => { abrirGuiaSistema(); });
         wireEvento('btnLoginAdmin', 'click', () => { abrirModalLoginAdmin(); });
@@ -9083,6 +9129,8 @@ window.onload = function () {
     inicializarEventosUI();
 
     if (localStorage.getItem('temaEscuro') === 'true') document.body.classList.add('dark-mode');
+    try { if (localStorage.getItem('tabelasDensas') === '1') document.body.classList.add('tabelas-densas'); } catch (e) {}
+    iniciarColunasFixas();
 
     // Restringe as abas já de cara (trata como visitante até confirmar login,
     // que é assíncrono) — evita mostrar todas as abas por um instante antes

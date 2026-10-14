@@ -177,6 +177,8 @@
                 <div id="menuMaisOpcoes" class="dropdown-menu">
                     <button id="toggleTema" class="btn" style="background:var(--bg-painel); color:var(--texto-cor);"><i
                             class="fas fa-moon"></i> ALTERNAR TEMA CLARO/ESCURO</button>
+                    <button id="toggleDensidade" class="btn" style="background:var(--bg-painel); color:var(--texto-cor);" title="Linhas mais baixas nas tabelas — cabe mais OP na tela"><i
+                            class="fas fa-table-list"></i> TABELAS COMPACTAS (LIGAR/DESLIGAR)</button>
                     <button id="abrirGuiaSistema" class="btn" style="background:var(--bg-painel); color:var(--texto-cor);"><i
                             class="fas fa-circle-question"></i> GUIA DO SISTEMA</button>
                 </div>
@@ -401,9 +403,9 @@
                             <th>MP</th>
                             <th>LOCAL</th>
                             <th>DESCRIÇÃO</th>
-                            <th title="Há quantos dias a OP está parada no local atual (vem da Sincronização)" style="text-align:right;">DIAS NO LOCAL</th>
+                            <th class="num" title="Há quantos dias a OP está parada no local atual (vem da Sincronização)">DIAS NO LOCAL</th>
                             <th title="Mês destino da OP — só aparece se ela estiver na aba Prioridades">MÊS DESTINO</th>
-                            <th>PEÇAS</th>
+                            <th class="num">PEÇAS</th>
                             <th id="alternarOrdenacaoCorte" class="sortable" title="Inverte a ordem da lista: ▲ = OP mais antiga (data de inclusão) primeiro, ▼ = mais nova primeiro">CORTE <span
                                     id="setaOrdenacao">⇅</span></th>
                             <th title="Estimativa calculada de trás pra frente a partir da data de finalização no estoque (quando ela existe na planilha)">PREV. CORTE</th>
@@ -487,7 +489,7 @@
                 <div class="secao-corpo">
                     <table class="tabela-dados">
                         <thead>
-                            <tr><th><input type="checkbox" id="checkTudoMaquinaEnfesto" title="Marcar/desmarcar todas"></th><th>ORDEM</th><th>CICLO</th><th>OP</th><th>ETAPA</th><th>PRODUTO</th><th>MP</th><th>DESCRIÇÃO</th><th title="Há quantos dias a OP está parada no local atual (vem da Sincronização)" style="text-align:right;">DIAS NO LOCAL</th><th title="Mês destino da OP — só aparece se ela estiver na aba Prioridades">MÊS DESTINO</th><th>PEÇAS</th><th>CORTE</th></tr>
+                            <tr><th><input type="checkbox" id="checkTudoMaquinaEnfesto" title="Marcar/desmarcar todas"></th><th>ORDEM</th><th>CICLO</th><th>OP</th><th>ETAPA</th><th>PRODUTO</th><th>MP</th><th>DESCRIÇÃO</th><th class="num" title="Há quantos dias a OP está parada no local atual (vem da Sincronização)">DIAS NO LOCAL</th><th title="Mês destino da OP — só aparece se ela estiver na aba Prioridades">MÊS DESTINO</th><th class="num">PEÇAS</th><th>CORTE</th></tr>
                         </thead>
                         <tbody id="listaMaquinaEnfesto"></tbody>
                     </table>
@@ -966,8 +968,8 @@
                 <table class="tabela-dados" style="width:100%;">
                     <thead>
                         <tr>
-                            <th><input type="checkbox" id="checkTudoSeqCostura" title="Marcar/desmarcar todas"></th><th>OP</th><th>SITUAÇÃO</th><th>Nº PRIORIDADE</th><th>DATA FINALIZAÇÃO</th><th>MÊS DESTINO</th><th title="Há quantos dias a OP está parada no local atual (coluna Dias Local do POR_OP)" style="text-align:right;">DIAS NO LOCAL</th><th>DESCRIÇÃO</th><th>COR</th>
-                            <th>PEÇAS</th><th>MIN/PEÇA</th><th class="col-tempo-total-seq">TEMPO (MIN)</th><th>PREVISÃO</th><th></th>
+                            <th><input type="checkbox" id="checkTudoSeqCostura" title="Marcar/desmarcar todas"></th><th>OP</th><th>SITUAÇÃO</th><th>Nº PRIORIDADE</th><th>DATA FINALIZAÇÃO</th><th>MÊS DESTINO</th><th class="num" title="Há quantos dias a OP está parada no local atual (coluna Dias Local do POR_OP)">DIAS NO LOCAL</th><th>DESCRIÇÃO</th><th>COR</th>
+                            <th class="num">PEÇAS</th><th class="num">MIN/PEÇA</th><th class="col-tempo-total-seq num">TEMPO (MIN)</th><th>PREVISÃO</th><th></th>
                         </tr>
                     </thead>
                     <tbody id="seqCostListaOPs"></tbody>
