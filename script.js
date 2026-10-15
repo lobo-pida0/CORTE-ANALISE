@@ -2731,6 +2731,87 @@ function renderizarOpsRemovidasSeqCostura() {
 // importação de Fila de Corte de propósito (o usuário quis desacoplar as
 // duas, mesmo lendo o mesmo tipo de arquivo). Captura toda linha com OP,
 // com os campos que o sequenciamento de costura precisa.
+
+// =========================================================================
+// 🧵 BALANÇO DA COSTURA — compara a foto anterior do Seq. Costura com a nova
+// POR OP. Na costura a OP sai AOS POUCOS, então a comparação é por QUANTIDADE
+// (soma de "Qt Local" nos locais de costura), não por "a OP ainda está lá":
+// parcial = a quantidade caiu mas sobrou saldo; total = zerou.
+// =========================================================================
+function nomeLocalBalancoCostura(local) {
+    for (const g of Object.values(GRUPOS_SEQUENCIAMENTO_COSTURA)) {
+        if (g.emAndamento === local) return `${g.rotulo} · em andamento`;
+        if (g.aguardando === local) return `${g.rotulo} · aguardando`;
+    }
+    return local;
+}
+function compararSeqCostura(antes, depois) {
+    const agrupar = lista => {
+        const m = new Map();
+        lista.forEach(i => {
+            const k = chaveOPCostura(i.op, i.ciclo);
+            const r = m.get(k) || { op: i.op, ciclo: i.ciclo || '', ref: i.descRef || i.ref || '', total: 0, locais: {} };
+            r.total += (i.qtd || 0);
+            r.locais[i.local] = (r.locais[i.local] || 0) + (i.qtd || 0);
+            m.set(k, r);
+        });
+        return m;
+    };
+    const A = agrupar(antes), D = agrupar(depois);
+    const res = { novas: [], saidaTotal: [], saidaParcial: [], chegouMais: [], mudouLocal: [] };
+    A.forEach((a, k) => {
+        const d = D.get(k);
+        if (!d || d.total <= 0) { res.saidaTotal.push({ ...a, saiu: a.total }); return; }
+        if (d.total < a.total) { res.saidaParcial.push({ ...d, antes: a.total, saiu: a.total - d.total, pct: Math.round(((a.total - d.total) / a.total) * 100) }); return; }
+        if (d.total > a.total) { res.chegouMais.push({ ...d, antes: a.total, chegou: d.total - a.total }); return; }
+        const mudou = new Set([...Object.keys(a.locais), ...Object.keys(d.locais)]);
+        if ([...mudou].some(l => (a.locais[l] || 0) !== (d.locais[l] || 0))) res.mudouLocal.push({ ...d, de: a.locais });
+    });
+    D.forEach((d, k) => { if (!A.has(k) && d.total > 0) res.novas.push(d); });
+    return res;
+}
+function exibirBalancoSeqCostura(antes, depois) {
+    const r = compararSeqCostura(antes, depois);
+    const n = x => Number(x).toLocaleString('pt-BR');
+    const bloco = (titulo, icone, cor, lista, linha) => lista.length === 0 ? '' : `
+        <div style="border-left:4px solid ${cor}; background:var(--bg-painel); border-radius:8px; padding:12px; margin-bottom:10px;">
+            <div style="font-size:12px; font-weight:700; color:${cor}; margin-bottom:8px;"><i class="fas ${icone}"></i> ${titulo} (${lista.length})</div>
+            <div style="display:flex; flex-direction:column; gap:5px;">${ordenarPrioridadesPrimeiro(lista, o => [o.ciclo, o.op]).map(linha).join('')}</div>
+        </div>`;
+    const selo = o => seloOPBalanco(o.ciclo, o.op, `${o.op}${o.ciclo ? ' · ' + o.ciclo : ''}`, 'background:var(--bg-card); border:1px solid var(--borda-cor); color:var(--texto-cor); display:inline-block;');
+    const ref = o => o.ref ? `<span style="color:var(--texto-secundario); font-size:11px;"> ${String(o.ref).slice(0, 38)}</span>` : '';
+    const barra = pct => `<span style="display:inline-block; width:70px; height:7px; background:var(--borda-cor); border-radius:4px; overflow:hidden; vertical-align:middle;"><span style="display:block; width:${Math.min(100, pct)}%; height:100%; background:var(--cor-sugestao);"></span></span>`;
+    const linhaLocais = loc => Object.entries(loc).filter(([, q]) => q > 0).map(([l, q]) => `${nomeLocalBalancoCostura(l)} ${n(q)}`).join(' + ') || '—';
+    const html =
+        bloco('SAÍRAM PARCIALMENTE — ainda têm saldo', 'fa-circle-half-stroke', 'var(--cor-sugestao)', r.saidaParcial.sort((a, b) => b.pct - a.pct),
+            o => `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">${selo(o)} ${barra(o.pct)} <strong style="font-size:12px;">${o.pct}%</strong> <span style="font-size:12px;">saiu ${n(o.saiu)} de ${n(o.antes)} · <strong>restam ${n(o.total)}</strong></span>${ref(o)}</div>`) +
+        bloco('SAÍRAM POR COMPLETO — sem saldo na costura', 'fa-check-circle', 'var(--cor-despacho)', r.saidaTotal,
+            o => `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">${selo(o)} <span style="font-size:12px;">saíram ${n(o.saiu)} peças</span>${ref(o)}</div>`) +
+        bloco('MAIS PEÇAS CHEGARAM', 'fa-arrow-trend-up', 'var(--cor-alerta)', r.chegouMais,
+            o => `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">${selo(o)} <span style="font-size:12px;">+${n(o.chegou)} (de ${n(o.antes)} para ${n(o.total)})</span>${ref(o)}</div>`) +
+        bloco('MUDARAM DE LOCAL (mesma quantidade)', 'fa-right-left', 'var(--cor-sugestao)', r.mudouLocal,
+            o => `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">${selo(o)} <span style="font-size:12px;">${linhaLocais(o.de)} <i class="fas fa-arrow-right" style="color:var(--texto-secundario);"></i> ${linhaLocais(o.locais)}</span>${ref(o)}</div>`) +
+        bloco('OPs NOVAS NA COSTURA', 'fa-plus-circle', 'var(--cor-despacho)', r.novas,
+            o => `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">${selo(o)} <span style="font-size:12px;">${linhaLocais(o.locais)}</span>${ref(o)}</div>`);
+    const totalPecasSaidas = r.saidaParcial.reduce((t, o) => t + o.saiu, 0) + r.saidaTotal.reduce((t, o) => t + o.saiu, 0);
+    const resumo = `<div style="display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--texto-secundario); margin-bottom:12px;">
+        <span><strong style="color:var(--texto-cor);">${n(totalPecasSaidas)}</strong> peças saíram</span>
+        <span><strong style="color:var(--texto-cor);">${r.saidaParcial.length}</strong> parciais</span>
+        <span><strong style="color:var(--texto-cor);">${r.saidaTotal.length}</strong> completas</span>
+        <span><strong style="color:var(--texto-cor);">${r.novas.length}</strong> novas</span></div>`;
+    $('modalBalancoSincronizacao').innerHTML = `
+        <div class="modal-card" style="width:680px; max-width:92vw; border-top:5px solid var(--cor-sugestao); max-height:85vh;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px; flex-shrink:0;">
+                <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px; font-size:16px;"><i class="fas fa-scissors" style="color:var(--cor-sugestao);"></i> BALANÇO DA COSTURA</h2>
+                <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="overflow-y:auto; flex:1;">
+                ${html ? resumo + html : '<div style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma mudança de quantidade desde a última importação — tudo igual.</div>'}
+            </div>
+        </div>`;
+    $('modalBalancoSincronizacao').style.display = 'flex';
+}
+
 function processarPorOPCostura() {
     if (!exigirAdminOuUsuario('importar a planilha do Seq. Costura')) return;
     if (!exigirBibliotecaExcel()) return;
@@ -2808,9 +2889,11 @@ function processarPorOPCostura() {
             }
             if (!porOPCosturaDetalhado.length) throw new Error("Nenhuma linha nos locais de costura conhecidos foi encontrada (confira se a planilha realmente cobre esses locais).");
 
+            const porOPCosturaAntes = obterPorOPCosturaDetalhado();   // foto anterior — base do balanço
             localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(porOPCosturaDetalhado));
             input.value = '';
             renderizarSequenciamentoCostura();
+            if (porOPCosturaAntes.length) exibirBalancoSeqCostura(porOPCosturaAntes, porOPCosturaDetalhado);
             let msgImportacao = `<i class="fas fa-check-double"></i> ${porOPCosturaDetalhado.length} linhas de costura importadas!`;
             if (puladasPorRemocao > 0) msgImportacao += ` (${puladasPorRemocao} ficaram de fora por já terem sido removidas antes.)`;
             showToast(msgImportacao);
