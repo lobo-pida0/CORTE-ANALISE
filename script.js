@@ -2863,7 +2863,7 @@ function processarPorOPCostura() {
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || row[idxOP] === undefined || row[idxOP] === null || row[idxOP] === '') continue;
                 const local = idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : '';
-                if (ehLocalCosturaEficiencia(local)) {   // foto do balanço: só os locais de costura do KPI (independe dos grupos da sequência)
+                if (ehLocalCosturaEficiencia(local) && normalizarCabecalhoEf(local).startsWith('PNP')) {   // foto do balanço (só PNP, sem SLV): só os locais de costura do KPI (independe dos grupos da sequência)
                     snapshotBalanco.push({ op: String(row[idxOP]).trim(), ciclo: idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '', local: normalizarCabecalhoEf(local), descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '', qtd: idxQtd !== -1 ? (parseFloat(row[idxQtd]) || 0) : 0 });
                 }
                 if (!locaisRelevantes.has(local)) continue;
