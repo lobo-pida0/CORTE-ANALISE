@@ -6575,8 +6575,8 @@ function renderizarSequenciamentoCostura() {
         const separador = (indice > 0 && linhaAnterior.situacaoCostura === 'Em andamento' && op.situacaoCostura === 'Aguardando')
             ? `<tr><td colspan="14" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
             : '';
-        // Enfesto e Etiquetação não têm tempo → não têm previsão → nunca "começam hoje"; ficavam todos apagados. Aqui não apaga.
-        const semTempoNoGrupo = grupo === 'ENFESTO' || grupo === 'ETIQUETACAO';
+        // Sem previsão (Enfesto/Etiquetação, ou OP sem tempo) → nunca "começa hoje"; ficava apagada. Aqui não apaga.
+        const semTempoNoGrupo = grupo === 'ENFESTO' || grupo === 'ETIQUETACAO' || !op.dataInicioProducao;   // sem previsão (OP sem tempo) também não apaga
         return separador + `<tr style="${(comecaHoje || semTempoNoGrupo) ? '' : 'opacity:0.6;'}">
             <td><input type="checkbox" class="check-imprimir-seq" data-id="${chaveLinha}"></td>
             <td>${setasHtml}<strong>${op.op}</strong></td>
