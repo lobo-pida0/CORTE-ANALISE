@@ -1326,3 +1326,21 @@ body.dark-mode .tabela-fixa-colunas tbody tr[style*="107, 76, 122"] td.col-fixa 
 body.dark-mode .tabela-dados td[style*="--cor-alerta"] { color: #FF8A93 !important; }
 /* selos de etapa/setor no escuro: borda sutil pra não sumir no fundo */
 body.dark-mode .selo-etapa, body.dark-mode .selo-setor { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18); }
+
+/* Eficiência da Costura: separação visual entre dias */
+#efCosturaCorpo tr.ef-dia-total td {
+    background: #E8DFC8;
+    color: #2B2418;
+    border-top: 4px solid #B8860B;
+    border-bottom: 1px solid #B8860B;
+    padding-top: 9px; padding-bottom: 9px;
+}
+#efCosturaCorpo tr.ef-dia-total td:first-child { box-shadow: inset 5px 0 0 #B8860B; }
+#efCosturaCorpo tr.ef-dia-total:first-child td { border-top-width: 1px; }
+body.dark-mode #efCosturaCorpo tr.ef-dia-total td {
+    background: #3A3222 !important;
+    color: #F2E6C4 !important;
+    border-top-color: #D4A537;
+    border-bottom-color: #6B5A2E;
+}
+body.dark-mode #efCosturaCorpo tr.ef-dia-total td:first-child { box-shadow: inset 5px 0 0 #D4A537; }

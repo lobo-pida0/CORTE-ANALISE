@@ -3593,7 +3593,7 @@ function renderizarEficienciaCostura() {
         totPecas += dPecas; totMin += dMin; minComPessoas += dMinOk; minDisp += dDisp;
         const dEfic = dDisp ? (dMinOk / dDisp) * 100 : null;
         serieEf[dia].total = dEfic; serieEf[dia].min = dMinOk; serieEf[dia].disp = dDisp;
-        const cab = `<tr style="background:var(--bg-painel); border-top:2px solid var(--borda-cor);">
+        const cab = `<tr class="ef-dia-total">
             <td><strong>${dd}/${m}/${ano}</strong></td>
             <td><strong>TOTAL DO DIA</strong></td>
             <td style="text-align:right; font-weight:700;">${fmt(dPecas)}${dSemTempo ? ' <span style="color:var(--cor-alerta);" title="Há peças sem tempo no relatório">⚠</span>' : ''}</td>
