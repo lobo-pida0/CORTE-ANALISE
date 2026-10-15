@@ -3502,15 +3502,34 @@ function desenharGraficoEficienciaCostura(dias, serieEf) {
         borderColor: CORES_LOCAIS_EF_COSTURA[n] || '#999', backgroundColor: CORES_LOCAIS_EF_COSTURA[n] || '#999',
         tension: 0.25, fill: false, spanGaps: true, borderWidth: 2, pointRadius: 3,
     }));
-    datasets.push({ label: 'TOTAL', data: dias.map(d => arred(serieEf[d].total)), borderColor: '#2B2620', backgroundColor: '#2B2620', tension: 0.25, fill: false, spanGaps: true, borderWidth: 4, pointRadius: 4 });
-    datasets.push({ label: '100%', data: dias.map(() => 100), borderColor: '#999', borderDash: [6, 6], borderWidth: 1, pointRadius: 0, fill: false });
+    const escuro = document.body.classList.contains('dark-mode');
+    const corTotal = escuro ? '#F2EFE9' : '#2B2620';
+    datasets.push({ label: 'TOTAL', data: dias.map(d => arred(serieEf[d].total)), borderColor: corTotal, backgroundColor: corTotal, tension: 0.25, fill: false, spanGaps: true, borderWidth: 4, pointRadius: 4 });
+    datasets.push({ label: '100%', data: dias.map(() => 100), borderColor: '#4C9A6A', borderDash: [8, 5], borderWidth: 2.5, pointRadius: 0, fill: false });
+    // Faixas de fundo: verde acima de 100% (meta batida), vermelho abaixo de 70% (preocupante)
+    const faixasEficiencia = {
+        id: 'faixasEficiencia',
+        beforeDatasetsDraw(chart) {
+            const { ctx, chartArea, scales } = chart; if (!chartArea || !scales.y) return;
+            const y100 = scales.y.getPixelForValue(100), y70 = scales.y.getPixelForValue(70);
+            ctx.save();
+            ctx.fillStyle = 'rgba(76, 154, 106, 0.10)';
+            ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, Math.max(0, y100 - chartArea.top));
+            ctx.fillStyle = 'rgba(193, 68, 78, 0.10)';
+            ctx.fillRect(chartArea.left, y70, chartArea.right - chartArea.left, Math.max(0, chartArea.bottom - y70));
+            ctx.restore();
+        },
+    };
     graficoEfCosturaInstance = new Chart(canvas, {
         type: 'line',
+        plugins: [faixasEficiencia],
         data: { labels: dias.map(formatarChaveDataBR), datasets },
         options: {
             responsive: true, maintainAspectRatio: false,
+            color: escuro ? '#D8D2C5' : '#555',
             plugins: {
                 legend: { display: true },
+                title: { display: true, text: 'Faixa verde: acima de 100%   ·   Faixa vermelha: abaixo de 70%', font: { size: 11, weight: 'normal' }, padding: { bottom: 6 } },
                 datalabels: { display: false },
                 tooltip: { callbacks: { label: c => {
                     if (c.dataset.label === '100%') return null;
@@ -3520,7 +3539,7 @@ function desenharGraficoEficienciaCostura(dias, serieEf) {
                     return `${c.dataset.label}: ${(c.parsed.y ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%${det}`;
                 } } },
             },
-            scales: { y: { beginAtZero: true, title: { display: true, text: 'Eficiência (%)' } } },
+            scales: { y: { beginAtZero: true, suggestedMax: 120, title: { display: true, text: 'Eficiência (%)' } } },
         },
     });
 }
@@ -3795,7 +3814,8 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
     }
 
     const semanasOrdenadas = [...gruposPorSegunda.entries()].sort((a, b) => a[0] - b[0]);
-    return semanasOrdenadas.map(([, dias], idx) => {
+    const agora = new Date(); const segundaDeHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() - ((agora.getDay() + 6) % 7)).getTime();
+    return semanasOrdenadas.map(([chaveSegunda, dias], idx) => {
         let totalSemana = 0, diasComMovimento = 0;
         const opsDaSemana = new Set();
         dias.forEach(dia => {
@@ -3804,6 +3824,7 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
         });
         return {
             rotulo: `Semana ${idx + 1} (${dias[0]}-${dias[dias.length - 1]})`,
+            ehSemanaAtual: chaveSegunda === segundaDeHoje,
             totalSemana,
             totalOPs: opsDaSemana.size,
             diasComMovimento,
@@ -4183,15 +4204,29 @@ function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
         const semanas = todasSemanas.filter(s => s.diasComMovimento > 0); // esconde semana sem dado nenhum, em vez de repetir "0 peças/dia" várias vezes
         const lead = calcularLeadTimeSetor(setor);
         const totalMovimentado = semanas.reduce((acc, s) => acc + s.totalSemana, 0);
+        const corSetor = CORES_SETORES_KPI[setor] || '#999';
+        const maiorMedia = Math.max(1, ...semanas.map(x => x.mediaDiaria));
         const linhasSemanas = semanas.length
-            ? semanas.map(s => `
-            <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px; padding:4px 0; border-bottom:1px solid var(--borda-cor);">
-                <span style="color:var(--texto-secundario);">${s.rotulo}</span>
-                <span style="text-align:right;">
-                    <strong style="font-size:14px;">${s.mediaDiaria.toLocaleString('pt-BR')}<span style="font-size:10px; font-weight:400; color:var(--texto-secundario);"> peças/dia</span></strong>
-                    <span style="font-size:10px; color:var(--texto-secundario); display:block;">${s.totalOPs.toLocaleString('pt-BR')} OP(s) · <b>${s.mediaOPsDia.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</b> OPs/dia</span>
-                </span>
-            </div>`).join('')
+            ? semanas.map((s, i) => {
+                // tendência: média/dia desta semana contra a semana anterior (com dado)
+                const ant = i > 0 ? semanas[i - 1].mediaDiaria : null;
+                const varia = (ant && ant > 0) ? Math.round(((s.mediaDiaria - ant) / ant) * 100) : null;
+                const tendencia = varia === null ? '' : varia === 0
+                    ? `<span style="font-size:10px; color:var(--texto-secundario);" title="Igual à semana anterior">＝ 0%</span>`
+                    : `<span style="font-size:10px; font-weight:700; color:${varia > 0 ? 'var(--cor-despacho)' : 'var(--cor-alerta)'};" title="Média por dia comparada com a semana anterior">${varia > 0 ? '▲' : '▼'} ${Math.abs(varia)}%</span>`;
+                const larg = Math.max(3, Math.round((s.mediaDiaria / maiorMedia) * 100));
+                return `
+            <div style="padding:6px 6px 6px 8px; margin:0 -6px; border-bottom:1px solid var(--borda-cor); ${s.ehSemanaAtual ? `background:rgba(217,164,65,0.14); border-left:3px solid var(--cor-selecao); border-radius:4px;` : 'border-left:3px solid transparent;'}">
+                <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px;">
+                    <span style="color:var(--texto-secundario);">${s.rotulo}${s.ehSemanaAtual ? ' <span class="pill" style="background:var(--cor-selecao); color:#1c1710; padding:1px 7px; font-size:9px; margin-left:4px;">SEMANA ATUAL</span>' : ''}</span>
+                    <span style="text-align:right;">
+                        <strong style="font-size:14px; font-variant-numeric:tabular-nums;">${s.mediaDiaria.toLocaleString('pt-BR')}<span style="font-size:10px; font-weight:400; color:var(--texto-secundario);"> peças/dia</span></strong>
+                        <span style="font-size:10px; color:var(--texto-secundario); display:block; font-variant-numeric:tabular-nums;">${s.totalOPs.toLocaleString('pt-BR')} OP(s) · <b>${s.mediaOPsDia.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</b> OPs/dia ${tendencia}</span>
+                    </span>
+                </div>
+                <div style="height:4px; border-radius:2px; background:var(--borda-cor); margin-top:5px;" title="Média por dia, comparada com a melhor semana do mês"><div style="height:100%; width:${larg}%; border-radius:2px; background:${corSetor};"></div></div>
+            </div>`;
+            }).join('')
             : `<div style="font-size:11px; color:var(--texto-secundario); padding:8px 0;">Sem dados importados pra esse mês ainda.</div>`;
         return `
         <div class="kpi-card" style="flex:1; min-width:240px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px;">
@@ -8437,7 +8472,7 @@ function iniciarColunasFixas() {
 }
 
 function toggleDensidadeTabelas() { document.body.classList.toggle('tabelas-densas'); try { localStorage.setItem('tabelasDensas', document.body.classList.contains('tabelas-densas') ? '1' : '0'); } catch (e) {} setTimeout(ajustarColunasFixas, 50); }
-function toggleTema() { document.body.classList.toggle('dark-mode'); localStorage.setItem('temaEscuro', document.body.classList.contains('dark-mode')); }
+function toggleTema() { document.body.classList.toggle('dark-mode'); localStorage.setItem('temaEscuro', document.body.classList.contains('dark-mode')); try { renderizarEficienciaCostura(); } catch (e) {} }
 function exportarBackup() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(localStorage)], { type: "application/json" })); a.download = `Backup_${new Date().getDate()}.json`; a.click(); }
 
 // Imprime só a lista de "PROGRAMAR LOTE" (tabela filtrada de OPs na

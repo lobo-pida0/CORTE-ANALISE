@@ -1310,3 +1310,19 @@ body.modo-tv #controles-tv {
         display: none !important;
     }
 }
+/* ===== Contraste: selos dourados e linhas coloridas (claro e escuro) ===== */
+/* texto escuro em cima do dourado (branco sobre dourado tinha contraste fraco) */
+.selo-mes, .pill-fifo, .pill[style*="--cor-selecao"] { color: #1c1710 !important; }
+.selo-mes { background: #D9A441; }
+.pill-fifo { background: #D9A441; }
+
+/* modo escuro: o fundo das linhas de aviso (inline, bem fraco) fica mais forte pra aparecer */
+body.dark-mode .tabela-dados tbody tr[style*="193, 68, 78"] { background-color: rgba(193, 68, 78, 0.20) !important; }   /* atraso */
+body.dark-mode .tabela-dados tbody tr[style*="107, 76, 122"] { background-color: rgba(150, 110, 175, 0.20) !important; } /* prioridade / pedido */
+body.dark-mode .tabela-dados tbody tr[style*="184, 134, 42"] { background-color: rgba(217, 164, 65, 0.22) !important; }  /* destacada */
+body.dark-mode .tabela-fixa-colunas tbody tr[style*="193, 68, 78"] td.col-fixa { background: color-mix(in srgb, var(--bg-card) 80%, #C1444E); }
+body.dark-mode .tabela-fixa-colunas tbody tr[style*="107, 76, 122"] td.col-fixa { background: color-mix(in srgb, var(--bg-card) 80%, #966EAF); }
+/* números vermelhos (dias parado/atrasado) ficam mais claros no escuro */
+body.dark-mode .tabela-dados td[style*="--cor-alerta"] { color: #FF8A93 !important; }
+/* selos de etapa/setor no escuro: borda sutil pra não sumir no fundo */
+body.dark-mode .selo-etapa, body.dark-mode .selo-setor { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18); }
