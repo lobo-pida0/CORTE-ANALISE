@@ -2740,10 +2740,8 @@ function renderizarOpsRemovidasSeqCostura() {
 // =========================================================================
 function nomeLocalBalancoCostura(local) {
     for (const g of Object.values(GRUPOS_SEQUENCIAMENTO_COSTURA)) {
-        if (g.emAndamento === local) return `${g.rotulo} · em andamento`;
-        if (g.aguardando === local) return `${g.rotulo} · aguardando`;
-    }
-    return local;
+            }
+    return nomeLocalEfCostura(local);
 }
 function compararSeqCostura(antes, depois) {
     const agrupar = lista => {
@@ -2860,10 +2858,14 @@ function processarPorOPCostura() {
             const removidas = obterOpsRemovidasSeqCostura();
 
             let puladasPorRemocao = 0;
+            const snapshotBalanco = [];
             const porOPCosturaDetalhado = [];
             for (let i = 1; i < rows.length; i++) {
                 const row = rows[i]; if (!row || row[idxOP] === undefined || row[idxOP] === null || row[idxOP] === '') continue;
                 const local = idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : '';
+                if (ehLocalCosturaEficiencia(local)) {   // foto do balanço: só os locais de costura do KPI (independe dos grupos da sequência)
+                    snapshotBalanco.push({ op: String(row[idxOP]).trim(), ciclo: idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '', local: normalizarCabecalhoEf(local), descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '', qtd: idxQtd !== -1 ? (parseFloat(row[idxQtd]) || 0) : 0 });
+                }
                 if (!locaisRelevantes.has(local)) continue;
                 const opId = String(row[idxOP]).trim();
                 const cicloId = idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '';
@@ -2889,11 +2891,13 @@ function processarPorOPCostura() {
             }
             if (!porOPCosturaDetalhado.length) throw new Error("Nenhuma linha nos locais de costura conhecidos foi encontrada (confira se a planilha realmente cobre esses locais).");
 
-            const porOPCosturaAntes = obterPorOPCosturaDetalhado();   // foto anterior — base do balanço
+            let snapshotAntes = [];
+            try { snapshotAntes = JSON.parse(localStorage.getItem('snapshotBalancoCostura') || '[]'); } catch (e2) { /* sem foto anterior */ }
+            try { localStorage.setItem('snapshotBalancoCostura', JSON.stringify(snapshotBalanco)); } catch (e2) { /* ignora */ }
             localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(porOPCosturaDetalhado));
             input.value = '';
             renderizarSequenciamentoCostura();
-            if (porOPCosturaAntes.length) exibirBalancoSeqCostura(porOPCosturaAntes, porOPCosturaDetalhado);
+            if (snapshotAntes.length) exibirBalancoSeqCostura(snapshotAntes, snapshotBalanco);
             let msgImportacao = `<i class="fas fa-check-double"></i> ${porOPCosturaDetalhado.length} linhas de costura importadas!`;
             if (puladasPorRemocao > 0) msgImportacao += ` (${puladasPorRemocao} ficaram de fora por já terem sido removidas antes.)`;
             showToast(msgImportacao);
