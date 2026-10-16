@@ -142,17 +142,59 @@ function registrarAtualizacao(chave) {
 // manda tudo pra nuvem sozinho (espera 4s pra juntar importações seguidas numa só publicação).
 // Desligar: localStorage.setItem('publicacaoAutomatica','0').
 let timerPublicacaoAuto = null, publicandoAuto = false;
+// Indicador no topo: estados 'agendado' | 'publicando' | 'ok' | 'falha' | 'bloqueado'
+function definirStatusNuvem(estado, detalhe) {
+    const el = document.getElementById('indicadorNuvem'); if (!el) return;
+    const mapa = {
+        agendado:   ['fa-clock', 'rgba(255,255,255,0.18)', 'Vai publicar em instantes'],
+        publicando: ['fa-cloud-arrow-up', 'rgba(70,130,200,0.55)', 'Publicando...'],
+        ok:         ['fa-circle-check', 'rgba(46,125,91,0.75)', 'Publicado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })],
+        falha:      ['fa-triangle-exclamation', 'rgba(193,68,78,0.8)', 'Falhou — tente publicar de novo'],
+        bloqueado:  ['fa-hand', 'rgba(184,134,42,0.85)', 'Publicação cancelada'],
+    };
+    const [ic, bg, txt] = mapa[estado] || mapa.agendado;
+    el.style.display = ''; el.style.background = bg;
+    el.innerHTML = `<i class="fas ${ic}"></i> ${txt}`;
+    el.title = detalhe || txt;
+    try { sessionStorage.setItem('ultimoStatusNuvem', JSON.stringify({ estado, detalhe: detalhe || '', hora: Date.now() })); } catch (e) { /* ignora */ }
+}
+// Proteção da publicação automática: se alguma tabela ficou MUITO menor que a da nuvem
+// (ex.: planilha incompleta importada sem querer), pergunta antes de apagar da nuvem.
+async function conferirQuedaAntesDePublicar() {
+    const checagens = [
+        ['ops', 'OPs', () => bancoDadosOPs.length],
+        ['por_op_costura_detalhado', 'linhas do Sequenciamento', () => obterPorOPCosturaDetalhado().length],
+        ['pedidos', 'itens de pedido', () => obterPedidosPendentes().length],
+        ['localizacao_completa', 'localizações', () => obterSequenciaCompletaOPs().length],
+    ];
+    const quedas = [];
+    for (const [tabela, nome, qtdLocal] of checagens) {
+        const local = qtdLocal();
+        if (!local) continue;   // vazio local nem é publicado (a tabela é pulada)
+        try {
+            const { count, error } = await supabaseClient.from(tabela).select('*', { count: 'exact', head: true });
+            if (error || count === null) continue;
+            if (count >= 20 && local < count * 0.7) quedas.push(`• ${nome}: ${count} na nuvem → ${local} aqui (−${Math.round((1 - local / count) * 100)}%)`);
+        } catch (e) { /* sem contagem, segue */ }
+    }
+    if (!quedas.length) return true;
+    return confirm('⚠️ A publicação automática vai REDUZIR bastante o que está na nuvem:\n\n' + quedas.join('\n') + '\n\nSe isso é esperado (muita coisa saiu da planilha), clique OK para publicar.\nSe a planilha importada estava incompleta, clique Cancelar — a nuvem fica como está.');
+}
 function agendarPublicacaoAutomatica() {
     try { if (localStorage.getItem('publicacaoAutomatica') === '0') return; } catch (e) { /* segue */ }
     clearTimeout(timerPublicacaoAuto);
+    const ehAdmin = () => typeof supabaseClient !== 'undefined' && supabaseClient && sessaoAdminAtual && papelUsuarioAtual === 'admin';
+    if (ehAdmin()) definirStatusNuvem('agendado');
     timerPublicacaoAuto = setTimeout(async function tentar() {
-        if (typeof supabaseClient === 'undefined' || !supabaseClient || !sessaoAdminAtual || papelUsuarioAtual !== 'admin') return;
+        if (!ehAdmin()) return;
         if (publicandoAuto) { timerPublicacaoAuto = setTimeout(tentar, 4000); return; }
         publicandoAuto = true;
-        try { await publicarTudoNoSupabase(); } finally { publicandoAuto = false; }
+        try {
+            if (!(await conferirQuedaAntesDePublicar())) { definirStatusNuvem('bloqueado', 'Você cancelou: a nuvem ficou como estava. Use PUBLICAR se quiser enviar mesmo assim.'); return; }
+            await publicarTudoNoSupabase();
+        } finally { publicandoAuto = false; }
     }, 4000);
 }
-
 
 function obterUltimaAtualizacao(chave) {
     const registro = JSON.parse(localStorage.getItem('ultimasAtualizacoes') || '{}');
@@ -746,12 +788,13 @@ async function publicarTudoNoSupabase() {
     if (!sessaoAdminAtual) { showToast('<i class="fas fa-lock"></i> Entre como admin primeiro.', true); return; }
 
     const status = $('statusPublicacaoSupabase');
+    definirStatusNuvem('publicando');
     const pedidosAtuais = obterPedidosPendentes();
     const linhasGrade = gradesParaLinhasSupabase(obterGradesPorOP());
     const listaPrioridade = obterListaPrioridadeClientes();
     const linhasLocalizacao = sequenciaCompletaParaLinhasSupabase(obterSequenciaCompletaOPs());
     const todosOsPedidos = obterTodosPedidos().map(pedidoParaLinhaSupabase);
-    if (!bancoDadosOPs.length && !pedidosAtuais.length && !linhasGrade.length && !linhasLocalizacao.length && !todosOsPedidos.length) { showToast('Nada pra publicar — sincronize primeiro.', true); return; }
+    if (!bancoDadosOPs.length && !pedidosAtuais.length && !linhasGrade.length && !linhasLocalizacao.length && !todosOsPedidos.length) { definirStatusNuvem('bloqueado', 'Nada pra publicar'); showToast('Nada pra publicar — sincronize primeiro.', true); return; }
 
     try {
         let resumo = [];
@@ -832,10 +875,12 @@ async function publicarTudoNoSupabase() {
         // "dados de: há X min"
         await supabaseClient.from('metadados_sistema').upsert({ id: 'global', ultima_publicacao: new Date().toISOString() });
         if (status) status.innerText = `Publicado às ${new Date().toLocaleTimeString('pt-BR')}`;
+        definirStatusNuvem('ok', 'Publicado: ' + resumo.join(' + '));
         showToast(`<i class="fas fa-cloud-upload-alt"></i> Publicado: ${resumo.join(' + ')}!`);
     } catch (e) {
         if (status) status.innerText = 'Falha ao publicar — veja o console de depuração';
         registrarLogDebug('error', ['Falha ao publicar no Supabase: ' + e.message]);
+        definirStatusNuvem('falha', e.message);
         showToast('<i class="fas fa-triangle-exclamation"></i> Falha ao publicar. Veja o console de depuração.', true);
     }
 }
@@ -2786,6 +2831,7 @@ function compararSeqCostura(antes, depois) {
 }
 function exibirBalancoSeqCostura(antes, depois) {
     const r = compararSeqCostura(antes, depois);
+    registrarHistoricoBalancoCostura(r);
     const n = x => Number(x).toLocaleString('pt-BR');
     const bloco = (titulo, icone, cor, lista, linha) => lista.length === 0 ? '' : `
         <div style="border-left:4px solid ${cor}; background:var(--bg-painel); border-radius:8px; padding:12px; margin-bottom:10px;">
@@ -2822,6 +2868,57 @@ function exibirBalancoSeqCostura(antes, depois) {
             <div style="overflow-y:auto; flex:1;">
                 ${html ? resumo + html : '<div style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma mudança de quantidade desde a última importação — tudo igual.</div>'}
             </div>
+        </div>`;
+    $('modalBalancoSincronizacao').style.display = 'flex';
+}
+
+
+function obterHistoricoBalancoCostura() { try { return JSON.parse(localStorage.getItem('historicoBalancoCostura') || '[]'); } catch (e) { return []; } }
+function registrarHistoricoBalancoCostura(r) {
+    const hist = obterHistoricoBalancoCostura();
+    const compacta = (l, extra) => l.slice(0, 150).map(o => ({ op: o.op, ciclo: o.ciclo, ...extra(o) }));
+    const entrada = {
+        em: new Date().toISOString(),
+        pecasSairam: r.saidaParcial.reduce((t, o) => t + o.saiu, 0) + r.saidaTotal.reduce((t, o) => t + o.saiu, 0),
+        parciais: compacta(r.saidaParcial, o => ({ saiu: o.saiu, restam: o.total })),
+        completas: compacta(r.saidaTotal, o => ({ saiu: o.saiu })),
+        novas: r.novas.length, chegaram: r.chegouMais.length,
+    };
+    hist.unshift(entrada);
+    try { localStorage.setItem('historicoBalancoCostura', JSON.stringify(hist.slice(0, 40))); } catch (e) { /* ignora */ }
+}
+function exibirHistoricoBalancoCostura() {
+    const hist = obterHistoricoBalancoCostura();
+    const n = x => Number(x).toLocaleString('pt-BR');
+    const fmtData = iso => { const d = new Date(iso); return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
+    let conteudo;
+    if (!hist.length) conteudo = '<div style="text-align:center; padding:20px; color:var(--texto-secundario);">Ainda não há balanços guardados. Eles passam a ser guardados a cada importação do POR OP (a partir da segunda).</div>';
+    else {
+        // peças que saíram por dia (soma dos balanços do mesmo dia), dos últimos 14 dias com dado
+        const porDia = {};
+        hist.forEach(h => { const d = new Date(h.em).toLocaleDateString('pt-BR'); porDia[d] = (porDia[d] || 0) + h.pecasSairam; });
+        const dias = Object.entries(porDia).slice(0, 14).reverse();
+        const max = Math.max(1, ...dias.map(([, v]) => v));
+        const grafico = `<div style="display:flex; align-items:flex-end; gap:6px; height:110px; padding:6px 4px 0; border-bottom:2px solid var(--borda-cor); margin-bottom:6px;">${dias.map(([d, v]) => `<div title="${d}: ${n(v)} peças" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0;"><span style="font-size:10px; color:var(--texto-secundario);">${n(v)}</span><div style="width:100%; max-width:34px; height:${Math.max(3, Math.round((v / max) * 70))}px; background:var(--cor-sugestao); border-radius:4px 4px 0 0;"></div></div>`).join('')}</div>
+            <div style="display:flex; gap:6px; margin-bottom:14px;">${dias.map(([d]) => `<span style="flex:1; text-align:center; font-size:9px; color:var(--texto-secundario); min-width:0;">${d.slice(0, 5)}</span>`).join('')}</div>`;
+        const linhas = hist.map(h => `
+            <details style="border:1px solid var(--borda-cor); border-radius:8px; padding:8px 12px; margin-bottom:6px; background:var(--bg-painel);">
+                <summary style="cursor:pointer; font-size:12px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;"><strong>${fmtData(h.em)}</strong>
+                    <span><strong>${n(h.pecasSairam)}</strong> peças saíram</span><span>${h.parciais.length} parciais</span><span>${h.completas.length} completas</span><span>${h.novas} novas</span></summary>
+                <div style="font-size:12px; margin-top:8px; line-height:1.9;">
+                    ${h.parciais.length ? `<div><strong>Parciais:</strong> ${h.parciais.map(o => `<span class="pill" style="background:var(--bg-card); border:1px solid var(--borda-cor); color:var(--texto-cor);">${o.op}${o.ciclo ? ' · ' + o.ciclo : ''} −${n(o.saiu)} (restam ${n(o.restam)})</span>`).join(' ')}</div>` : ''}
+                    ${h.completas.length ? `<div><strong>Completas:</strong> ${h.completas.map(o => `<span class="pill pill-ok">${o.op}${o.ciclo ? ' · ' + o.ciclo : ''} (${n(o.saiu)})</span>`).join(' ')}</div>` : ''}
+                </div>
+            </details>`).join('');
+        conteudo = `<div style="font-size:11px; color:var(--texto-secundario); margin-bottom:4px;">Peças que saíram da costura por dia</div>${grafico}${linhas}`;
+    }
+    $('modalBalancoSincronizacao').innerHTML = `
+        <div class="modal-card" style="width:680px; max-width:92vw; border-top:5px solid var(--cor-sugestao); max-height:85vh;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px; flex-shrink:0;">
+                <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px; font-size:16px;"><i class="fas fa-clock-rotate-left" style="color:var(--cor-sugestao);"></i> HISTÓRICO DO BALANÇO DA COSTURA</h2>
+                <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="overflow-y:auto; flex:1;">${conteudo}</div>
         </div>`;
     $('modalBalancoSincronizacao').style.display = 'flex';
 }

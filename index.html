@@ -171,6 +171,7 @@
         <h2 style="margin:0; border-left:4px solid var(--cor-selecao); padding-left:15px;">CORTE PRO <span
                 style="font-weight:300; font-size:14px; margin-left:8px;">| Controle Integrado</span></h2>
         <div style="display:flex; gap:var(--espaco-sm); align-items:center;">
+            <span id="indicadorNuvem" class="somente-admin" title="Estado da publicação na nuvem" style="display:none; font-size:11px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,0.18); color:white; white-space:nowrap;"></span>
             <div class="dropdown-container">
                 <button id="btnMenuMaisOpcoes" class="btn" title="Mais opções" style="background:rgba(255,255,255,0.2); color:white;"><i
                         class="fas fa-ellipsis-vertical"></i></button>
@@ -934,6 +935,10 @@
                     <label class="btn somente-admin tambem-usuario" style="background:var(--cor-primaria); color:white; cursor:pointer; margin:0;" title="Planilha POR_OP — importação própria dessa aba, separada da Fila de Corte"><i class="fas fa-file-import"></i> IMPORTAR PLANILHA
                         <input id="inputPorOPCostura" type="file" accept=".xlsx, .xls" style="display:none;">
                     </label>
+                </div>
+                <div class="campo-meta" style="width:auto;">
+                    <label style="visibility:hidden;">.</label>
+                    <button class="btn" onclick="exibirHistoricoBalancoCostura()" style="background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor); margin:0;" title="Últimos balanços da costura (saídas por dia)"><i class="fas fa-clock-rotate-left"></i> HISTÓRICO DO BALANÇO</button>
                 </div>
                 <div class="campo-meta" style="width:220px;"><label>GRUPO</label>
                     <select id="seqCostGrupo">
