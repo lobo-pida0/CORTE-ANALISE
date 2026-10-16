@@ -7196,6 +7196,25 @@ function baixarImagemFilaCorte() {
     });
 }
 
+// Etapa do sistema → setor do KPI que mede o ritmo dela (Dublagem não tem KPI).
+const SETOR_KPI_DA_ETAPA = { 0: 'PPCP PROGRAMACAO', 1: 'ANALISE DE MEDIDAS', 2: 'CAD', 3: 'PCP PROGRAMACAO-CORTE', 4: 'ALMOX TECIDO', 6: 'ENFESTO', 7: 'CORTE' };
+// Ritmo do setor: média de peças/dia dos últimos N dias ÚTEIS COM MOVIMENTO (até hoje). Precisa de pelo menos 2 dias.
+function calcularRitmoDiarioSetorKPI(setorKpi, maxDias) {
+    const movs = obterMovimentacoesPorSetor()[setorKpi] || {};
+    const porDia = {};
+    const hojeISO = new Date().toISOString().slice(0, 10);
+    Object.values(movs).forEach(m => {
+        if (!m.data) return;
+        const dia = new Date(m.data).toISOString().slice(0, 10);
+        const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
+        if (dow === 0 || dow === 6 || dia > hojeISO) return;
+        porDia[dia] = (porDia[dia] || 0) + (m.qtd || 0);
+    });
+    const dias = Object.keys(porDia).sort().slice(-maxDias);
+    if (dias.length < 2) return null;
+    return { media: dias.reduce((t, d) => t + porDia[d], 0) / dias.length, dias: dias.length, de: dias[0], ate: dias[dias.length - 1] };
+}
+
 // Calcula o ranking de setores por "peso de gargalo" — reaproveitado tanto
 // pelo modal de Ranking de Gargalos quanto pelo painel de visão geral.
 // Aceita o mapa de pendentes-por-referência já calculado (evita reler e
@@ -7209,7 +7228,7 @@ function calcularRankingGargalo(pendentesPorReferenciaParam) {
 
     let setoresStatus = nomesEtapas.map((nome, index) => ({
         id: index, nome: nome, qtdOps: 0, qtdPcs: 0, somaDias: 0, maxDias: 0, score: 0, opsCriticas: 0,
-        opsComPedido: 0, opsComPedidoUrgente: 0
+        opsComPedido: 0, opsComPedidoUrgente: 0, ops: [], pcsFila: 0, ritmo: null, diasFila: null
     }));
 
     bancoDadosOPs.forEach(op => {
@@ -7229,21 +7248,39 @@ function calcularRankingGargalo(pendentesPorReferenciaParam) {
             // OP parada que também está travando um pedido pesa mais no ranking —
             // não é só volume/tempo, tem entrega real de cliente em jogo.
             const pendentesRef = op.referencia ? pendentesPorReferencia.get(op.referencia) : null;
+            let opComPedido = false, opUrgente = false;
             if (pendentesRef && pendentesRef.length) {
                 const pedido = [...pendentesRef].sort(compararUrgenciaPedidos)[0];
                 const especial = pedido.prior !== 99;
                 const dataChegada = pedido.chegada ? new Date(pedido.chegada) : null;
                 const vencido = dataChegada && dataChegada < hoje;
+                opComPedido = true; opUrgente = !!(especial || vencido);
                 stat.opsComPedido++;
                 if (especial || vencido) stat.opsComPedidoUrgente++;
                 pesoOp += especial ? 200 : (vencido ? 100 : 50);
             }
 
             stat.score += pesoOp;
+            const sc = SETOR_KPI_DA_ETAPA[op.etapa];
+            const mult = (sc && SETORES_COM_MULTIPLICADOR_CAMADAS_KPI.has(sc)) ? multiplicadorDeCamadas(op.desc) : 1;   // o KPI de Enfesto/Corte conta por camada
+            stat.pcsFila += pecas * mult;
+            stat.ops.push({ op, pecas, dias: diasParados, comPedido: opComPedido, urgente: opUrgente });
         }
     });
 
-    return setoresStatus.filter(s => s.qtdOps > 0).sort((a, b) => b.score - a.score);
+    // Dias de fila = peças na etapa ÷ ritmo diário do setor (média dos últimos dias úteis do KPI).
+    // Etapa sem ritmo (ex.: Dublagem, ou KPI ainda não importado) fica sem esse número e cai no critério antigo (peso).
+    setoresStatus.forEach(st => {
+        const sc = SETOR_KPI_DA_ETAPA[st.id];
+        const r = sc ? calcularRitmoDiarioSetorKPI(sc, 5) : null;
+        if (r && r.media > 0) { st.ritmo = r; st.diasFila = st.pcsFila / r.media; }
+    });
+    return setoresStatus.filter(s => s.qtdOps > 0).sort((a, b) => {
+        if (a.diasFila !== null && b.diasFila !== null) return b.diasFila - a.diasFila;
+        if (a.diasFila !== null) return -1;
+        if (b.diasFila !== null) return 1;
+        return b.score - a.score;
+    });
 }
 
 // =========================================================================
@@ -7329,7 +7366,7 @@ function renderizarResumoGeral(pendentesPorReferenciaParam, mediaCorteParam) {
     const ranking = calcularRankingGargalo(pendentesPorReferencia);
     if (ranking.length > 0) {
         $('resumo-gargalo-setor').innerText = ranking[0].nome;
-        $('resumo-gargalo-detalhe').innerText = `${ranking[0].qtdOps} OPs · ${ranking[0].maxDias}d no pior caso`;
+        $('resumo-gargalo-detalhe').innerText = ranking[0].diasFila !== null ? `${ranking[0].diasFila.toFixed(1).replace('.', ',')} dias de fila · ${ranking[0].qtdOps} OPs` : `${ranking[0].qtdOps} OPs · ${ranking[0].maxDias}d no pior caso`;
         if ($('cardResumoGargalo')) $('cardResumoGargalo').classList.toggle('destaque-urgente', ranking[0].opsComPedidoUrgente > 0);
     } else {
         $('resumo-gargalo-setor').innerText = '—';
@@ -7358,57 +7395,85 @@ function analisarGargalo() {
         return;
     }
 
-    let maxScoreGlobal = setoresAtivos[0].score;
+    const fmt1 = v => v.toFixed(1).replace('.', ',');
+    const comRitmo = setoresAtivos.filter(s => s.diasFila !== null);
+    const maxDiasFila = comRitmo.length ? Math.max(...comRitmo.map(s => s.diasFila)) : 0;
+    const maxScoreGlobal = Math.max(1, ...setoresAtivos.map(s => s.score));
+    const corDaFila = d => d >= 3 ? 'var(--cor-alerta)' : (d >= 1.5 ? 'var(--cor-selecao)' : 'var(--cor-despacho)');
+
+    // Esteira: as etapas na ordem real, largura proporcional aos dias de fila
+    const porEtapa = [...setoresAtivos].sort((a, b) => a.id - b.id);
+    const esteira = comRitmo.length ? `<div style="display:flex; gap:3px; margin-bottom:14px; align-items:stretch;">${porEtapa.map(st => {
+        const peso = st.diasFila !== null ? Math.max(st.diasFila, 0.25) : 0.25;
+        return `<div title="${st.nome}: ${st.diasFila !== null ? fmt1(st.diasFila) + ' dias de fila' : 'sem ritmo no KPI'}" style="flex:${peso} 1 0; min-width:44px; background:${st.diasFila !== null ? corDaFila(st.diasFila) : 'var(--borda-cor)'}; color:white; border-radius:6px; padding:6px 4px; text-align:center; overflow:hidden;">
+            <div style="font-size:9px; font-weight:700; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${st.nome}</div>
+            <div style="font-size:13px; font-weight:900;">${st.diasFila !== null ? fmt1(st.diasFila) + 'd' : '—'}</div></div>`;
+    }).join('')}</div>` : '';
+
+    const linhaOP = o => {
+        const x = o.op;
+        const prio = opEstaNaAbaPrioridades(x.ciclo, x.id);
+        return `<tr>
+            <td style="white-space:nowrap;">${prio ? '<i class="fas fa-star" style="color:var(--cor-selecao); font-size:10px;" title="Está na aba Prioridades"></i> ' : ''}<strong>${x.id}</strong>${x.ciclo ? ' · ' + x.ciclo : ''}</td>
+            <td style="max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${String(x.desc || '').replace(/"/g, '&quot;')}">${x.desc || ''}</td>
+            <td class="num">${o.pecas.toLocaleString('pt-BR')}</td>
+            <td class="num" style="${o.dias >= 3 ? 'color:var(--cor-alerta); font-weight:700;' : ''}">${o.dias}d</td>
+            <td>${o.comPedido ? `<span class="pill" style="background:${o.urgente ? 'var(--cor-roxo)' : 'var(--cor-sugestao)'}; color:white;" title="Trava um pedido de cliente em aberto">${o.urgente ? 'PEDIDO URGENTE' : 'PEDIDO'}</span>` : ''}</td>
+        </tr>`;
+    };
+    const listaOPs = st => {
+        const ordenadas = [...st.ops].sort((a, b) => (opEstaNaAbaPrioridades(b.op.ciclo, b.op.id) ? 1 : 0) - (opEstaNaAbaPrioridades(a.op.ciclo, a.op.id) ? 1 : 0) || (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || b.dias - a.dias);
+        return `<div style="max-height:260px; overflow-y:auto; margin-top:8px; border-top:1px solid var(--borda-cor);"><table class="tabela-dados" style="width:100%;"><thead><tr><th>OP</th><th>DESCRIÇÃO</th><th style="text-align:right;">PEÇAS</th><th style="text-align:right;">NO LOCAL</th><th></th></tr></thead><tbody>${ordenadas.map(linhaOP).join('')}</tbody></table></div>`;
+    };
 
     let htmlGargalos = setoresAtivos.map((s, index) => {
-        let mediaDias = s.qtdOps > 0 ? (s.somaDias / s.qtdOps).toFixed(1) : 0;
-        let pctBarra = maxScoreGlobal > 0 ? (s.score / maxScoreGlobal) * 100 : 0;
-
-        let corNivel = index === 0 ? 'var(--cor-alerta)' : (index === 1 ? 'var(--cor-selecao)' : 'var(--cor-sugestao)');
-        let iconeNivel = index === 0 ? '<i class="fas fa-exclamation-triangle" style="color:var(--cor-alerta);"></i>' : `#${index + 1}`;
-
+        const mediaDias = s.qtdOps > 0 ? (s.somaDias / s.qtdOps).toFixed(1) : 0;
+        const temFila = s.diasFila !== null;
+        const pctBarra = temFila ? (maxDiasFila > 0 ? (s.diasFila / maxDiasFila) * 100 : 0) : (s.score / maxScoreGlobal) * 100;
+        const corNivel = temFila ? corDaFila(s.diasFila) : 'var(--borda-cor)';
+        const icone = index === 0 && temFila ? '<i class="fas fa-exclamation-triangle" style="color:var(--cor-alerta);"></i>' : `#${index + 1}`;
+        const explicacao = temFila
+            ? `<strong>${s.pcsFila.toLocaleString('pt-BR')}</strong> pçs na etapa${s.pcsFila !== s.qtdPcs ? ' <span title="Enfesto e Corte contam por camada (Paletó/Blazer/Sobretudo 3x, Jaqueta 2x), igual ao KPI">(contando camadas)</span>' : ''} ÷ <strong>${Math.round(s.ritmo.media).toLocaleString('pt-BR')}</strong> pçs/dia <span title="Média dos últimos ${s.ritmo.dias} dias úteis com movimento (${formatarChaveDataBR(s.ritmo.de)} a ${formatarChaveDataBR(s.ritmo.ate)})">(últimos ${s.ritmo.dias} dias úteis)</span>`
+            : `sem ritmo do KPI pra essa etapa — ordenada pelo peso (volume + dias parada + pedido)`;
         return `
-            <div style="background:var(--bg-painel); border:1px solid var(--borda-cor); border-radius:8px; margin-bottom:10px; overflow:hidden; position:relative;">
-                <div class="barra-gargalo-fill" data-pct="${pctBarra}" style="position:absolute; top:0; left:0; height:100%; width:0%; background:${corNivel}; opacity:0.1; z-index:0; transition:width 0.6s ease-out;"></div>
-                <div style="position:relative; z-index:1; padding:12px 15px; display:flex; justify-content:space-between; align-items:center;">
-                    <div style="flex:1;">
-                        <div style="font-size:14px; font-weight:900; color:var(--texto-cor); display:flex; align-items:center; gap:10px;">
-                            <span style="font-size:14px; width:20px; text-align:center; color:var(--texto-secundario);">${iconeNivel}</span>
-                            ${s.nome}
+            <details style="background:var(--bg-painel); border:1px solid var(--borda-cor); border-radius:8px; margin-bottom:10px; overflow:hidden; position:relative;">
+                <summary style="list-style:none; cursor:pointer; position:relative;">
+                    <div class="barra-gargalo-fill" data-pct="${pctBarra}" style="position:absolute; top:0; left:0; height:100%; width:0%; background:${corNivel}; opacity:0.12; z-index:0; transition:width 0.6s ease-out;"></div>
+                    <div style="position:relative; z-index:1; padding:12px 15px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:14px; font-weight:900; color:var(--texto-cor); display:flex; align-items:center; gap:10px;">
+                                <span style="font-size:14px; width:20px; text-align:center; color:var(--texto-secundario);">${icone}</span>${s.nome}
+                            </div>
+                            <div style="font-size:11px; color:var(--texto-secundario); margin-top:4px; margin-left:30px;">
+                                <strong>${s.qtdOps}</strong> OPs • <strong>${s.qtdPcs.toLocaleString('pt-BR')}</strong> pçs • no local: máx <strong style="color:${s.maxDias >= 3 ? 'var(--cor-alerta)' : 'inherit'};">${s.maxDias}d</strong>, média ${mediaDias}d
+                            </div>
+                            <div style="font-size:11px; color:var(--texto-secundario); margin-top:2px; margin-left:30px;">${explicacao}</div>
                         </div>
-                        <div style="font-size:11px; color:var(--texto-secundario); margin-top:4px; margin-left:30px;">
-                            <strong>${s.qtdOps}</strong> OPs • <strong>${s.qtdPcs.toLocaleString('pt-BR')}</strong> pçs
+                        <div style="text-align:right; min-width:110px;">
+                            ${temFila ? `<div style="font-size:22px; font-weight:900; color:${corNivel}; line-height:1;">${fmt1(s.diasFila)}</div><div style="font-size:10px; color:var(--texto-secundario);">dias de fila</div>` : ''}
+                            <div style="margin-top:4px;">${s.opsCriticas > 0 ? `<span style="font-size:9px; background:var(--cor-alerta); color:white; padding:2px 6px; border-radius:4px; font-weight:bold;">${s.opsCriticas} Críticas</span>` : ''}
+                            ${s.opsComPedido > 0 ? `<span style="font-size:9px; background:${s.opsComPedidoUrgente > 0 ? 'var(--cor-roxo)' : 'var(--cor-sugestao)'}; color:white; padding:2px 6px; border-radius:4px; margin-left:3px; font-weight:bold;" title="OPs paradas aqui que também travam um pedido de cliente ainda em aberto"><i class="fas fa-user-clock"></i> ${s.opsComPedido} c/ pedido</span>` : ''}</div>
                         </div>
                     </div>
-                    <div style="text-align:right; min-width:120px;">
-                        <div style="font-size:12px; font-weight:bold; color:${s.maxDias >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">
-                            <i class="fas fa-clock"></i> Max: ${s.maxDias} d
-                        </div>
-                        <div style="font-size:10px; color:var(--texto-secundario); margin-top:2px;">
-                            Média: ${mediaDias} d
-                        </div>
-                        ${s.opsCriticas > 0 ? `<div style="font-size:9px; background:var(--cor-alerta); color:white; padding:2px 6px; border-radius:4px; display:inline-block; margin-top:4px; font-weight:bold;">${s.opsCriticas} Críticas</div>` : ''}
-                        ${s.opsComPedido > 0 ? `<div style="font-size:9px; background:${s.opsComPedidoUrgente > 0 ? 'var(--cor-roxo)' : 'var(--cor-sugestao)'}; color:white; padding:2px 6px; border-radius:4px; display:inline-block; margin-top:4px; margin-left:4px; font-weight:bold;" title="OPs paradas aqui que também estão travando um pedido de cliente ainda em aberto"><i class="fas fa-user-clock"></i> ${s.opsComPedido} c/ pedido</div>` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
+                </summary>
+                <div style="padding:0 15px 12px;">${listaOPs(s)}</div>
+            </details>`;
     }).join('');
 
     let modal = $('modalGargalo');
     modal.innerHTML = `
-        <div class="modal-card" style="width:600px; max-width:90vw; border-top:5px solid var(--cor-alerta); max-height:85vh;">
+        <div class="modal-card" style="width:720px; max-width:92vw; border-top:5px solid var(--cor-alerta); max-height:88vh;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px;">
                 <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px;">
-                    <i class="fas fa-search-location" style="color:var(--cor-alerta);"></i> RANKING DE GARGALOS
+                    <i class="fas fa-search-location" style="color:var(--cor-alerta);"></i> VISÃO DE GARGALO
                 </h2>
                 <button onclick="document.getElementById('modalGargalo').style.display='none'" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
             </div>
-            <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:15px;">
-                Análise do peso de retenção de fluxo (Volume de peças + Tempo de permanência + urgência de pedido
-                vinculado). OPs com mais de 3 dias no mesmo local são consideradas críticas; OPs que travam um pedido
-                pendente pesam mais no ranking, principalmente se o pedido já venceu ou tem prioridade sinalizada.
+            <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:12px;">
+                <strong>Dias de fila</strong> = peças que estão na etapa agora ÷ média de peças/dia que o setor produziu nos últimos dias úteis (do KPI). Quanto maior, mais tempo o setor levaria para esvaziar a fila no ritmo atual.
+                Verde até 1,5 dia · amarelo até 3 · vermelho acima. Clique numa etapa para ver as OPs (as da aba Prioridades e as com pedido urgente aparecem primeiro).
             </div>
+            ${esteira}
             <div style="overflow-y:auto; flex:1; padding-right:5px; margin-bottom:15px;">
                 ${htmlGargalos}
             </div>
