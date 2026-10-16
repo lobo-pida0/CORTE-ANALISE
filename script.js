@@ -3747,6 +3747,7 @@ function desenharGraficoEficienciaCostura(dias, serieEf) {
 
 function renderizarEficienciaCostura() {
     const corpo = $('efCosturaCorpo'); if (!corpo) return;
+    setTimeout(atualizarEficienciaSeqCostura, 0);
     const todos = obterEficienciaCostura();
     const mes = $('seletorMesEfCostura') ? $('seletorMesEfCostura').value : '';
     const minPessoa = parseFloat($('efCosturaMinPessoa') ? $('efCosturaMinPessoa').value : 528) || 528;
@@ -6840,9 +6841,52 @@ function renderizarResumoAtrasosPorGrupo() {
         </tr>`).join('');
 }
 
+
+// Eficiência REAL da costura (a do KPI) mostrada no cantinho da Sequência, de acordo com o grupo escolhido.
+// Camisa e Jaqueta/Gandola/Parka dividem o mesmo local no KPI (PNP COST SUP CAMISA), então mostram a mesma %.
+const LOCAL_EF_COSTURA_DO_GRUPO = {
+    CALCA: 'PNP COST INF CALCA',
+    MALHA: 'PNP COST SUP MALHA',
+    CAMISA: 'PNP COST SUP CAMISA',
+    JAQUETA_GANDOLA_PARKA: 'PNP COST SUP CAMISA',
+};
+// Mesma conta da tabela "Resumo do mês por local" do KPI: minutos produzidos ÷ minutos disponíveis,
+// só nos dias em que as pessoas do local foram informadas.
+function calcularEficienciaMesLocal(local, mes) {
+    const todos = obterEficienciaCostura();
+    const minPessoa = parseFloat($('efCosturaMinPessoa') ? $('efCosturaMinPessoa').value : 528) || 528;
+    let minOk = 0, disp = 0, diasComPessoas = 0, diasComDado = 0;
+    Object.keys(todos).filter(d => d.startsWith(mes)).forEach(dia => {
+        const l = (todos[dia].locais || {})[local]; if (!l) return;
+        diasComDado++;
+        const pessoas = (todos[dia].pessoasLocal || {})[local];
+        if (pessoas > 0) { minOk += l.minutos; disp += pessoas * minPessoa; diasComPessoas++; }
+    });
+    return { efic: disp ? (minOk / disp) * 100 : null, diasComPessoas, diasComDado };
+}
+function atualizarEficienciaSeqCostura() {
+    const el = $('seqCostEfKpi'); if (!el) return;
+    const grupo = $('seqCostGrupo') ? $('seqCostGrupo').value : 'CALCA';
+    const local = LOCAL_EF_COSTURA_DO_GRUPO[grupo];
+    if (!local) { el.innerHTML = ''; return; }
+    const todos = obterEficienciaCostura();
+    const meses = [...new Set(Object.keys(todos).map(d => d.slice(0, 7)))].sort();
+    const mesSel = $('seletorMesEfCostura') && meses.includes($('seletorMesEfCostura').value) ? $('seletorMesEfCostura').value : meses[meses.length - 1];
+    if (!mesSel) { el.innerHTML = ''; return; }
+    const r = calcularEficienciaMesLocal(local, mesSel);
+    const nome = nomeLocalEfCostura(local);
+    const nomeGrupo = { CALCA: 'Calça', MALHA: 'Malha', CAMISA: 'Camisa', JAQUETA_GANDOLA_PARKA: 'Jaqueta' }[grupo];
+    const compartilhado = grupo === 'CAMISA' || grupo === 'JAQUETA_GANDOLA_PARKA';
+    const cor = r.efic === null ? '#cfcfcf' : (r.efic >= 100 ? '#7FD6A0' : (r.efic >= 70 ? '#F0C36A' : '#F08A8A'));
+    const txt = r.efic === null ? 'sem pessoas informadas' : r.efic.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+    const titulo = `Eficiência do mês (${formatarMesLegivelKPI ? formatarMesLegivelKPI(mesSel) : mesSel}) do local ${local}, igual à tabela do KPI da costura: ${r.diasComPessoas} de ${r.diasComDado} dia(s) com pessoas informadas.` + (compartilhado ? ' No KPI, Camisa e Jaqueta são o mesmo local, por isso mostram a mesma %.' : '');
+    el.innerHTML = `<span title="${titulo}" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; background:rgba(255,255,255,0.14); padding:3px 10px; border-radius:999px; white-space:nowrap;"><i class="fas fa-gauge-high"></i> EFICIÊNCIA ${(compartilhado ? 'CAMISA/JAQUETA' : nomeGrupo).toUpperCase()} (MÊS): <strong style="color:${cor}; font-size:13px;">${txt}</strong></span>`;
+}
+
 function renderizarSequenciamentoCostura() {
     if (!$('seqCostListaOPs')) return;
     const grupo = $('seqCostGrupo') ? $('seqCostGrupo').value : 'CALCA';
+    atualizarEficienciaSeqCostura();
     const fila = montarFilaSequenciamentoCostura(grupo);
     const minutosDisponiveis = minutosDisponiveisDiaCostura();
     const filaComResultado = calcularCronogramaCostura(fila, minutosDisponiveis);
