@@ -136,7 +136,23 @@ function registrarAtualizacao(chave) {
     const registro = JSON.parse(localStorage.getItem('ultimasAtualizacoes') || '{}');
     registro[chave] = new Date().toISOString();
     localStorage.setItem('ultimasAtualizacoes', JSON.stringify(registro));
+    agendarPublicacaoAutomatica();
 }
+// ☁️ Publicação automática: depois de qualquer importação/sincronização feita pelo admin,
+// manda tudo pra nuvem sozinho (espera 4s pra juntar importações seguidas numa só publicação).
+// Desligar: localStorage.setItem('publicacaoAutomatica','0').
+let timerPublicacaoAuto = null, publicandoAuto = false;
+function agendarPublicacaoAutomatica() {
+    try { if (localStorage.getItem('publicacaoAutomatica') === '0') return; } catch (e) { /* segue */ }
+    clearTimeout(timerPublicacaoAuto);
+    timerPublicacaoAuto = setTimeout(async function tentar() {
+        if (typeof supabaseClient === 'undefined' || !supabaseClient || !sessaoAdminAtual || papelUsuarioAtual !== 'admin') return;
+        if (publicandoAuto) { timerPublicacaoAuto = setTimeout(tentar, 4000); return; }
+        publicandoAuto = true;
+        try { await publicarTudoNoSupabase(); } finally { publicandoAuto = false; }
+    }, 4000);
+}
+
 
 function obterUltimaAtualizacao(chave) {
     const registro = JSON.parse(localStorage.getItem('ultimasAtualizacoes') || '{}');
@@ -2898,6 +2914,7 @@ function processarPorOPCostura() {
             input.value = '';
             renderizarSequenciamentoCostura();
             if (snapshotAntes.length) exibirBalancoSeqCostura(snapshotAntes, snapshotBalanco);
+            agendarPublicacaoAutomatica();
             let msgImportacao = `<i class="fas fa-check-double"></i> ${porOPCosturaDetalhado.length} linhas de costura importadas!`;
             if (puladasPorRemocao > 0) msgImportacao += ` (${puladasPorRemocao} ficaram de fora por já terem sido removidas antes.)`;
             showToast(msgImportacao);
