@@ -4147,6 +4147,12 @@ function destacarLinhaGrafico(chart, indice, coresOriginais) {
 }
 
 let graficoKPIInstance = null;
+let graficosKPISeparadosInstances = [];
+function alternarModoGraficoKPI() {
+    let atual = 'juntos'; try { atual = localStorage.getItem('kpiGraficoModo') === 'separados' ? 'separados' : 'juntos'; } catch (e) { /* padrão */ }
+    try { localStorage.setItem('kpiGraficoModo', atual === 'separados' ? 'juntos' : 'separados'); } catch (e) { /* ignora */ }
+    renderizarGraficoKPI();
+}
 
 // Formata uma chave "AAAA-MM-DD" (a que usamos pra agrupar por dia no
 // gráfico) direto por texto, sem nunca passar por um objeto Date — evita
@@ -4278,7 +4284,42 @@ function renderizarGraficoKPI() {
     }));
 
     if (graficoKPIInstance) { graficoKPIInstance.destroy(); graficoKPIInstance = null; }
-    if (datasOrdenadas.length) {
+    graficosKPISeparadosInstances.forEach(g => g.destroy()); graficosKPISeparadosInstances = [];
+
+    // Modo do gráfico: 'juntos' (uma linha por setor no mesmo gráfico) ou 'separados' (um gráfico por setor).
+    // Só muda o gráfico — os cards de resumo e a tabela continuam iguais.
+    let modoGrafico = 'juntos'; try { modoGrafico = localStorage.getItem('kpiGraficoModo') === 'separados' ? 'separados' : 'juntos'; } catch (e) { /* padrão */ }
+    const separar = modoGrafico === 'separados' && setoresParaMostrar.length > 1;
+    if ($('txtModoGraficoKPI')) $('txtModoGraficoKPI').textContent = modoGrafico === 'separados' ? 'GRÁFICO JUNTO' : 'GRÁFICOS SEPARADOS';
+    const wrapJunto = $('graficoKPIJuntoWrap'), wrapSep = $('graficosKPISeparados');
+    if (wrapJunto) wrapJunto.style.display = separar ? 'none' : '';
+    if (wrapSep) wrapSep.style.display = separar ? 'grid' : 'none';
+    if (separar && wrapSep) {
+        wrapSep.innerHTML = datasOrdenadas.length ? setoresParaMostrar.map((setor, i) => `
+            <div style="border:1px solid var(--borda-cor); border-top:4px solid ${coresOriginaisGraficoKPI[i]}; border-radius:8px; background:var(--bg-card); padding:8px 10px;">
+                <div style="font-size:12px; font-weight:700; margin-bottom:4px;">${setor}</div>
+                <div style="position:relative; height:200px;"><canvas id="graficoKPISep${i}"></canvas></div>
+            </div>`).join('') : '<div class="tabela-vazia" style="grid-column:1/-1;">Sem dados pra esse setor/mês.</div>';
+        if (datasOrdenadas.length) setoresParaMostrar.forEach((setor, i) => {
+            graficosKPISeparadosInstances.push(new Chart($('graficoKPISep' + i), {
+                type: 'line',
+                data: { labels: datasOrdenadas.map(formatarChaveDataBR), datasets: [{ label: setor, data: datasets[i].data, borderColor: coresOriginaisGraficoKPI[i], backgroundColor: coresOriginaisGraficoKPI[i], tension: 0.25, fill: false }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }, datalabels: { display: false },
+                        tooltip: { callbacks: { label: c => {
+                            const opsDoDia = opsPorSetorPorDia[setor] && opsPorSetorPorDia[setor][datasOrdenadas[c.dataIndex]];
+                            const q = opsDoDia ? opsDoDia.size : 0;
+                            return `${(c.parsed.y || 0).toLocaleString('pt-BR')} peças (${q} OP${q === 1 ? '' : 's'})`;
+                        } } },
+                    },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Peças' } } },
+                },
+            }));
+        });
+    }
+    if (!separar && datasOrdenadas.length) {
         graficoKPIInstance = new Chart(canvas, {
             type: 'line',
             data: { labels: datasOrdenadas.map(formatarChaveDataBR), datasets },
