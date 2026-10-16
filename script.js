@@ -4592,29 +4592,98 @@ function montarPlanilhasMesKPI(anoMes) {
             .forEach(m => { movimentacoes.push([setor, m.op, m.ciclo, formatarChaveDataBR(m.dia), m.qtd]); totalMovs++; });
     });
 
-    return { rotuloMes, resumo, semanas, diaADia, acertividade, movimentacoes, totalMovs };
+    const graficos = { datas: todasDatas, porSetor: {} };
+    SETORES_KPI.forEach(setor => { graficos.porSetor[setor] = { pecas: todasDatas.map(d => (porSetor[setor].dias[d] || { pecas: 0 }).pecas), ops: todasDatas.map(d => porSetor[setor].dias[d] ? porSetor[setor].dias[d].ops.size : 0), temDado: Object.keys(porSetor[setor].dias).length > 0 }; });
+    return { rotuloMes, resumo, semanas, diaADia, acertividade, movimentacoes, totalMovs, graficos };
 }
 
-function baixarMesKPIExcel() {
+// Desenha um gráfico de linhas fora da tela e devolve o PNG (base64) — usado pra embutir no Excel.
+function gerarPngGraficoKPI(titulo, labels, series, largura, altura) {
+    const canvas = document.createElement('canvas');
+    canvas.width = largura; canvas.height = altura;
+    const fundoBranco = { id: 'fundoBrancoKPI', beforeDraw(chart) { const c = chart.ctx; c.save(); c.globalCompositeOperation = 'destination-over'; c.fillStyle = '#FFFFFF'; c.fillRect(0, 0, chart.width, chart.height); c.restore(); } };
+    const g = new Chart(canvas, {
+        type: 'line',
+        plugins: [fundoBranco],
+        data: { labels, datasets: series.map(se => ({ label: se.label, data: se.data, borderColor: se.cor, backgroundColor: se.cor, tension: 0.25, fill: false, borderWidth: 2, pointRadius: 2.5 })) },
+        options: {
+            responsive: false, animation: false, devicePixelRatio: 1, color: '#333',
+            plugins: { legend: { display: series.length > 1 }, title: { display: true, text: titulo, font: { size: 15, weight: 'bold' } }, datalabels: { display: false } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Peças' } } },
+        },
+    });
+    const png = canvas.toDataURL('image/png').split(',')[1];
+    g.destroy();
+    return png;
+}
+
+// Baixa o mês em Excel. Com a biblioteca ExcelJS (carregada da internet) o arquivo já leva uma aba
+// GRÁFICOS com um gráfico de todos os setores e um por setor; sem ela, baixa só as tabelas (como antes).
+async function baixarMesKPIExcel() {
     if (!exigirBibliotecaExcel()) return;
     const anoMes = $('seletorMesKPI') ? $('seletorMesKPI').value : '';
     if (!anoMes) return alert('Escolha um mês no seletor MÊS antes de baixar.');
     const dados = montarPlanilhasMesKPI(anoMes);
     if (!dados.totalMovs) return alert(`Não há nenhuma movimentação importada em ${dados.rotuloMes}.`);
 
+    const abas = [
+        ['RESUMO', dados.resumo, [26, 20, 20, 18, 20, 22, 16, 18, 22], 6],
+        ['SEMANAS', dados.semanas, [26, 26, 16, 16, 18, 16, 20], 1],
+        ['DIA A DIA', dados.diaADia, [12, 14, ...SETORES_KPI.flatMap(() => [14, 8])], 1],
+        ['ACERTIVIDADE', dados.acertividade, [52, 14, 24, 34], 1],
+        ['MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24], 1],
+    ];
+
+    if (typeof ExcelJS !== 'undefined' && typeof Chart !== 'undefined') {
+        try {
+            const wb = new ExcelJS.Workbook();
+            const preencher = (nome, linhas, larguras, linhaCab) => {
+                const ws = wb.addWorksheet(nome);
+                linhas.forEach(l => ws.addRow(l));
+                larguras.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+                const cab = ws.getRow(linhaCab); cab.font = { bold: true }; cab.alignment = { wrapText: true, vertical: 'middle' };
+                cab.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8DFC8' } }; });
+                if (linhaCab > 1) ws.getRow(1).font = { bold: true, size: 13 };
+                return ws;
+            };
+            preencher(...abas[0]);
+            // ---- aba GRÁFICOS
+            const wsG = wb.addWorksheet('GRÁFICOS');
+            const { datas, porSetor } = dados.graficos;
+            const labels = datas.map(formatarChaveDataBR);
+            const setoresComDado = SETORES_KPI.filter(st => porSetor[st].temDado);
+            const COL = 64, LIN = 20;   // pixels de uma coluna/linha padrão do Excel
+            let yAtual = 10;
+            const colocar = (png, x, y, w, h) => { const id = wb.addImage({ base64: png, extension: 'png' }); wsG.addImage(id, { tl: { col: x / COL, row: y / LIN }, ext: { width: w, height: h } }); };
+            wsG.getCell('A1').value = `Gráficos — ${dados.rotuloMes}`; wsG.getCell('A1').font = { bold: true, size: 14 };
+            wsG.getCell('A2').value = 'Peças por dia, de cada setor. Congelado no momento em que o arquivo foi baixado.'; wsG.getCell('A2').font = { italic: true, color: { argb: 'FF666666' } };
+            colocar(gerarPngGraficoKPI(`Todos os setores — ${dados.rotuloMes}`, labels, setoresComDado.map(st => ({ label: st, data: porSetor[st].pecas, cor: CORES_SETORES_KPI[st] || '#999' })), 1260, 400), 8, 4 * LIN, 1260, 400);
+            yAtual = 4 * LIN + 400 + 20;
+            setoresComDado.forEach((st, i) => {
+                const col = i % 2, x = 8 + col * 640, y = yAtual + Math.floor(i / 2) * 310;
+                colocar(gerarPngGraficoKPI(st, labels, [{ label: st, data: porSetor[st].pecas, cor: CORES_SETORES_KPI[st] || '#999' }], 620, 300), x, y, 620, 300);
+            });
+            abas.slice(1).forEach(a => preencher(...a));
+            const buf = await wb.xlsx.writeBuffer();
+            const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+            const link = document.createElement('a'); link.href = url; link.download = `KPI_${anoMes}.xlsx`;
+            document.body.appendChild(link); link.click(); link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            showToast(`<i class="fas fa-file-excel"></i> KPI de ${dados.rotuloMes} baixado com gráficos (${dados.totalMovs.toLocaleString('pt-BR')} movimentações).`);
+            return;
+        } catch (e) {
+            registrarLogDebug('error', ['[KPI] Falha ao gerar Excel com gráficos, baixando sem: ' + (e && e.message)]);
+        }
+    }
+
     const wb = XLSX.utils.book_new();
-    const aba = (nome, linhas, larguras) => {
+    abas.forEach(([nome, linhas, larguras]) => {
         const ws = XLSX.utils.aoa_to_sheet(linhas);
         ws['!cols'] = larguras.map(w => ({ wch: w }));
         XLSX.utils.book_append_sheet(wb, ws, nome);
-    };
-    aba('RESUMO', dados.resumo, [26, 20, 20, 18, 20, 22, 16, 18, 22]);
-    aba('SEMANAS', dados.semanas, [26, 26, 16, 16, 18, 16, 20]);
-    aba('DIA A DIA', dados.diaADia, [12, 14, ...SETORES_KPI.flatMap(() => [14, 8])]);
-    aba('ACERTIVIDADE', dados.acertividade, [52, 14, 24, 34]);
-    aba('MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24]);
+    });
     XLSX.writeFile(wb, `KPI_${anoMes}.xlsx`);
-    showToast(`<i class="fas fa-file-excel"></i> KPI de ${dados.rotuloMes} baixado (${dados.totalMovs.toLocaleString('pt-BR')} movimentações).`);
+    showToast(`<i class="fas fa-file-excel"></i> KPI de ${dados.rotuloMes} baixado SEM gráficos (a biblioteca de gráficos para Excel não carregou — recarregue a página).`);
 }
 
 function salvarOpsDestinoAutomaticas(obj) {
