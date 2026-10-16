@@ -3273,7 +3273,7 @@ function montarFilaSequenciamentoCostura(chaveGrupo) {
 // que não aparecem no arquivo atual mantêm o que já tinha).
 // =========================================================================
 
-const SETORES_KPI = ['ANALISE DE MEDIDAS', 'CAD', 'PCP PROGRAMACAO-CORTE', 'ALMOX TECIDO', 'ENFESTO', 'CORTE', 'ETIQUETACAO'];
+const SETORES_KPI = ['PPCP PROGRAMACAO', 'ANALISE DE MEDIDAS', 'CAD', 'PCP PROGRAMACAO-CORTE', 'ALMOX TECIDO', 'ENFESTO', 'CORTE', 'ETIQUETACAO'];
 
 // O relatório de movimentação traz o local de ORIGEM ("Ds. Localorigem")
 // com o texto exato usado no sistema de origem do usuário — o número
@@ -3294,8 +3294,8 @@ const MAPEAMENTO_LOCAL_DESTINO_KPI = {
     'PNP CORTE': 'CORTE',
     'PNP ENFESTO': 'ENFESTO',
     'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA': 'ETIQUETACAO',
-    'PNP PPCP-PROGRAMACAO CORTE': 'PCP PROGRAMACAO-CORTE',
-    'PNP PPCP - PROGRAMACAO': 'PCP PROGRAMACAO-CORTE',
+    'PNP PPCP-PROGRAMACAO CORTE': 'PCP PROGRAMACAO-CORTE',   // o que vem DEPOIS do CAD
+    'PNP PPCP - PROGRAMACAO': 'PPCP PROGRAMACAO',            // o INICIAL, antes da Análise de Medidas — setor separado do de cima
 };
 
 // Algumas peças passam mais de uma vez pelo Corte/Enfesto de verdade
@@ -4121,7 +4121,7 @@ function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
 // Cor fixa por setor, sempre a mesma em qualquer gráfico — ajuda a
 // reconhecer de relance qual linha é qual quando comparando os 7 juntos.
 const CORES_SETORES_KPI = {
-    'ANALISE DE MEDIDAS': '#B8862A', 'CAD': '#3D6B87', 'PCP PROGRAMACAO-CORTE': '#7A4B8C',
+    'PPCP PROGRAMACAO': '#5E8C8A', 'ANALISE DE MEDIDAS': '#B8862A', 'CAD': '#3D6B87', 'PCP PROGRAMACAO-CORTE': '#7A4B8C',
     'ALMOX TECIDO': '#4C8C4A', 'ENFESTO': '#C0504D', 'CORTE': '#4472C4', 'ETIQUETACAO': '#ED7D31',
 };
 
