@@ -861,8 +861,12 @@
                     </div>
                 </div>
                 <div style="margin-top:24px; border-top:1px solid var(--borda-cor); padding-top:16px;">
-                    <div style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase; margin-bottom:10px;">Peças por dia (tabela)</div>
-                    <div style="overflow-x:auto; max-height:400px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                        <div style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">Peças por dia (tabela)</div>
+                        <button id="btnModoTabelaKPI" class="btn" onclick="alternarModoTabelaKPI()" style="background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor);" title="Alterna entre uma tabela com todos os setores lado a lado e uma tabela para cada setor"><i class="fas fa-table-columns"></i> <span id="txtModoTabelaKPI">VER SEPARADOS</span></button>
+                    </div>
+                    <div id="tabelaKPISeparadas" style="display:none; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px;"></div>
+                    <div id="tabelaKPIJuntaWrap" style="overflow-x:auto; max-height:400px;">
                         <table class="tabela-dados" style="width:100%;">
                             <thead>
                                 <tr id="tabelaKPICabecalho"></tr>

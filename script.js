@@ -4208,10 +4208,44 @@ function popularSeletorMesKPI() {
 // Mesmo dado do gráfico principal (peças por setor, dia a dia), só que em
 // tabela — pra quem quer ver o número exato de cada dia sem precisar
 // passar o mouse ponto a ponto no gráfico, ou copiar pra outro lugar.
+function alternarModoTabelaKPI() {
+    let atual = 'juntos'; try { atual = localStorage.getItem('kpiTabelaModo') === 'separados' ? 'separados' : 'juntos'; } catch (e) { /* padrão */ }
+    try { localStorage.setItem('kpiTabelaModo', atual === 'separados' ? 'juntos' : 'separados'); } catch (e) { /* ignora */ }
+    renderizarGraficoKPI();
+}
 function renderizarTabelaKPI(setoresParaMostrar, datasOrdenadas, totalPorSetorPorDia, opsPorSetorPorDia) {
     const cabecalho = $('tabelaKPICabecalho');
     const corpo = $('tabelaKPICorpo');
     if (!cabecalho || !corpo) return;
+
+    // Modo da tabela: 'juntos' (setores lado a lado) ou 'separados' (uma tabela por setor)
+    let modo = 'juntos'; try { modo = localStorage.getItem('kpiTabelaModo') === 'separados' ? 'separados' : 'juntos'; } catch (e) { /* padrão */ }
+    const wrapJunta = $('tabelaKPIJuntaWrap'), wrapSep = $('tabelaKPISeparadas');
+    if ($('txtModoTabelaKPI')) $('txtModoTabelaKPI').textContent = modo === 'separados' ? 'VER JUNTOS' : 'VER SEPARADOS';
+    if (wrapJunta) wrapJunta.style.display = modo === 'separados' ? 'none' : '';
+    if (wrapSep) wrapSep.style.display = modo === 'separados' ? 'grid' : 'none';
+    if (modo === 'separados' && wrapSep) {
+        if (!datasOrdenadas.length) { wrapSep.innerHTML = '<div class="tabela-vazia" style="grid-column:1/-1;">Sem dados pra esse setor/mês.</div>'; return; }
+        wrapSep.innerHTML = setoresParaMostrar.map(setor => {
+            let totPecas = 0, totOPs = 0;
+            const linhas = datasOrdenadas.map(dia => {
+                const pecas = totalPorSetorPorDia[setor][dia] || 0;
+                const ops = opsPorSetorPorDia[setor][dia] ? opsPorSetorPorDia[setor][dia].size : 0;
+                if (!pecas) return '';
+                totPecas += pecas; totOPs += ops;
+                return `<tr><td><strong>${formatarChaveDataBR(dia)}</strong></td><td style="text-align:right;">${pecas.toLocaleString('pt-BR')}</td><td style="text-align:right; color:var(--texto-secundario);">${ops}</td></tr>`;
+            }).join('');
+            const cor = (typeof CORES_SETORES_KPI !== 'undefined' && CORES_SETORES_KPI[setor]) || '#999';
+            return `<div style="border:1px solid var(--borda-cor); border-top:4px solid ${cor}; border-radius:8px; overflow:hidden; background:var(--bg-card);">
+                <div style="padding:8px 12px; font-size:12px; font-weight:700; background:var(--bg-painel);">${setor}</div>
+                <div style="max-height:320px; overflow-y:auto;"><table class="tabela-dados" style="width:100%;">
+                    <thead><tr><th>DATA</th><th style="text-align:right;">PEÇAS</th><th style="text-align:right;">OPs</th></tr></thead>
+                    <tbody>${linhas || '<tr><td colspan="3" class="tabela-vazia">Sem movimento no mês.</td></tr>'}</tbody>
+                    ${totPecas ? `<tfoot><tr style="font-weight:700; background:var(--bg-painel);"><td>TOTAL</td><td style="text-align:right;">${totPecas.toLocaleString('pt-BR')}</td><td style="text-align:right;">${totOPs}</td></tr></tfoot>` : ''}
+                </table></div></div>`;
+        }).join('');
+        return;
+    }
 
     if (!datasOrdenadas.length) {
         cabecalho.innerHTML = '<th>DATA</th>';
