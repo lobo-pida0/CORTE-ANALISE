@@ -110,6 +110,8 @@
 
     <div id="modalFeriados" class="modal-overlay"></div>
 
+    <div id="modalOficinasKPI" class="modal-overlay"></div>
+
     <div id="modalMaquinasEnfesto" class="modal-overlay"></div>
 
     <div id="modalBalancoUrgencias" class="modal-overlay"></div>
@@ -844,7 +846,10 @@
             </div>
             <div class="secao-corpo" style="padding:20px;">
                 <div id="statsKPI" style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px;"></div>
-                <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+                <div id="avisoVisaoExternoKPI" style="display:none; margin-bottom:10px; padding:10px 14px; border-radius:8px; background:rgba(193,68,78,.12); border:1px solid var(--cor-alerta); font-size:12px; color:var(--texto-cor);"><i class="fas fa-industry"></i> <strong>Mostrando SÓ o que é de externo (oficinas).</strong> Esses números não entram no KPI normal da fábrica. Clique em EXTERNO de novo para voltar.</div>
+                <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                    <button id="btnOficinasKPI" class="btn somente-admin" onclick="abrirModalOficinasKPI()" style="background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor);" title="Veja os textos da coluna de oficina do relatório e escolha quais são externos"><i class="fas fa-list-check"></i> OFICINAS</button>
+                    <button id="btnVisaoExternoKPI" class="btn" onclick="alternarVisaoExternoKPI()" style="background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor);" title="Mostra SÓ as movimentações de oficinas externas. O KPI normal não conta o externo."><i class="fas fa-industry"></i> EXTERNO</button>
                     <button id="btnModoGraficoKPI" class="btn" onclick="alternarModoGraficoKPI()" style="background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor);" title="Alterna entre um gráfico com todos os setores juntos e um gráfico para cada setor (os cards de resumo continuam)"><i class="fas fa-table-cells-large"></i> <span id="txtModoGraficoKPI">GRÁFICOS SEPARADOS</span></button>
                 </div>
                 <div id="graficoKPIJuntoWrap" style="position:relative; height:400px;">

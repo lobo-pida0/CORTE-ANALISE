@@ -866,7 +866,7 @@ async function publicarTudoNoSupabase() {
         registrarLogDebug('log', [`[NUVEM] Preparando publicação de movimentacoes_kpi: ${linhasMovimentacoesKPI.length} linha(s) encontrada(s) localmente.`]);
         if (linhasMovimentacoesKPI.length) {
             if (status) status.innerText = `Publicando ${linhasMovimentacoesKPI.length} movimentações de KPI...`;
-            const r = await publicarSemApagar('movimentacoes_kpi', linhasMovimentacoesKPI);
+            const r = await publicarMovimentacoesKPILinhas(linhasMovimentacoesKPI);
             resumo.push(`${r.publicados} movimentações de KPI`);
         } else {
             registrarLogDebug('log', ['[NUVEM] "movimentacoes_kpi": pulado, não havia nenhuma movimentação salva localmente no momento de publicar.']);
@@ -1536,7 +1536,7 @@ function mostrarTooltipOP(e, id) {
 function esconderTooltipOP() { const tt = $('tooltip-op'); if (!tt) return; tt.style.opacity = '0'; tt.style.display = 'none'; }
 
 // MODAIS E MENUS
-function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; $('modalBalancoUrgencias').style.display = 'none'; $('modalMaquinasEnfesto').style.display = 'none'; }
+function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; $('modalBalancoUrgencias').style.display = 'none'; $('modalMaquinasEnfesto').style.display = 'none'; if ($('modalOficinasKPI')) $('modalOficinasKPI').style.display = 'none'; }
 
 // =========================================================================
 // 👑 PRIORIDADE DE CLIENTES — lista editável, do mais pro menos prioritário.
@@ -3316,8 +3316,110 @@ function multiplicadorDeCamadas(descricao) {
     return encontrado ? encontrado.vezes : 1;
 }
 
-function obterMovimentacoesPorSetor() {
+function obterMovimentacoesPorSetorBruto() {
     try { return JSON.parse(localStorage.getItem('movimentacoesPorSetorKPI') || '{}'); } catch (e) { return {}; }
+}
+
+// =========================================================================
+// 🏭 EXTERNO x FÁBRICA — o relatório traz a coluna "Cod. Loc Prod Cost" (coluna N): "INT" (ou vazia) = a OP
+// é da fábrica; qualquer outro texto é a oficina onde a OP está (digitado à mão, com variações e erros). O texto
+// vai guardado em cada movimentação (campo `of`, normalizado). A classificação é feita na hora de mostrar —
+// então mudar a regra vale pros dados já importados, sem reimportar:
+//   1) override manual do usuário (modal OFICINAS) manda; 2) senão, texto com "CORTE" = externo; 3) senão, fábrica.
+// A visão normal do KPI NÃO conta o externo; o botão EXTERNO mostra SÓ o externo. Importar, limpar, publicar
+// e listar meses usam sempre o conjunto completo (Bruto).
+// =========================================================================
+function normalizarOficinaKPI(t) {
+    return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+}
+function obterClassificacaoOficinasKPI() {
+    try { return JSON.parse(localStorage.getItem('oficinasKPIClassificacao') || '{}'); } catch (e) { return {}; }
+}
+function oficinaEhExternaKPI(of, classif) {
+    const t = normalizarOficinaKPI(of);
+    if (!t || t === 'INT') return false;
+    const c = classif || obterClassificacaoOficinasKPI();
+    if (c[t]) return c[t] === 'EXT';
+    return t.includes('CORTE');
+}
+function modoVisaoKPI() {
+    try { return localStorage.getItem('kpiVisaoExterno') === '1' ? 'externo' : 'fabrica'; } catch (e) { return 'fabrica'; }
+}
+// modo: 'fabrica' (sem externos), 'externo' (só externos). Sem argumento, segue o botão EXTERNO da tela.
+function obterMovimentacoesPorSetor(modo) {
+    modo = modo || modoVisaoKPI();
+    const todas = obterMovimentacoesPorSetorBruto();
+    const classif = obterClassificacaoOficinasKPI();
+    const querExterno = modo === 'externo';
+    const resultado = {};
+    Object.entries(todas).forEach(([setor, porOP]) => {
+        const filtrado = {};
+        Object.entries(porOP).forEach(([chave, m]) => {
+            if (oficinaEhExternaKPI(m.of, classif) === querExterno) filtrado[chave] = m;
+        });
+        if (Object.keys(filtrado).length) resultado[setor] = filtrado;
+    });
+    return resultado;
+}
+function alternarVisaoExternoKPI() {
+    try { localStorage.setItem('kpiVisaoExterno', modoVisaoKPI() === 'externo' ? '0' : '1'); } catch (e) { /* ignora */ }
+    renderizarGraficoKPI();
+}
+function atualizarBotaoVisaoExternoKPI() {
+    const ativo = modoVisaoKPI() === 'externo';
+    const b = $('btnVisaoExternoKPI');
+    if (b) {
+        b.style.background = ativo ? 'var(--cor-alerta)' : 'var(--bg-card)';
+        b.style.color = ativo ? 'white' : 'var(--texto-cor)';
+        b.innerHTML = ativo ? '<i class="fas fa-industry"></i> EXTERNO (ligado)' : '<i class="fas fa-industry"></i> EXTERNO';
+    }
+    const av = $('avisoVisaoExternoKPI');
+    if (av) av.style.display = ativo ? 'block' : 'none';
+}
+// Lista de textos da coluna N já vistos nos dados + como cada um é tratado hoje; o usuário pode forçar Externo/Fábrica.
+function listarOficinasKPI() {
+    const todas = obterMovimentacoesPorSetorBruto();
+    const classif = obterClassificacaoOficinasKPI();
+    const mapa = {};
+    Object.values(todas).forEach(porOP => Object.values(porOP).forEach(m => {
+        const t = normalizarOficinaKPI(m.of); if (!t || t === 'INT') return;
+        const o = mapa[t] = mapa[t] || { texto: t, movs: 0, pecas: 0, ops: new Set() };
+        o.movs++; o.pecas += m.qtd || 0; o.ops.add(m.op);
+    }));
+    return Object.values(mapa).map(o => ({ texto: o.texto, movs: o.movs, pecas: o.pecas, ops: o.ops.size, override: classif[o.texto] || '', externo: oficinaEhExternaKPI(o.texto, classif) })).sort((a, b) => b.pecas - a.pecas);
+}
+let _oficinasKPIListadas = [];
+function abrirModalOficinasKPI() {
+    _oficinasKPIListadas = listarOficinasKPI();
+    const linhas = _oficinasKPIListadas.length ? _oficinasKPIListadas.map((o, i) => `<tr>
+        <td><strong>${o.texto.replace(/</g, '&lt;')}</strong></td>
+        <td style="text-align:right;">${o.ops.toLocaleString('pt-BR')}</td>
+        <td style="text-align:right;">${o.pecas.toLocaleString('pt-BR')}</td>
+        <td><select onchange="definirClassificacaoOficinaKPI(${i}, this.value)">
+            <option value="" ${!o.override ? 'selected' : ''}>Automático (${o.texto.includes('CORTE') ? 'tem "CORTE": externo' : 'sem "CORTE": fábrica'})</option>
+            <option value="EXT" ${o.override === 'EXT' ? 'selected' : ''}>Externo</option>
+            <option value="INT" ${o.override === 'INT' ? 'selected' : ''}>Fábrica</option>
+        </select></td>
+        <td style="font-weight:700; color:${o.externo ? 'var(--cor-alerta)' : 'var(--texto-secundario)'};">${o.externo ? 'EXTERNO' : 'fábrica'}</td></tr>`).join('')
+        : '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma oficina nos dados ainda. Importe o relatório de movimentação (ele precisa ter a coluna "Cod. Loc Prod Cost"). Meses importados antes dessa função precisam ser reimportados.</td></tr>';
+    const modal = $('modalOficinasKPI');
+    modal.innerHTML = `<div class="modal-card" style="width:760px; max-width:94vw; border-top:5px solid var(--cor-alerta); max-height:88vh;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px;">
+            <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px;"><i class="fas fa-industry" style="color:var(--cor-alerta);"></i> OFICINAS (EXTERNO)</h2>
+            <button onclick="document.getElementById('modalOficinasKPI').style.display='none'" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:12px;">Textos da coluna "Cod. Loc Prod Cost" do relatório. <strong>INT</strong> ou vazio = fábrica. Todo texto com <strong>CORTE</strong> é tratado como externo automaticamente; para os outros, escolha <strong>Externo</strong> na lista (vale também pros dados já importados). Só o que está como Externo sai do KPI normal e aparece no botão EXTERNO.</div>
+        <div style="overflow-y:auto; flex:1; margin-bottom:15px;"><table class="tabela-dados" style="width:100%;"><thead><tr><th>TEXTO NO RELATÓRIO</th><th style="text-align:right;">OPs</th><th style="text-align:right;">PEÇAS</th><th>COMO TRATAR</th><th>HOJE</th></tr></thead><tbody>${linhas}</tbody></table></div>
+        <div style="display:flex; justify-content:flex-end; border-top:1px solid var(--borda-cor); padding-top:15px;"><button onclick="document.getElementById('modalOficinasKPI').style.display='none'" class="btn" style="background:var(--borda-cor); color:var(--texto-cor);">FECHAR</button></div></div>`;
+    modal.style.display = 'flex';
+}
+function definirClassificacaoOficinaKPI(i, valor) {
+    const o = _oficinasKPIListadas[i]; if (!o) return;
+    const c = obterClassificacaoOficinasKPI();
+    if (valor) c[o.texto] = valor; else delete c[o.texto];
+    try { localStorage.setItem('oficinasKPIClassificacao', JSON.stringify(c)); } catch (e) { /* ignora */ }
+    renderizarGraficoKPI();
+    abrirModalOficinasKPI();
 }
 
 // Remove movimentações mais antigas que X dias — usado antes de salvar,
@@ -3376,7 +3478,7 @@ function salvarMovimentacoesPorSetor(obj) {
 // corrigido junto).
 function linhaSupabaseDeMovimentoKPI(setor, m) {
     const dataSlice = m.data ? new Date(m.data).toISOString().slice(0, 10) : 'semdata';
-    return { id: `${setor}|${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, atualizado_em: new Date().toISOString() };
+    return { id: `${setor}|${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, oficina: m.of || '', atualizado_em: new Date().toISOString() };
 }
 
 // Depois de importar um relatório de movimentação, publica na nuvem SÓ o que
@@ -3386,6 +3488,19 @@ function linhaSupabaseDeMovimentoKPI(setor, m) {
 // "dados de: há X min" do visitante (esse carimbo é da publicação GERAL; marcar
 // aqui faria parecer que as OPs também foram atualizadas). Falha na nuvem NÃO
 // desfaz a importação local — só avisa, e o PUBLICAR do menu Sistema continua valendo.
+// Publica movimentações do KPI. Se a nuvem ainda não tem a coluna "oficina" (SQL 29), publica sem ela
+// (o KPI continua funcionando, só o externo não vai junto pra nuvem) em vez de travar a publicação inteira.
+async function publicarMovimentacoesKPILinhas(linhas) {
+    try {
+        return await publicarSemApagar('movimentacoes_kpi', linhas);
+    } catch (e) {
+        if (!/oficina/i.test(String(e && e.message || e))) throw e;
+        registrarLogDebug('error', ['[NUVEM] Falta rodar o SQL 29 (coluna "oficina" em movimentacoes_kpi): KPI publicado SEM a informação de externo.']);
+        showToast('<i class="fas fa-triangle-exclamation"></i> A nuvem ainda não tem a coluna "oficina" (SQL 29): o KPI foi publicado, mas a informação de externo ficou só neste navegador.', true, 8000);
+        return await publicarSemApagar('movimentacoes_kpi', linhas.map(({ oficina, ...resto }) => resto));
+    }
+}
+
 async function publicarMovimentacoesImportadasNaNuvem(movimentos) {
     if (!movimentos || !movimentos.length) return;
     if (!supabaseClient || !sessaoAdminAtual) {
@@ -3393,7 +3508,7 @@ async function publicarMovimentacoesImportadasNaNuvem(movimentos) {
         return;
     }
     try {
-        const r = await publicarSemApagar('movimentacoes_kpi', movimentos.map(({ setor, m }) => linhaSupabaseDeMovimentoKPI(setor, m)));
+        const r = await publicarMovimentacoesKPILinhas(movimentos.map(({ setor, m }) => linhaSupabaseDeMovimentoKPI(setor, m)));
         showToast(`<i class="fas fa-cloud-upload-alt"></i> KPI publicado na nuvem (${r.publicados.toLocaleString('pt-BR')} movimentações).`, false, 4000);
     } catch (e) {
         registrarLogDebug('error', ['Falha ao publicar o KPI importado: ' + e.message]);
@@ -3402,7 +3517,7 @@ async function publicarMovimentacoesImportadasNaNuvem(movimentos) {
 }
 
 function movimentacoesParaLinhasSupabase() {
-    const todas = obterMovimentacoesPorSetor();
+    const todas = obterMovimentacoesPorSetorBruto();
     const linhas = [];
     Object.entries(todas).forEach(([setor, porOP]) => {
         Object.values(porOP).forEach(m => {
@@ -3420,6 +3535,7 @@ function linhasSupabaseParaMovimentacoes(linhas) {
         const dataSlice = l.data ? String(l.data).slice(0, 10) : 'semdata';
         const chaveMovimento = `${l.op}|${dataSlice}`;
         todas[l.setor][chaveMovimento] = { op: l.op, ciclo: l.ciclo || '', data: l.data, qtd: l.qtd || 0 };
+        if (l.oficina) todas[l.setor][chaveMovimento].of = normalizarOficinaKPI(l.oficina);
     });
     return todas;
 }
@@ -3452,7 +3568,7 @@ function limparMovimentacoesKPI() {
     const anoMes = $('seletorMesKPI') ? $('seletorMesKPI').value : '';
     if (!anoMes) return alert('Escolha no seletor MÊS qual mês você quer limpar.');
 
-    const todas = obterMovimentacoesPorSetor();
+    const todas = obterMovimentacoesPorSetorBruto();
     const setores = setorSelecionado === 'TODOS' ? Object.keys(todas) : [setorSelecionado];
     const doMes = m => m.data && new Date(m.data).toISOString().slice(0, 7) === anoMes;
 
@@ -4063,6 +4179,7 @@ function processarMovimentacaoSetor() {
             const idxQtd = cabecalho.findIndex(c => c === 'QT. MOVIMENTO');
             const idxLocalOrigem = cabecalho.findIndex(c => c === 'DS. LOCALORIGEM');
             const idxLocalDestino = cabecalho.findIndex(c => c === 'DS. LOCALDESTINO');
+            const idxOficina = cabecalho.findIndex(c => c.replace(/\./g, '').replace(/\s+/g, ' ') === 'COD LOC PROD COST');   // coluna N: INT ou o nome da oficina (externo)
             // Não sabemos o nome exato dessa coluna nessa planilha — busca
             // tolerante por qualquer cabeçalho que tenha "DESCRI" nele.
             const idxDescricao = cabecalho.findIndex(c => c.includes('DESCRI') || (c.includes('PRODUTO') && c.startsWith('DS')));
@@ -4083,9 +4200,11 @@ function processarMovimentacaoSetor() {
             // origem na esteira (voltou pra trás, é retrabalho/correção,
             // não produção nova).
             const movimentosImportados = [];   // o que ESTA importação gravou — vai pra nuvem logo depois
-            const todas = obterMovimentacoesPorSetor();
+            const todas = obterMovimentacoesPorSetorBruto();
             const setoresEncontrados = new Set();
-            let linhasLidas = 0, linhasComLocalDesconhecido = 0, linhasSemDestino = 0, linhasRetrocedendo = 0, linhasComMultiplicador = 0;
+            let linhasLidas = 0, linhasComLocalDesconhecido = 0, linhasSemDestino = 0, linhasRetrocedendo = 0, linhasComMultiplicador = 0, linhasExternas = 0;
+            const oficinasNaoClassificadas = new Set();
+            const classifImport = obterClassificacaoOficinasKPI();
 
             for (let i = 1; i < linhas.length; i++) {
                 const campos = linhas[i].split(';');
@@ -4128,6 +4247,8 @@ function processarMovimentacaoSetor() {
                 // segunda sobrevivia).
                 const chaveMovimento = `${opId}|${data.toISOString().slice(0, 10)}`;
                 const movimentoLido = { op: opId, ciclo, data: data.toISOString(), qtd };
+                const oficinaTxt = idxOficina !== -1 && campos[idxOficina] ? normalizarOficinaKPI(campos[idxOficina]) : '';
+                if (oficinaTxt && oficinaTxt !== 'INT') { movimentoLido.of = oficinaTxt; if (oficinaEhExternaKPI(oficinaTxt, classifImport)) linhasExternas++; else oficinasNaoClassificadas.add(oficinaTxt); }
                 todas[setor][chaveMovimento] = movimentoLido;
                 movimentosImportados.push({ setor, m: movimentoLido });
                 setoresEncontrados.add(setor);
@@ -4139,6 +4260,9 @@ function processarMovimentacaoSetor() {
             input.value = '';
             let msg = `<i class="fas fa-check-double"></i> ${linhasLidas} movimentações importadas (${[...setoresEncontrados].join(', ')})!`;
             if (linhasComLocalDesconhecido > 0) msg += ` ${linhasComLocalDesconhecido} com local de origem desconhecido.`;
+            if (linhasExternas > 0) msg += ` ${linhasExternas} de oficina EXTERNA (ficam fora do KPI normal; veja no botão EXTERNO).`;
+            if (oficinasNaoClassificadas.size) msg += ` ⚠ Oficina(s) fora da regra "CORTE", contadas como fábrica: ${[...oficinasNaoClassificadas].slice(0, 4).join(', ')}${oficinasNaoClassificadas.size > 4 ? '…' : ''} — se forem externas, marque em OFICINAS.`;
+            if (idxOficina === -1) msg += ' ⚠ Não achei a coluna "Cod. Loc Prod Cost" — nada foi separado como externo nessa importação.';
             if (linhasSemDestino > 0) msg += ` ${linhasSemDestino} sem destino (não contadas como produção).`;
             if (linhasRetrocedendo > 0) msg += ` ${linhasRetrocedendo} voltando pra trás na esteira (não contadas como produção).`;
             if (linhasComMultiplicador > 0) msg += ` ${linhasComMultiplicador} com quantidade multiplicada por camada (Paletó/Blazer/Jaqueta).`;
@@ -4179,7 +4303,7 @@ function calcularMediaDiariaSetor(setor, dias) {
 // Lista os meses ("AAAA-MM") que têm algum movimento importado, olhando
 // todos os setores juntos — usado pra popular o seletor de mês da aba KPI.
 function obterMesesDisponiveisKPI() {
-    const todas = obterMovimentacoesPorSetor();
+    const todas = obterMovimentacoesPorSetorBruto();
     const meses = new Set();
     Object.values(todas).forEach(porOP => {
         Object.values(porOP).forEach(m => {
@@ -4466,6 +4590,7 @@ function renderizarGraficoKPI() {
     const canvas = $('graficoKPI');
     if (!canvas) return;
     popularSeletorMesKPI();
+    atualizarBotaoVisaoExternoKPI();
     const setorSelecionado = $('seletorSetorKPI') ? $('seletorSetorKPI').value : 'TODOS';
     const mesSelecionado = $('seletorMesKPI') ? $('seletorMesKPI').value : null;
     const setoresParaMostrar = setorSelecionado === 'TODOS' ? SETORES_KPI : [setorSelecionado];
@@ -4889,7 +5014,7 @@ async function baixarMesKPIExcel() {
             abas.slice(1).forEach(a => preencher(...a));
             const buf = await wb.xlsx.writeBuffer();
             const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-            const link = document.createElement('a'); link.href = url; link.download = `KPI_${anoMes}.xlsx`;
+            const link = document.createElement('a'); link.href = url; link.download = `KPI_${anoMes}${modoVisaoKPI() === 'externo' ? '_EXTERNO' : ''}.xlsx`;
             document.body.appendChild(link); link.click(); link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 5000);
             showToast(`<i class="fas fa-file-excel"></i> KPI de ${dados.rotuloMes} baixado com gráficos (${dados.totalMovs.toLocaleString('pt-BR')} movimentações).`);
@@ -4905,7 +5030,7 @@ async function baixarMesKPIExcel() {
         ws['!cols'] = larguras.map(w => ({ wch: w }));
         XLSX.utils.book_append_sheet(wb, ws, nome);
     });
-    XLSX.writeFile(wb, `KPI_${anoMes}.xlsx`);
+    XLSX.writeFile(wb, `KPI_${anoMes}${modoVisaoKPI() === 'externo' ? '_EXTERNO' : ''}.xlsx`);
     showToast(`<i class="fas fa-file-excel"></i> KPI de ${dados.rotuloMes} baixado SEM gráficos (a biblioteca de gráficos para Excel não carregou — recarregue a página).`);
 }
 
@@ -7466,7 +7591,7 @@ function baixarImagemFilaCorte() {
 const SETOR_KPI_DA_ETAPA = { 0: 'PPCP PROGRAMACAO', 1: 'ANALISE DE MEDIDAS', 2: 'CAD', 3: 'PCP PROGRAMACAO-CORTE', 4: 'ALMOX TECIDO', 6: 'ENFESTO', 7: 'CORTE' };
 // Ritmo do setor: média de peças/dia dos últimos N dias ÚTEIS COM MOVIMENTO (até hoje). Precisa de pelo menos 2 dias.
 function calcularRitmoDiarioSetorKPI(setorKpi, maxDias) {
-    const movs = obterMovimentacoesPorSetor()[setorKpi] || {};
+    const movs = obterMovimentacoesPorSetor('fabrica')[setorKpi] || {};
     const porDia = {};
     const hojeISO = new Date().toISOString().slice(0, 10);
     Object.values(movs).forEach(m => {
@@ -9525,6 +9650,7 @@ function inicializarEventosUI() {
         wireEvento('confirmarFracionamento', 'click', () => { confirmarFracionamento(); });
         wireEvento('omniSearchOverlay', 'click', function(event){ if(event.target === this) fecharModais(); });
         wireEvento('omniInput', 'keyup', () => { pesquisaOmni(); });
+        wireEvento('modalOficinasKPI', 'click', function(event){ if(event.target === this) this.style.display='none'; });
         wireEvento('modalGargalo', 'click', function(event){ if(event.target === this) this.style.display='none'; });
         wireEvento('ctxAcao-copiar', 'click', () => { ctxAcao('copiar'); });
         wireEvento('ctxAcao-prioridade', 'click', () => { ctxAcao('prioridade'); });
