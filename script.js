@@ -5128,6 +5128,8 @@ function calcularLeadTimeSetorNoMes(setor, anoMes) {
 // geração do arquivo em si pra poder ser testado sem navegador.
 function montarPlanilhasMesKPI(anoMes) {
     const todas = obterMovimentacoesPorSetor();
+    const juntos = modoVisaoKPI() === 'juntos';   // fábrica + externo: o arquivo separa/destaca o que é externo
+    const classifX = obterClassificacaoOficinasKPI();
     const rotuloMes = rotuloMesKPI(anoMes);
     const nomesDia = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
     const diaDaSemana = chave => nomesDia[new Date(chave + 'T00:00:00Z').getUTCDay()]; // UTC de propósito (mesma armadilha de fuso de sempre)
@@ -5135,17 +5137,19 @@ function montarPlanilhasMesKPI(anoMes) {
     // Tudo do mês, por setor, uma única passada
     const porSetor = {};
     SETORES_KPI.forEach(setor => {
-        porSetor[setor] = { dias: {}, opsUteis: new Set(), foraDoTotal: 0, movs: [] };
+        porSetor[setor] = { dias: {}, opsUteis: new Set(), foraDoTotal: 0, movs: [], pecasExt: 0 };
         Object.values(todas[setor] || {}).forEach(m => {
             if (!m.data) return;
             const dia = new Date(m.data).toISOString().slice(0, 10);
             if (!dia.startsWith(anoMes)) return;
             const d = porSetor[setor];
-            d.movs.push({ dia, op: m.op, ciclo: m.ciclo || '', qtd: m.qtd });
-            if (!d.dias[dia]) d.dias[dia] = { pecas: 0, ops: new Set() };
+            const ext = juntos && oficinaEhExternaKPI(m.of, classifX);
+            d.movs.push({ dia, op: m.op, ciclo: m.ciclo || '', qtd: m.qtd, ext, of: m.of || '' });
+            if (!d.dias[dia]) d.dias[dia] = { pecas: 0, ops: new Set(), pecasExt: 0 };
             d.dias[dia].pecas += m.qtd; d.dias[dia].ops.add(idOPKPI(m));
+            if (ext) d.dias[dia].pecasExt += m.qtd;
             const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
-            if (dow === 0 || dow === 6) d.foraDoTotal += m.qtd; else d.opsUteis.add(idOPKPI(m));
+            if (dow === 0 || dow === 6) d.foraDoTotal += m.qtd; else { d.opsUteis.add(idOPKPI(m)); if (ext) d.pecasExt += m.qtd; }
         });
     });
 
@@ -5156,24 +5160,27 @@ function montarPlanilhasMesKPI(anoMes) {
         ['Total do mês, OPs e médias contam só dias úteis (segunda a sexta), igual aos cartões da tela. Movimento de fim de semana aparece numa coluna à parte e NÃO entra no total.'],
         ['Lead time = dias entre a inclusão da OP e a 1ª chegada dela no setor, só das OPs que chegaram no setor DENTRO desse mês. Só calcula pra OPs que ainda tinham a data de inclusão na Sincronização.'],
         [],
-        ['SETOR', 'TOTAL DO MÊS (peças, dias úteis)', 'OPs DISTINTAS (dias úteis)', 'DIAS ÚTEIS COM MOVIMENTO', 'MÉDIA POR DIA COM MOVIMENTO', 'PEÇAS EM FIM DE SEMANA (fora do total)', 'LEAD TIME MÉDIO (dias)', 'OPs COM LEAD TIME CALCULADO', 'OPs QUE CHEGARAM NO SETOR NO MÊS'],
+        ['SETOR', 'TOTAL DO MÊS (peças, dias úteis)', 'OPs DISTINTAS (dias úteis)', 'DIAS ÚTEIS COM MOVIMENTO', 'MÉDIA POR DIA COM MOVIMENTO', 'PEÇAS EM FIM DE SEMANA (fora do total)', 'LEAD TIME MÉDIO (dias)', 'OPs COM LEAD TIME CALCULADO', 'OPs QUE CHEGARAM NO SETOR NO MÊS', ...(juntos ? ['DESTES: FÁBRICA (peças)', 'DESTES: EXTERNO (peças)', '% EXTERNO'] : [])],
     ];
+    const LIN_CAB_RESUMO = juntos ? 7 : 6;
+    if (juntos) resumo.splice(4, 0, ['Visão FÁBRICA + EXTERNO: o total já soma os dois; o que é de oficina externa aparece em vermelho (colunas em RESUMO e DIA A DIA, linhas em MOVIMENTAÇÕES).']);
     const semanas = [['SETOR', 'SEMANA', 'TOTAL (peças)', 'OPs DISTINTAS', 'DIAS COM MOVIMENTO', 'MÉDIA POR DIA', 'MÉDIA DE OPs POR DIA']];
     SETORES_KPI.forEach(setor => {
         const sem = calcularMediaPorSemanaDoMes(setor, anoMes).filter(x => x.diasComMovimento > 0);
         const total = sem.reduce((a, x) => a + x.totalSemana, 0);
         const dias = sem.reduce((a, x) => a + x.diasComMovimento, 0);
         const lead = calcularLeadTimeSetorNoMes(setor, anoMes);
-        resumo.push([setor, total, porSetor[setor].opsUteis.size, dias, dias ? Math.round(total / dias) : 0, porSetor[setor].foraDoTotal, lead.mediaLeadTime === null ? '' : lead.mediaLeadTime, lead.opsComDado, lead.opsQueChegaramNoMes]);
+        resumo.push([setor, total, porSetor[setor].opsUteis.size, dias, dias ? Math.round(total / dias) : 0, porSetor[setor].foraDoTotal, lead.mediaLeadTime === null ? '' : lead.mediaLeadTime, lead.opsComDado, lead.opsQueChegaramNoMes, ...(juntos ? [total - porSetor[setor].pecasExt, porSetor[setor].pecasExt, total ? Math.round(porSetor[setor].pecasExt / total * 100) + '%' : ''] : [])]);
         sem.forEach(x => semanas.push([setor, x.rotulo, x.totalSemana, x.totalOPs, x.diasComMovimento, x.mediaDiaria, x.mediaOPsDia]));
     });
 
     // ---- DIA A DIA (uma coluna de peças e uma de OPs por setor)
     const todasDatas = [...new Set(SETORES_KPI.flatMap(s => Object.keys(porSetor[s].dias)))].sort();
-    const diaADia = [['DATA', 'DIA DA SEMANA', ...SETORES_KPI.flatMap(s => [`${s} — PEÇAS`, `${s} — OPs`])]];
+    const diaADia = [['DATA', 'DIA DA SEMANA', ...SETORES_KPI.flatMap(s => juntos ? [`${s} — FÁBRICA (peças)`, `${s} — EXTERNO (peças)`, `${s} — TOTAL (peças)`, `${s} — OPs`] : [`${s} — PEÇAS`, `${s} — OPs`])]];
     todasDatas.forEach(dia => {
         diaADia.push([formatarChaveDataBR(dia), diaDaSemana(dia), ...SETORES_KPI.flatMap(s => {
             const d = porSetor[s].dias[dia];
+            if (juntos) return d ? [d.pecas - d.pecasExt, d.pecasExt || '', d.pecas, d.ops.size] : ['', '', '', ''];
             return d ? [d.pecas, d.ops.size] : ['', ''];
         })]);
     });
@@ -5188,16 +5195,16 @@ function montarPlanilhasMesKPI(anoMes) {
     });
 
     // ---- MOVIMENTAÇÕES (os dados brutos do mês, linha a linha)
-    const movimentacoes = [['SETOR', 'OP', 'CICLO', 'DATA', 'QTD (já com o multiplicador de camadas no Enfesto/Corte)']];
+    const movimentacoes = [['SETOR', 'OP', 'CICLO', 'DATA', 'QTD (já com o multiplicador de camadas no Enfesto/Corte)', ...(juntos ? ['TIPO', 'OFICINA / DESTINO'] : [])]];
     let totalMovs = 0;
     SETORES_KPI.forEach(setor => {
         porSetor[setor].movs.sort((a, b) => a.dia.localeCompare(b.dia) || String(a.op).localeCompare(String(b.op), 'pt-BR', { numeric: true }))
-            .forEach(m => { movimentacoes.push([setor, m.op, m.ciclo, formatarChaveDataBR(m.dia), m.qtd]); totalMovs++; });
+            .forEach(m => { movimentacoes.push([setor, m.op, m.ciclo, formatarChaveDataBR(m.dia), m.qtd, ...(juntos ? [m.ext ? 'EXTERNO' : 'FÁBRICA', m.of || ''] : [])]); totalMovs++; });
     });
 
     const graficos = { datas: todasDatas, porSetor: {} };
-    SETORES_KPI.forEach(setor => { graficos.porSetor[setor] = { pecas: todasDatas.map(d => (porSetor[setor].dias[d] || { pecas: 0 }).pecas), ops: todasDatas.map(d => porSetor[setor].dias[d] ? porSetor[setor].dias[d].ops.size : 0), temDado: Object.keys(porSetor[setor].dias).length > 0 }; });
-    return { rotuloMes, resumo, semanas, diaADia, acertividade, movimentacoes, totalMovs, graficos };
+    SETORES_KPI.forEach(setor => { graficos.porSetor[setor] = { pecas: todasDatas.map(d => (porSetor[setor].dias[d] || { pecas: 0 }).pecas), pecasExt: todasDatas.map(d => (porSetor[setor].dias[d] || { pecasExt: 0 }).pecasExt || 0), ops: todasDatas.map(d => porSetor[setor].dias[d] ? porSetor[setor].dias[d].ops.size : 0), temDado: Object.keys(porSetor[setor].dias).length > 0 }; });
+    return { rotuloMes, resumo, semanas, diaADia, acertividade, movimentacoes, totalMovs, graficos, juntos, linCabResumo: LIN_CAB_RESUMO };
 }
 
 // Desenha um gráfico de linhas fora da tela e devolve o PNG (base64) — usado pra embutir no Excel.
@@ -5208,7 +5215,7 @@ function gerarPngGraficoKPI(titulo, labels, series, largura, altura) {
     const g = new Chart(canvas, {
         type: 'line',
         plugins: [fundoBranco],
-        data: { labels, datasets: series.map(se => ({ label: se.label, data: se.data, borderColor: se.cor, backgroundColor: se.cor, tension: 0.25, fill: false, borderWidth: 2, pointRadius: 2.5 })) },
+        data: { labels, datasets: series.map(se => ({ label: se.label, data: se.data, borderColor: se.cor, backgroundColor: se.cor, tension: 0.25, fill: false, borderWidth: 2, pointRadius: 2.5, borderDash: se.tracejado ? [6, 4] : [] })) },
         options: {
             responsive: false, animation: false, devicePixelRatio: 1, color: '#333',
             plugins: { legend: { display: series.length > 1 }, title: { display: true, text: titulo, font: { size: 15, weight: 'bold' } }, datalabels: { display: false } },
@@ -5230,11 +5237,11 @@ async function baixarMesKPIExcel() {
     if (!dados.totalMovs) return alert(`Não há nenhuma movimentação importada em ${dados.rotuloMes}.`);
 
     const abas = [
-        ['RESUMO', dados.resumo, [26, 20, 20, 18, 20, 22, 16, 18, 22], 6],
+        ['RESUMO', dados.resumo, [26, 20, 20, 18, 20, 22, 16, 18, 22, 20, 20, 12], dados.linCabResumo],
         ['SEMANAS', dados.semanas, [26, 26, 16, 16, 18, 16, 20], 1],
-        ['DIA A DIA', dados.diaADia, [12, 14, ...SETORES_KPI.flatMap(() => [14, 8])], 1],
+        ['DIA A DIA', dados.diaADia, [12, 14, ...SETORES_KPI.flatMap(() => dados.juntos ? [14, 14, 14, 8] : [14, 8])], 1],
         ['ACERTIVIDADE', dados.acertividade, [52, 14, 24, 34], 1],
-        ['MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24], 1],
+        ['MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24, 12, 34], 1],
     ];
 
     if (typeof ExcelJS !== 'undefined' && typeof Chart !== 'undefined') {
@@ -5247,6 +5254,14 @@ async function baixarMesKPIExcel() {
                 const cab = ws.getRow(linhaCab); cab.font = { bold: true }; cab.alignment = { wrapText: true, vertical: 'middle' };
                 cab.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8DFC8' } }; });
                 if (linhaCab > 1) ws.getRow(1).font = { bold: true, size: 13 };
+                // Visão fábrica + externo: tudo que é externo fica em vermelho
+                if (dados.juntos) {
+                    const vermelho = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8D7DA' } };
+                    cab.eachCell(c => { if (/EXTERNO/.test(String(c.value || ''))) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8A0A6' } }; c.font = { bold: true, color: { argb: 'FF8A1C26' } }; } });
+                    if (nome === 'MOVIMENTAÇÕES') ws.eachRow((r, n) => { if (n > 1 && r.getCell(6).value === 'EXTERNO') { r.eachCell({ includeEmpty: true }, c => { c.fill = vermelho; c.font = { color: { argb: 'FF8A1C26' } }; }); } });
+                    if (nome === 'DIA A DIA') { const extCols = linhas[0].map((t, i) => /EXTERNO/.test(String(t)) ? i + 1 : 0).filter(Boolean); ws.eachRow((r, n) => { if (n > 1) extCols.forEach(ci => { const c = r.getCell(ci); if (c.value) { c.fill = vermelho; c.font = { bold: true, color: { argb: 'FF8A1C26' } }; } }); }); }
+                    if (nome === 'RESUMO') ws.eachRow((r, n) => { if (n > linhaCab) [11, 12].forEach(ci => { r.getCell(ci).fill = vermelho; }); });
+                }
                 return ws;
             };
             preencher(...abas[0]);
@@ -5264,7 +5279,7 @@ async function baixarMesKPIExcel() {
             yAtual = 4 * LIN + 400 + 20;
             setoresComDado.forEach((st, i) => {
                 const col = i % 2, x = 8 + col * 640, y = yAtual + Math.floor(i / 2) * 310;
-                colocar(gerarPngGraficoKPI(st, labels, [{ label: st, data: porSetor[st].pecas, cor: CORES_SETORES_KPI[st] || '#999' }], 620, 300), x, y, 620, 300);
+                colocar(gerarPngGraficoKPI(st, labels, dados.juntos ? [{ label: 'Fábrica', data: porSetor[st].pecas.map((v, k) => v - porSetor[st].pecasExt[k]), cor: CORES_SETORES_KPI[st] || '#999' }, { label: 'Externo', data: porSetor[st].pecasExt, cor: '#C1444E', tracejado: true }] : [{ label: st, data: porSetor[st].pecas, cor: CORES_SETORES_KPI[st] || '#999' }], 620, 300), x, y, 620, 300);
             });
             abas.slice(1).forEach(a => preencher(...a));
             const buf = await wb.xlsx.writeBuffer();
