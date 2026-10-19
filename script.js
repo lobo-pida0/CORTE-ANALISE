@@ -3338,10 +3338,13 @@ function obterClassificacaoOficinasKPI() {
 // Palavras que, aparecendo no texto da coluna N, já marcam a OP como externa (sem precisar de override manual).
 // "MATHEUS MG" cobre "matheus-mg", "matheus mg" e "matheusmg" (pontuação vira espaço e também se compara sem espaços).
 const PALAVRAS_EXTERNO_KPI = ['CORTE', 'ANDERSON', 'MATHEUS MG'];
+// Nomes curtos: só valem como PALAVRA inteira (senão "ARI" pegaria MARIA, MARIANA, VARIEDADE...).
+const PALAVRAS_INTEIRAS_EXTERNO_KPI = ['ARI'];
 function textoTemPalavraExternoKPI(t) {
     const espacado = String(t || '').replace(/[^A-Z0-9]+/g, ' ').trim();
     const colado = espacado.replace(/ /g, '');
-    return PALAVRAS_EXTERNO_KPI.some(p => espacado.includes(p) || colado.includes(p.replace(/ /g, '')));
+    const palavras = espacado.split(' ');
+    return PALAVRAS_EXTERNO_KPI.some(p => espacado.includes(p) || colado.includes(p.replace(/ /g, ''))) || PALAVRAS_INTEIRAS_EXTERNO_KPI.some(p => palavras.includes(p));
 }
 function oficinaEhExternaKPI(of, classif) {
     const t = normalizarOficinaKPI(of);
@@ -3422,7 +3425,7 @@ function abrirModalOficinasKPI() {
             <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px;"><i class="fas fa-industry" style="color:var(--cor-alerta);"></i> OFICINAS (EXTERNO)</h2>
             <button onclick="document.getElementById('modalOficinasKPI').style.display='none'" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
         </div>
-        <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:12px;">Textos da coluna "Cod. Loc Prod Cost" do relatório. <strong>INT</strong> ou vazio = fábrica. Todo texto com <strong>CORTE</strong>, <strong>ANDERSON</strong> ou <strong>MATHEUS MG</strong> é tratado como externo automaticamente; para os outros, escolha <strong>Externo</strong> na lista (vale também pros dados já importados). Só o que está como Externo sai do KPI normal e aparece no botão EXTERNO.</div>
+        <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:12px;">Textos da coluna "Cod. Loc Prod Cost" do relatório. <strong>INT</strong> ou vazio = fábrica. Todo texto com <strong>CORTE</strong>, <strong>ANDERSON</strong>, <strong>MATHEUS MG</strong> ou <strong>ARI</strong> (palavra inteira) é tratado como externo automaticamente; para os outros, escolha <strong>Externo</strong> na lista (vale também pros dados já importados). Só o que está como Externo sai do KPI normal e aparece no botão EXTERNO.</div>
         <div style="overflow-y:auto; flex:1; margin-bottom:15px;"><table class="tabela-dados" style="width:100%;"><thead><tr><th>TEXTO NO RELATÓRIO</th><th style="text-align:right;">OPs</th><th style="text-align:right;">PEÇAS</th><th>COMO TRATAR</th><th>HOJE</th></tr></thead><tbody>${linhas}</tbody></table></div>
         <div style="display:flex; justify-content:flex-end; border-top:1px solid var(--borda-cor); padding-top:15px;"><button onclick="document.getElementById('modalOficinasKPI').style.display='none'" class="btn" style="background:var(--borda-cor); color:var(--texto-cor);">FECHAR</button></div></div>`;
     modal.style.display = 'flex';
@@ -4275,7 +4278,7 @@ function processarMovimentacaoSetor() {
             let msg = `<i class="fas fa-check-double"></i> ${linhasLidas} movimentações importadas (${[...setoresEncontrados].join(', ')})!`;
             if (linhasComLocalDesconhecido > 0) msg += ` ${linhasComLocalDesconhecido} com local de origem desconhecido.`;
             if (linhasExternas > 0) msg += ` ${linhasExternas} de oficina EXTERNA (ficam fora do KPI normal; veja no botão EXTERNO).`;
-            if (oficinasNaoClassificadas.size) msg += ` ⚠ Oficina(s) fora da regra (CORTE / ANDERSON / MATHEUS MG), contadas como fábrica: ${[...oficinasNaoClassificadas].slice(0, 4).join(', ')}${oficinasNaoClassificadas.size > 4 ? '…' : ''} — se forem externas, marque em OFICINAS.`;
+            if (oficinasNaoClassificadas.size) msg += ` ⚠ Oficina(s) fora da regra (CORTE / ANDERSON / MATHEUS MG / ARI), contadas como fábrica: ${[...oficinasNaoClassificadas].slice(0, 4).join(', ')}${oficinasNaoClassificadas.size > 4 ? '…' : ''} — se forem externas, marque em OFICINAS.`;
             if (idxOficina === -1) msg += ' ⚠ Não achei a coluna "Cod. Loc Prod Cost" — nada foi separado como externo nessa importação.';
             if (linhasSemDestino > 0) msg += ` ${linhasSemDestino} sem destino (não contadas como produção).`;
             if (linhasRetrocedendo > 0) msg += ` ${linhasRetrocedendo} voltando pra trás na esteira (não contadas como produção).`;
