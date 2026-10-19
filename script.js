@@ -3898,6 +3898,154 @@ function renderizarEficienciaCostura() {
     }
 }
 
+
+// =========================================================================
+// 📥 BAIXAR MÊS / 🗑 LIMPAR MÊS da EFICIÊNCIA DA COSTURA — mesma ideia do KPI
+// do corte: o arquivo congela o mês como está agora (com aba GRÁFICOS) e o
+// LIMPAR só apaga o mês escolhido, só deste navegador (a nuvem não é mexida).
+// =========================================================================
+function montarDadosMesEfCostura(anoMes) {
+    const todos = obterEficienciaCostura();
+    const minPessoa = parseFloat($('efCosturaMinPessoa') ? $('efCosturaMinPessoa').value : 528) || 528;
+    const dias = Object.keys(todos).filter(d => d.startsWith(anoMes)).sort();
+    const nomes = [...new Set(dias.flatMap(d => Object.keys(todos[d].locais || {}).filter(ehLocalCosturaEficiencia)))].sort();
+    const arred = (v, c = 1) => v === null || v === undefined ? '' : Math.round(v * Math.pow(10, c)) / Math.pow(10, c);
+    const diaADia = [['DATA', 'LOCAL', 'PEÇAS', 'OPs', 'MIN. PRODUZIDOS', 'PESSOAS', 'MIN. DISPONÍVEIS', 'EFICIÊNCIA (%)']];
+    const pecasPorDia = [['DATA', ...nomes.map(nomeLocalEfCostura), 'TOTAL']];
+    const serie = {}; nomes.forEach(n => serie[n] = []); const serieTotal = [];
+    const mes = {}; nomes.forEach(n => mes[n] = { pecas: 0, min: 0, minOk: 0, disp: 0, dias: 0 });
+    let totPecas = 0, totMin = 0, totMinOk = 0, totDisp = 0;
+    dias.forEach(dia => {
+        const d = todos[dia], pl = d.pessoasLocal || {};
+        let dPecas = 0, dMin = 0, dMinOk = 0, dDisp = 0, dPessoas = 0, dOps = 0;
+        const celulas = nomes.map(n => {
+            const l = (d.locais || {})[n];
+            if (!l) { serie[n].push(null); return ''; }
+            const pessoas = pl[n] || null, disp = pessoas ? pessoas * minPessoa : null;
+            const efic = disp ? (l.minutos / disp) * 100 : null;
+            serie[n].push(efic === null ? null : arred(efic));
+            diaADia.push([formatarChaveDataBR(dia), nomeLocalEfCostura(n), l.pecas, l.ops, Math.round(l.minutos), pessoas || '', disp ? Math.round(disp) : '', arred(efic)]);
+            dPecas += l.pecas; dMin += l.minutos; dOps += l.ops;
+            const m = mes[n]; m.pecas += l.pecas; m.min += l.minutos;
+            if (disp) { dMinOk += l.minutos; dDisp += disp; dPessoas += pessoas; m.minOk += l.minutos; m.disp += disp; m.dias++; }
+            return l.pecas;
+        });
+        const dEfic = dDisp ? (dMinOk / dDisp) * 100 : null;
+        serieTotal.push(dEfic === null ? null : arred(dEfic));
+        diaADia.splice(diaADia.length - celulas.filter(c => c !== '').length, 0, [formatarChaveDataBR(dia), 'TOTAL DO DIA', dPecas, dOps, Math.round(dMin), dPessoas || '', dDisp ? Math.round(dDisp) : '', arred(dEfic)]);
+        pecasPorDia.push([formatarChaveDataBR(dia), ...celulas, dPecas]);
+        totPecas += dPecas; totMin += dMin; totMinOk += dMinOk; totDisp += dDisp;
+    });
+    pecasPorDia.push(['TOTAL DO MÊS', ...nomes.map(n => mes[n].pecas), totPecas]);
+    const resumo = [[`Eficiência da costura — ${rotuloMesKPI(anoMes)}`], [`Minutos por pessoa/dia: ${minPessoa}. Congelado no momento em que o arquivo foi baixado.`], [],
+        ['EFICIÊNCIA DO MÊS (%)', arred(totDisp ? (totMinOk / totDisp) * 100 : null), 'PEÇAS NO MÊS', totPecas, 'MIN. PRODUZIDOS', Math.round(totMin), 'DIAS IMPORTADOS', dias.length], [],
+        ['LOCAL', 'PEÇAS', 'MIN. PRODUZIDOS', 'DIAS COM PESSOAS', 'EFICIÊNCIA (%)'],
+        ...nomes.map(n => [nomeLocalEfCostura(n), mes[n].pecas, Math.round(mes[n].min), `${mes[n].dias} de ${dias.length}`, arred(mes[n].disp ? (mes[n].minOk / mes[n].disp) * 100 : null)])];
+    return { rotuloMes: rotuloMesKPI(anoMes), dias, nomes, resumo, diaADia, pecasPorDia, serie, serieTotal, totPecas };
+}
+
+function gerarPngGraficoEfCostura(titulo, labels, series, largura, altura) {
+    const canvas = document.createElement('canvas');
+    canvas.width = largura; canvas.height = altura;
+    const fundoBranco = { id: 'fundoBrancoEf', beforeDraw(chart) { const c = chart.ctx; c.save(); c.globalCompositeOperation = 'destination-over'; c.fillStyle = '#FFFFFF'; c.fillRect(0, 0, chart.width, chart.height); c.restore(); } };
+    const meta = series.length ? [{ label: 'Meta 100%', data: labels.map(() => 100), borderColor: '#4C9A6A', borderDash: [6, 5], borderWidth: 1.5, pointRadius: 0, fill: false }] : [];
+    const g = new Chart(canvas, {
+        type: 'line', plugins: [fundoBranco],
+        data: { labels, datasets: [...series.map(se => ({ label: se.label, data: se.data, borderColor: se.cor, backgroundColor: se.cor, tension: 0.25, fill: false, borderWidth: 2, pointRadius: 3, spanGaps: true })), ...meta] },
+        options: {
+            responsive: false, animation: false, devicePixelRatio: 1, color: '#333',
+            plugins: { legend: { display: series.length > 1 }, title: { display: true, text: titulo, font: { size: 15, weight: 'bold' } }, datalabels: { display: false } },
+            scales: { y: { beginAtZero: true, suggestedMax: 120, title: { display: true, text: 'Eficiência (%)' } } },
+        },
+    });
+    const png = canvas.toDataURL('image/png').split(',')[1];
+    g.destroy();
+    return png;
+}
+
+async function baixarMesEfCosturaExcel() {
+    if (!exigirBibliotecaExcel()) return;
+    const anoMes = $('seletorMesEfCostura') ? $('seletorMesEfCostura').value : '';
+    if (!anoMes) return alert('Escolha um mês no seletor MÊS antes de baixar.');
+    const dados = montarDadosMesEfCostura(anoMes);
+    if (!dados.dias.length) return alert(`Não há nenhum dado de eficiência importado em ${dados.rotuloMes}.`);
+    const abas = [
+        ['RESUMO', dados.resumo, [26, 16, 22, 20, 20, 18, 18, 14], 6],
+        ['DIA A DIA', dados.diaADia, [12, 22, 10, 8, 16, 10, 16, 16], 1],
+        ['PEÇAS POR DIA', dados.pecasPorDia, [14, ...dados.nomes.map(() => 12), 12], 1],
+    ];
+    if (typeof ExcelJS !== 'undefined' && typeof Chart !== 'undefined') {
+        try {
+            const wb = new ExcelJS.Workbook();
+            const preencher = (nome, linhas, larguras, linhaCab) => {
+                const ws = wb.addWorksheet(nome);
+                linhas.forEach(l => ws.addRow(l));
+                larguras.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+                const cab = ws.getRow(linhaCab); cab.font = { bold: true }; cab.alignment = { wrapText: true, vertical: 'middle' };
+                cab.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8DFC8' } }; });
+                if (linhaCab > 1) ws.getRow(1).font = { bold: true, size: 13 };
+                return ws;
+            };
+            preencher(...abas[0]);
+            const wsG = wb.addWorksheet('GRÁFICOS');
+            const labels = dados.dias.map(d => d.slice(8) + '/' + d.slice(5, 7));
+            const COL = 64, LIN = 20;
+            const colocar = (png, x, y, w, h) => { const id = wb.addImage({ base64: png, extension: 'png' }); wsG.addImage(id, { tl: { col: x / COL, row: y / LIN }, ext: { width: w, height: h } }); };
+            wsG.getCell('A1').value = `Gráficos — Eficiência da costura — ${dados.rotuloMes}`; wsG.getCell('A1').font = { bold: true, size: 14 };
+            wsG.getCell('A2').value = 'Eficiência por dia (só aparece o ponto nos dias com pessoas informadas). Congelado no momento em que o arquivo foi baixado.'; wsG.getCell('A2').font = { italic: true, color: { argb: 'FF666666' } };
+            const cor = n => CORES_LOCAIS_EF_COSTURA[n] || '#999';
+            let y = 4 * LIN;
+            colocar(gerarPngGraficoEfCostura(`TOTAL e todos os locais — ${dados.rotuloMes}`, labels, [{ label: 'TOTAL', data: dados.serieTotal, cor: '#222222' }, ...dados.nomes.map(n => ({ label: nomeLocalEfCostura(n), data: dados.serie[n], cor: cor(n) }))], 1260, 400), 8, y, 1260, 400);
+            y += 420;
+            [{ n: null }, ...dados.nomes.map(n => ({ n }))].forEach((it, i) => {
+                const x = 8 + (i % 2) * 640, yy = y + Math.floor(i / 2) * 310;
+                const dadosSerie = it.n ? dados.serie[it.n] : dados.serieTotal;
+                const nome = it.n ? nomeLocalEfCostura(it.n) : 'TOTAL — todos os locais';
+                colocar(gerarPngGraficoEfCostura(nome, labels, [{ label: nome, data: dadosSerie, cor: it.n ? cor(it.n) : '#222222' }], 620, 300), x, yy, 620, 300);
+            });
+            abas.slice(1).forEach(a => preencher(...a));
+            const buf = await wb.xlsx.writeBuffer();
+            const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+            const link = document.createElement('a'); link.href = url; link.download = `EficienciaCostura_${anoMes}.xlsx`;
+            document.body.appendChild(link); link.click(); link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            showToast(`<i class="fas fa-file-excel"></i> Eficiência da costura de ${dados.rotuloMes} baixada com gráficos (${dados.dias.length} dias).`);
+            return;
+        } catch (e) {
+            registrarLogDebug('error', ['[Eficiência costura] Falha ao gerar Excel com gráficos, baixando sem: ' + (e && e.message)]);
+        }
+    }
+    const wb = XLSX.utils.book_new();
+    abas.forEach(([nome, linhas, larguras]) => {
+        const ws = XLSX.utils.aoa_to_sheet(linhas);
+        ws['!cols'] = larguras.map(w => ({ wch: w }));
+        XLSX.utils.book_append_sheet(wb, ws, nome);
+    });
+    XLSX.writeFile(wb, `EficienciaCostura_${anoMes}.xlsx`);
+    showToast(`<i class="fas fa-file-excel"></i> Eficiência da costura de ${dados.rotuloMes} baixada SEM gráficos (a biblioteca de gráficos para Excel não carregou — recarregue a página).`);
+}
+
+function limparMesEfCostura() {
+    if (!exigirAdmin('limpar dados da eficiência da costura')) return;
+    const anoMes = $('seletorMesEfCostura') ? $('seletorMesEfCostura').value : '';
+    if (!anoMes) return alert('Escolha no seletor MÊS qual mês você quer limpar.');
+    const todos = obterEficienciaCostura();
+    const doMes = Object.keys(todos).filter(d => d.startsWith(anoMes));
+    const rotulo = rotuloMesKPI(anoMes);
+    if (!doMes.length) return alert(`Não há dados de ${rotulo} pra limpar.`);
+    const outros = Object.keys(todos).length - doMes.length;
+    const mensagem = `Vai apagar ${doMes.length} dia(s) de ${rotulo} da eficiência da costura (movimentação e pessoas informadas).\n\n`
+        + `Os outros meses NÃO são mexidos (${outros} dia(s) continuam).\n\n`
+        + `Só apaga deste navegador — o que já foi publicado na nuvem continua lá. Se ainda não baixou o arquivo do mês (BAIXAR MÊS), baixe antes.\n\n`
+        + `Não dá pra desfazer. Confirma?`;
+    if (!confirm(mensagem)) return;
+    doMes.forEach(d => delete todos[d]);
+    salvarEficienciaCostura(todos);
+    popularSeletorMesEfCostura();
+    renderizarEficienciaCostura();
+    showToast(`<i class="fas fa-check"></i> ${rotulo} limpo (${doMes.length} dia(s)). Os outros meses foram mantidos.`);
+}
+
 function processarMovimentacaoSetor() {
     if (!exigirAdmin('importar movimentação de setor')) return;
     const input = $('inputMovimentacaoKPI'); if (!input.files[0]) return;
@@ -9521,6 +9669,8 @@ function inicializarEventosUI() {
         wireEvento('inputMovimentacaoKPI', 'change', () => { processarMovimentacaoSetor(); });
         wireEvento('inputEfCostura', 'change', () => { processarEficienciaCostura(); });
         wireEvento('seletorMesEfCostura', 'change', () => { renderizarEficienciaCostura(); });
+        wireEvento('btnBaixarMesEfCostura', 'click', () => { baixarMesEfCosturaExcel(); });
+        wireEvento('btnLimparMesEfCostura', 'click', () => { limparMesEfCostura(); });
         wireEvento('efCosturaMinPessoa', 'input', () => { renderizarEficienciaCostura(); });
         popularSeletorMesEfCostura(); renderizarEficienciaCostura();
         wireEvento('btnLimparMovimentacoesKPI', 'click', () => { limparMovimentacoesKPI(); });
