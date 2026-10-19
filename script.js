@@ -4793,6 +4793,69 @@ function renderizarGraficoAcertividadeKPI() {
 // Sempre mostra fábrica e externo juntos (separados em colunas), independente do seletor FÁBRICA/EXTERNO/JUNTOS.
 // Só dias úteis (igual aos cards) — o que aconteceu em fim de semana aparece num aviso.
 // =========================================================================
+
+// Soma de peças/OPs por dia ÚTIL de um setor (só fábrica ou só externo), opcionalmente limitado ao mês e a um dia do mês.
+function somarDiasUteisSetorKPI(setor, externo, anoMes, ateDia) {
+    const classif = obterClassificacaoOficinasKPI();
+    const porDia = {};
+    Object.values(obterMovimentacoesPorSetorBruto()[setor] || {}).forEach(m => {
+        if (!m.data || oficinaEhExternaKPI(m.of, classif) !== externo) return;
+        const dia = new Date(m.data).toISOString().slice(0, 10);
+        if (anoMes && dia.slice(0, 7) !== anoMes) return;
+        if (ateDia && Number(dia.slice(8)) > ateDia) return;
+        const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
+        if (dow === 0 || dow === 6) return;
+        const d = porDia[dia] = porDia[dia] || { pecas: 0, ops: new Set() };
+        d.pecas += m.qtd || 0; d.ops.add(m.op);
+    });
+    const chaves = Object.keys(porDia), ops = new Set();
+    let total = 0; chaves.forEach(k => { total += porDia[k].pecas; porDia[k].ops.forEach(o => ops.add(o)); });
+    return { porDia, total, ops: ops.size, dias: chaves.length, media: chaves.length ? Math.round(total / chaves.length) : 0 };
+}
+function mesAnteriorKPI(anoMes) {
+    const [a, m] = anoMes.split('-').map(Number);
+    return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`;
+}
+// Bloco "COMPARAÇÃO" do detalhe do setor: mês contra mês anterior (no MESMO período, se o mês ainda está rolando) e semana contra semana.
+function montarComparacaoSetorKPI(setor, anoMes) {
+    const fmt = v => v.toLocaleString('pt-BR');
+    const hoje = new Date(); const hojeMes = hoje.toISOString().slice(0, 7);
+    const emAndamento = anoMes === hojeMes;
+    const ant = mesAnteriorKPI(anoMes);
+    const ateDia = emAndamento ? hoje.getDate() : null;
+    const aF = somarDiasUteisSetorKPI(setor, false, anoMes, ateDia), pF = somarDiasUteisSetorKPI(setor, false, ant, ateDia);
+    const aE = somarDiasUteisSetorKPI(setor, true, anoMes, ateDia), pE = somarDiasUteisSetorKPI(setor, true, ant, ateDia);
+    const variacao = (a, p, bomQuandoSobe = true) => {
+        if (!p) return '<span style="color:var(--texto-secundario);">—</span>';
+        const v = Math.round(((a - p) / p) * 100);
+        if (v === 0) return '<span style="color:var(--texto-secundario);">＝ 0%</span>';
+        const bom = (v > 0) === bomQuandoSobe;
+        return `<strong style="color:${bomQuandoSobe === null ? 'var(--texto-secundario)' : (bom ? 'var(--cor-despacho)' : 'var(--cor-alerta)')};">${v > 0 ? '▲' : '▼'} ${Math.abs(v)}%</strong>`;
+    };
+    const linha = (rotulo, a, p, bomQuandoSobe, fmtVal) => `<tr><td>${rotulo}</td><td style="text-align:right;"><strong>${fmtVal ? fmtVal(a) : fmt(a)}</strong></td><td style="text-align:right; color:var(--texto-secundario);">${p ? (fmtVal ? fmtVal(p) : fmt(p)) : '—'}</td><td style="text-align:right;">${variacao(a, p, bomQuandoSobe)}</td></tr>`;
+    // semana: a última semana (seg–sex) com movimento da fábrica dentro do mês escolhido contra a semana anterior (pode cair no mês anterior)
+    const todosDias = somarDiasUteisSetorKPI(setor, false, null, null).porDia;
+    const diasDoMes = Object.keys(todosDias).filter(d => d.slice(0, 7) === anoMes).sort();
+    let semanaTxt = '';
+    if (diasDoMes.length) {
+        const ultimo = diasDoMes[diasDoMes.length - 1];
+        const dt = new Date(ultimo + 'T00:00:00Z'); const segunda = new Date(dt.getTime() - ((dt.getUTCDay() + 6) % 7) * 86400000);
+        const semana = ini => { const dias = [0, 1, 2, 3, 4].map(i => new Date(ini.getTime() + i * 86400000).toISOString().slice(0, 10)).filter(d => todosDias[d]); const tot = dias.reduce((x, d) => x + todosDias[d].pecas, 0); return { dias: dias.length, tot, media: dias.length ? Math.round(tot / dias.length) : 0 }; };
+        const sA = semana(segunda), sP = semana(new Date(segunda.getTime() - 7 * 86400000));
+        const rot = ini => { const f = new Date(ini.getTime() + 4 * 86400000); return `${String(ini.getUTCDate()).padStart(2, '0')}/${String(ini.getUTCMonth() + 1).padStart(2, '0')}–${String(f.getUTCDate()).padStart(2, '0')}/${String(f.getUTCMonth() + 1).padStart(2, '0')}`; };
+        semanaTxt = `<table class="tabela-dados" style="width:100%; margin-top:10px;"><thead><tr><th></th><th style="text-align:right;">SEMANA ${rot(segunda)} <span style="font-weight:400;">(${sA.dias} dia${sA.dias === 1 ? '' : 's'})</span></th><th style="text-align:right;">SEMANA ${rot(new Date(segunda.getTime() - 7 * 86400000))} <span style="font-weight:400;">(${sP.dias} dia${sP.dias === 1 ? '' : 's'})</span></th><th style="text-align:right;">VARIAÇÃO</th></tr></thead><tbody>
+            ${linha('Média por dia (fábrica)', sA.media, sP.media, true)}</tbody></table>`;
+    }
+    return `<div style="margin-bottom:14px;">
+        <div style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase; margin-bottom:6px;">Comparação com ${rotuloMesKPI(ant)}${emAndamento ? ` <span style="font-weight:400; text-transform:none;">(mesmo período: até o dia ${ateDia})</span>` : ''}</div>
+        <table class="tabela-dados" style="width:100%;"><thead><tr><th></th><th style="text-align:right;">${rotuloMesKPI(anoMes)}</th><th style="text-align:right;">${rotuloMesKPI(ant)}</th><th style="text-align:right;">VARIAÇÃO</th></tr></thead><tbody>
+            ${linha('Peças da fábrica', aF.total, pF.total, true)}
+            ${linha('Média por dia (fábrica)', aF.media, pF.media, true)}
+            ${linha('OPs da fábrica', aF.ops, pF.ops, true)}
+            ${linha('Peças de externo', aE.total, pE.total, null)}
+        </tbody></table>${semanaTxt}</div>`;
+}
+
 function abrirDetalheSetorKPI(setor, anoMes) {
     anoMes = anoMes || ($('seletorMesKPI') ? $('seletorMesKPI').value : '');
     if (!anoMes) return;
@@ -4856,6 +4919,7 @@ function abrirDetalheSetorKPI(setor, anoMes) {
                 ${card('Média por dia (fábrica)', fmt(media), `${diasFab.length} dia(s) com movimento`)}
                 ${card('Melhor / menor dia', melhor ? `${fmt(dias[melhor].fab.pecas)} / ${fmt(dias[pior].fab.pecas)}` : '—', melhor ? `${formatarChaveDataBR(melhor).slice(0, 5)} / ${formatarChaveDataBR(pior).slice(0, 5)}` : '')}
             </div>
+            ${montarComparacaoSetorKPI(setor, anoMes)}
             ${total ? `<div style="display:flex; height:10px; border-radius:5px; overflow:hidden; margin-bottom:14px;" title="Fábrica x externo"><div style="width:${100 - pctExt}%; background:${cor};"></div><div style="width:${pctExt}%; background:var(--cor-alerta);"></div></div>` : ''}
             <div style="font-size:11px; color:var(--texto-secundario); margin-bottom:6px;">Clique num dia para ver as OPs que foram movimentadas. <span style="color:var(--cor-selecao);">▲</span> = dia bem acima da média. Linhas em vermelho são OPs de oficina externa.</div>
             <div style="display:grid; grid-template-columns:150px 1fr 1fr 1fr; gap:8px; padding:6px; font-size:10px; font-weight:700; text-transform:uppercase; color:var(--texto-secundario); border-bottom:2px solid var(--borda-cor);"><span>DIA</span><span style="text-align:right;">FÁBRICA</span><span style="text-align:right;">EXTERNO</span><span style="text-align:right;">TOTAL</span></div>
