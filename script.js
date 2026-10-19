@@ -3687,61 +3687,106 @@ let graficoEfCosturaInstance = null;
 const CORES_LOCAIS_EF_COSTURA = { 'PNP COST SUP CAMISA': '#4472C4', 'PNP COST SUP MALHA': '#ED7D31', 'PNP COST INF CALCA': '#4C8C4A', 'PNP COST CEL HIBRIDA': '#8E5EA2' };
 // Linhas: uma por local + TOTAL (mais grossa) + linha tracejada em 100%.
 // Dia sem pessoas informadas naquele local não tem ponto (a linha liga os dias que têm).
+let graficosEfCosturaSepInstances = [];
+function alternarModoGraficoEfCostura() {
+    let atual = 'separados'; try { atual = localStorage.getItem('efCosturaGraficoModo') === 'juntos' ? 'juntos' : 'separados'; } catch (e) { /* padrão */ }
+    try { localStorage.setItem('efCosturaGraficoModo', atual === 'juntos' ? 'separados' : 'juntos'); } catch (e) { /* ignora */ }
+    renderizarEficienciaCostura();
+}
+const COR_STATUS_EF = e => e === null || e === undefined ? '#999' : (e >= 100 ? '#4C9A6A' : (e >= 70 ? '#D9A441' : '#C1444E'));
+// Faixas de fundo: verde acima de 100% (meta batida), amarelo de 70 a 100, vermelho abaixo de 70% — mesmas cores dos pontos.
+const faixasEficienciaPlugin = {
+    id: 'faixasEficiencia',
+    beforeDatasetsDraw(chart) {
+        const { ctx, chartArea, scales } = chart; if (!chartArea || !scales.y) return;
+        const y100 = scales.y.getPixelForValue(100), y70 = scales.y.getPixelForValue(70);
+        const L = chartArea.left, W = chartArea.right - chartArea.left;
+        ctx.save();
+        ctx.fillStyle = 'rgba(76, 154, 106, 0.10)'; ctx.fillRect(L, chartArea.top, W, Math.max(0, y100 - chartArea.top));
+        ctx.fillStyle = 'rgba(217, 164, 65, 0.07)'; ctx.fillRect(L, y100, W, Math.max(0, y70 - y100));
+        ctx.fillStyle = 'rgba(193, 68, 78, 0.10)'; ctx.fillRect(L, y70, W, Math.max(0, chartArea.bottom - y70));
+        ctx.restore();
+    },
+};
+// Dia a dia. Padrão: um gráfico por local (mais o TOTAL), todos na mesma escala e com os pontos coloridos
+// pela faixa (verde/amarelo/vermelho) — dá pra ler sem legenda. "Tudo junto" = as linhas no mesmo gráfico.
 function desenharGraficoEficienciaCostura(dias, serieEf) {
     const canvas = $('graficoEfCostura'); if (!canvas) return;
     if (graficoEfCosturaInstance) { graficoEfCosturaInstance.destroy(); graficoEfCosturaInstance = null; }
+    graficosEfCosturaSepInstances.forEach(g => g.destroy()); graficosEfCosturaSepInstances = [];
     const aviso = $('graficoEfCosturaAviso');
     const nomes = [...new Set(dias.flatMap(d => Object.keys(serieEf[d].locais)))].sort();
     const temDado = dias.some(d => serieEf[d].total !== null || nomes.some(n => serieEf[d].locais[n] && serieEf[d].locais[n].efic !== null));
+    const wrapJunto = $('graficoEfCosturaJuntoWrap'), wrapSep = $('graficosEfCosturaSeparados');
+    let modo = 'separados'; try { modo = localStorage.getItem('efCosturaGraficoModo') === 'juntos' ? 'juntos' : 'separados'; } catch (e) { /* padrão */ }
+    if ($('txtModoGraficoEfCostura')) $('txtModoGraficoEfCostura').textContent = modo === 'separados' ? 'TUDO JUNTO' : 'UM POR LOCAL';
     if (aviso) aviso.style.display = temDado ? 'none' : '';
-    canvas.parentElement.style.display = temDado ? '' : 'none';
-    if (!temDado) return;
+    if (!temDado) { if (wrapJunto) wrapJunto.style.display = 'none'; if (wrapSep) wrapSep.style.display = 'none'; return; }
+    if (wrapJunto) wrapJunto.style.display = modo === 'juntos' ? '' : 'none';
+    if (wrapSep) wrapSep.style.display = modo === 'separados' ? 'grid' : 'none';
     const arred = v => v === null || v === undefined ? null : Math.round(v * 10) / 10;
-    const datasets = nomes.map(n => ({
-        label: nomeLocalEfCostura(n),
-        data: dias.map(d => serieEf[d].locais[n] ? arred(serieEf[d].locais[n].efic) : null),
-        borderColor: CORES_LOCAIS_EF_COSTURA[n] || '#999', backgroundColor: CORES_LOCAIS_EF_COSTURA[n] || '#999',
-        tension: 0.25, fill: false, spanGaps: true, borderWidth: 2, pointRadius: 3,
-    }));
     const escuro = document.body.classList.contains('dark-mode');
+    const corTexto = escuro ? '#D8D2C5' : '#555';
     const corTotal = escuro ? '#F2EFE9' : '#2B2620';
-    datasets.push({ label: 'TOTAL', data: dias.map(d => arred(serieEf[d].total)), borderColor: corTotal, backgroundColor: corTotal, tension: 0.25, fill: false, spanGaps: true, borderWidth: 4, pointRadius: 4 });
-    datasets.push({ label: '100%', data: dias.map(() => 100), borderColor: '#4C9A6A', borderDash: [8, 5], borderWidth: 2.5, pointRadius: 0, fill: false });
-    // Faixas de fundo: verde acima de 100% (meta batida), vermelho abaixo de 70% (preocupante)
-    const faixasEficiencia = {
-        id: 'faixasEficiencia',
-        beforeDatasetsDraw(chart) {
-            const { ctx, chartArea, scales } = chart; if (!chartArea || !scales.y) return;
-            const y100 = scales.y.getPixelForValue(100), y70 = scales.y.getPixelForValue(70);
-            ctx.save();
-            ctx.fillStyle = 'rgba(76, 154, 106, 0.10)';
-            ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, Math.max(0, y100 - chartArea.top));
-            ctx.fillStyle = 'rgba(193, 68, 78, 0.10)';
-            ctx.fillRect(chartArea.left, y70, chartArea.right - chartArea.left, Math.max(0, chartArea.bottom - y70));
-            ctx.restore();
-        },
+    const infoDe = (rotulo, dia) => rotulo === 'TOTAL' ? serieEf[dia] : Object.entries(serieEf[dia].locais).find(([n]) => nomeLocalEfCostura(n) === rotulo)?.[1];
+    const tooltipLabel = c => {
+        if (c.dataset.label === 'Meta 100%') return null;
+        const info = infoDe(c.dataset.label, dias[c.dataIndex]);
+        const det = info && info.disp ? `  (${Math.round(info.min).toLocaleString('pt-BR')} ÷ ${Math.round(info.disp).toLocaleString('pt-BR')} min)` : '';
+        return `${c.dataset.label}: ${(c.parsed.y ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%${det}`;
     };
-    graficoEfCosturaInstance = new Chart(canvas, {
-        type: 'line',
-        plugins: [faixasEficiencia],
-        data: { labels: dias.map(formatarChaveDataBR), datasets },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            color: escuro ? '#D8D2C5' : '#555',
-            plugins: {
-                legend: { display: true },
-                title: { display: true, text: 'Faixa verde: acima de 100%   ·   Faixa vermelha: abaixo de 70%', font: { size: 11, weight: 'normal' }, padding: { bottom: 6 } },
-                datalabels: { display: false },
-                tooltip: { callbacks: { label: c => {
-                    if (c.dataset.label === '100%') return null;
-                    const dia = dias[c.dataIndex];
-                    const info = c.dataset.label === 'TOTAL' ? serieEf[dia] : Object.entries(serieEf[dia].locais).find(([n]) => nomeLocalEfCostura(n) === c.dataset.label)?.[1];
-                    const det = info && info.disp ? ` (${Math.round(info.min).toLocaleString('pt-BR')} ÷ ${Math.round(info.disp).toLocaleString('pt-BR')} min)` : '';
-                    return `${c.dataset.label}: ${(c.parsed.y ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%${det}`;
-                } } },
+    const escalaY = { beginAtZero: true, min: 0, suggestedMax: 120, ticks: { callback: v => v + '%', color: corTexto }, grid: { color: escuro ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } };
+    const escalaX = { ticks: { color: corTexto, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { display: false } };
+    const labelsX = dias.map(d => formatarChaveDataBR(d).slice(0, 5));   // dd/mm — o ano já está no filtro de mês
+
+    if (modo === 'juntos') {
+        const datasets = nomes.map(n => ({
+            label: nomeLocalEfCostura(n), data: dias.map(d => serieEf[d].locais[n] ? arred(serieEf[d].locais[n].efic) : null),
+            borderColor: CORES_LOCAIS_EF_COSTURA[n] || '#999', backgroundColor: CORES_LOCAIS_EF_COSTURA[n] || '#999',
+            tension: 0, fill: false, spanGaps: true, borderWidth: 2, pointRadius: 3,
+        }));
+        datasets.push({ label: 'TOTAL', data: dias.map(d => arred(serieEf[d].total)), borderColor: corTotal, backgroundColor: corTotal, tension: 0, fill: false, spanGaps: true, borderWidth: 4, pointRadius: 4 });
+        datasets.push({ label: 'Meta 100%', data: dias.map(() => 100), borderColor: '#4C9A6A', borderDash: [8, 5], borderWidth: 2, pointRadius: 0, fill: false });
+        graficoEfCosturaInstance = new Chart(canvas, {
+            type: 'line', plugins: [faixasEficienciaPlugin],
+            data: { labels: labelsX, datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false, color: corTexto, interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { display: true, labels: { filter: i => i.text !== 'Meta 100%', usePointStyle: true } }, datalabels: { display: false }, tooltip: { callbacks: { label: tooltipLabel }, itemSort: (a, b) => (b.parsed.y ?? -1) - (a.parsed.y ?? -1) } },
+                scales: { y: escalaY, x: escalaX },
             },
-            scales: { y: { beginAtZero: true, suggestedMax: 120, title: { display: true, text: 'Eficiência (%)' } } },
-        },
+        });
+        return;
+    }
+
+    // um gráfico por local (+ TOTAL primeiro)
+    const paineis = [{ rotulo: 'TOTAL', titulo: 'TOTAL — todos os locais', valores: dias.map(d => arred(serieEf[d].total)), cor: corTotal }]
+        .concat(nomes.map(n => ({ rotulo: nomeLocalEfCostura(n), titulo: nomeLocalEfCostura(n), valores: dias.map(d => serieEf[d].locais[n] ? arred(serieEf[d].locais[n].efic) : null), cor: CORES_LOCAIS_EF_COSTURA[n] || '#999' })));
+    wrapSep.innerHTML = paineis.map((pn, i) => {
+        const v = pn.valores.filter(x => x !== null);
+        const media = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+        const ultimo = v.length ? v[v.length - 1] : null;
+        const fmtp = x => x === null ? '—' : x.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+        return `<div style="border:1px solid var(--borda-cor); border-top:4px solid ${pn.cor}; border-radius:8px; background:var(--bg-card); padding:8px 10px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:4px;">
+                <strong style="font-size:13px;">${pn.titulo}</strong>
+                <span style="font-size:11px; color:var(--texto-secundario);">média <strong style="color:${COR_STATUS_EF(media)};">${fmtp(media)}</strong> · último <strong style="color:${COR_STATUS_EF(ultimo)};">${fmtp(ultimo)}</strong></span>
+            </div>
+            <div style="position:relative; height:190px;"><canvas id="graficoEfCosturaSep${i}"></canvas></div></div>`;
+    }).join('');
+    paineis.forEach((pn, i) => {
+        graficosEfCosturaSepInstances.push(new Chart($('graficoEfCosturaSep' + i), {
+            type: 'line', plugins: [faixasEficienciaPlugin],
+            data: { labels: labelsX, datasets: [
+                { label: pn.rotulo, data: pn.valores, borderColor: pn.cor, backgroundColor: pn.valores.map(COR_STATUS_EF), pointBackgroundColor: pn.valores.map(COR_STATUS_EF), pointBorderColor: pn.valores.map(COR_STATUS_EF), tension: 0, fill: false, spanGaps: true, borderWidth: pn.rotulo === 'TOTAL' ? 3 : 2, pointRadius: 4, pointHoverRadius: 6 },
+                { label: 'Meta 100%', data: dias.map(() => 100), borderColor: '#4C9A6A', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false },
+            ] },
+            options: {
+                responsive: true, maintainAspectRatio: false, color: corTexto,
+                plugins: { legend: { display: false }, datalabels: { display: false }, tooltip: { callbacks: { label: tooltipLabel } } },
+                scales: { y: escalaY, x: escalaX },
+            },
+        }));
     });
 }
 
