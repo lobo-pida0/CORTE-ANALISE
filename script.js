@@ -3337,7 +3337,7 @@ function obterClassificacaoOficinasKPI() {
 }
 // Palavras que, aparecendo no texto da coluna N, já marcam a OP como externa (sem precisar de override manual).
 // "MATHEUS MG" cobre "matheus-mg", "matheus mg" e "matheusmg" (pontuação vira espaço e também se compara sem espaços).
-const PALAVRAS_EXTERNO_KPI = ['CORTE', 'ANDERSON', 'MATHEUS MG'];
+const PALAVRAS_EXTERNO_KPI = ['CORTE', 'ANDERSON', 'MATHEUS MG', 'DESTINO EXTERNO'];   // 'DESTINO EXTERNO' é o marcador que a importação grava quando o destino da movimentação é externo (ver DESTINOS_EXTERNOS_KPI)
 // Nomes curtos: só valem como PALAVRA inteira (senão "ARI" pegaria MARIA, MARIANA, VARIEDADE...).
 const PALAVRAS_INTEIRAS_EXTERNO_KPI = ['ARI'];
 function textoTemPalavraExternoKPI(t) {
@@ -3346,6 +3346,9 @@ function textoTemPalavraExternoKPI(t) {
     const palavras = espacado.split(' ');
     return PALAVRAS_EXTERNO_KPI.some(p => espacado.includes(p) || colado.includes(p.replace(/ /g, ''))) || PALAVRAS_INTEIRAS_EXTERNO_KPI.some(p => palavras.includes(p));
 }
+// Setores em que o LOCAL DE DESTINO decide o externo: no Almox Tecidos o tecido já sai separado pra oficina, então destino
+// "...EXTERNO" = externo. Nos outros setores NÃO vale (a OP ainda passa pelo setor seguinte antes de ir pra fora): lá só a coluna N decide.
+const DESTINOS_EXTERNOS_KPI = { 'ALMOX TECIDO': /EXTERNO/ };
 function oficinaEhExternaKPI(of, classif) {
     const t = normalizarOficinaKPI(of);
     if (!t || t === 'INT') return false;
@@ -4219,7 +4222,7 @@ function processarMovimentacaoSetor() {
             const movimentosImportados = [];   // o que ESTA importação gravou — vai pra nuvem logo depois
             const todas = obterMovimentacoesPorSetorBruto();
             const setoresEncontrados = new Set();
-            let linhasLidas = 0, linhasComLocalDesconhecido = 0, linhasSemDestino = 0, linhasRetrocedendo = 0, linhasComMultiplicador = 0, linhasExternas = 0;
+            let linhasLidas = 0, linhasComLocalDesconhecido = 0, linhasSemDestino = 0, linhasRetrocedendo = 0, linhasComMultiplicador = 0, linhasExternas = 0, linhasExternasPorDestino = 0;
             const oficinasNaoClassificadas = new Set();
             const classifImport = obterClassificacaoOficinasKPI();
 
@@ -4264,7 +4267,11 @@ function processarMovimentacaoSetor() {
                 // segunda sobrevivia).
                 const chaveMovimento = `${opId}|${data.toISOString().slice(0, 10)}`;
                 const movimentoLido = { op: opId, ciclo, data: data.toISOString(), qtd };
-                const oficinaTxt = idxOficina !== -1 && campos[idxOficina] ? normalizarOficinaKPI(campos[idxOficina]) : '';
+                let oficinaTxt = idxOficina !== -1 && campos[idxOficina] ? normalizarOficinaKPI(campos[idxOficina]) : '';
+                if (DESTINOS_EXTERNOS_KPI[setor] && DESTINOS_EXTERNOS_KPI[setor].test(normalizarOficinaKPI(localDestinoBruto))) {
+                    oficinaTxt = `DESTINO EXTERNO: ${normalizarOficinaKPI(localDestinoBruto)}`;   // o destino manda nesse setor (o texto da coluna N, sujo, é descartado)
+                    linhasExternasPorDestino++;
+                }
                 if (oficinaTxt && oficinaTxt !== 'INT') { movimentoLido.of = oficinaTxt; if (oficinaEhExternaKPI(oficinaTxt, classifImport)) linhasExternas++; else oficinasNaoClassificadas.add(oficinaTxt); }
                 todas[setor][chaveMovimento] = movimentoLido;
                 movimentosImportados.push({ setor, m: movimentoLido });
@@ -4277,6 +4284,7 @@ function processarMovimentacaoSetor() {
             input.value = '';
             let msg = `<i class="fas fa-check-double"></i> ${linhasLidas} movimentações importadas (${[...setoresEncontrados].join(', ')})!`;
             if (linhasComLocalDesconhecido > 0) msg += ` ${linhasComLocalDesconhecido} com local de origem desconhecido.`;
+            if (linhasExternasPorDestino > 0) msg += ` ${linhasExternasPorDestino} do Almox Tecidos com destino externo.`;
             if (linhasExternas > 0) msg += ` ${linhasExternas} de oficina EXTERNA (ficam fora do KPI normal; veja no botão EXTERNO).`;
             if (oficinasNaoClassificadas.size) msg += ` ⚠ Oficina(s) fora da regra (CORTE / ANDERSON / MATHEUS MG / ARI), contadas como fábrica: ${[...oficinasNaoClassificadas].slice(0, 4).join(', ')}${oficinasNaoClassificadas.size > 4 ? '…' : ''} — se forem externas, marque em OFICINAS.`;
             if (idxOficina === -1) msg += ' ⚠ Não achei a coluna "Cod. Loc Prod Cost" — nada foi separado como externo nessa importação.';
