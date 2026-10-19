@@ -4856,6 +4856,40 @@ function montarComparacaoSetorKPI(setor, anoMes) {
         </tbody></table>${semanaTxt}</div>`;
 }
 
+
+// Bloco "FILA AGORA" do detalhe do setor: as OPs que estão NESTA etapa neste momento (não depende do mês escolhido),
+// com os mesmos números do Gargalo (dias de fila = peças na etapa ÷ ritmo do KPI), ordenadas por prioridade → pedido urgente → dias no local.
+function montarFilaSetorKPI(setor) {
+    const fmt = v => v.toLocaleString('pt-BR');
+    const idEtapa = Object.keys(SETOR_KPI_DA_ETAPA).find(k => SETOR_KPI_DA_ETAPA[k] === setor);
+    if (idEtapa === undefined) return '';
+    const st = (calcularRankingGargalo() || []).find(x => x.id === Number(idEtapa));
+    const titulo = '<div style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase; margin-bottom:6px;">Fila agora <span style="font-weight:400; text-transform:none;">(OPs que estão nessa etapa neste momento)</span></div>';
+    if (!st) return `<div style="margin-bottom:14px;">${titulo}<div style="font-size:12px; color:var(--texto-secundario); padding:8px 0;">Nenhuma OP na etapa ${nomesEtapas[idEtapa] || setor} agora (ou a planilha de Sincronização ainda não foi importada).</div></div>`;
+    const corDaFila = d => d >= 3 ? 'var(--cor-alerta)' : (d >= 1.5 ? 'var(--cor-selecao)' : 'var(--cor-despacho)');
+    const temFila = st.diasFila !== null;
+    const ordenadas = [...st.ops].sort((a, b) => (opEstaNaAbaPrioridades(b.op.ciclo, b.op.id) ? 1 : 0) - (opEstaNaAbaPrioridades(a.op.ciclo, a.op.id) ? 1 : 0) || (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || b.dias - a.dias);
+    const linhas = ordenadas.map(o => {
+        const x = o.op, prio = opEstaNaAbaPrioridades(x.ciclo, x.id);
+        return `<tr><td style="white-space:nowrap;">${prio ? '<i class="fas fa-star" style="color:var(--cor-selecao); font-size:10px;" title="Está na aba Prioridades"></i> ' : ''}<strong>${x.id}</strong>${x.ciclo ? ' · ' + x.ciclo : ''}</td>
+            <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--texto-secundario);" title="${String(x.desc || '').replace(/"/g, '&quot;')}">${String(x.desc || '').replace(/</g, '&lt;')}</td>
+            <td style="text-align:right;">${fmt(o.pecas)}</td>
+            <td style="text-align:right; ${o.dias >= 3 ? 'color:var(--cor-alerta); font-weight:700;' : ''}">${o.dias}d</td>
+            <td>${o.comPedido ? `<span class="pill" style="background:${o.urgente ? 'var(--cor-roxo)' : 'var(--cor-sugestao)'}; color:white;">${o.urgente ? 'PEDIDO URGENTE' : 'PEDIDO'}</span>` : ''}</td></tr>`;
+    }).join('');
+    const media = st.qtdOps ? (st.somaDias / st.qtdOps).toFixed(1).replace('.', ',') : '0';
+    return `<div style="margin-bottom:14px;">${titulo}
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 12px; background:var(--bg-card); border-radius:8px; border-left:4px solid ${temFila ? corDaFila(st.diasFila) : 'var(--borda-cor)'};">
+            <div style="font-size:12px;"><strong>${st.qtdOps}</strong> OPs · <strong>${fmt(st.pcsFila)}</strong> pçs${st.pcsFila !== st.qtdPcs ? ' <span title="Enfesto e Corte contam por camada, igual ao KPI">(contando camadas)</span>' : ''}
+                <div style="font-size:11px; color:var(--texto-secundario); margin-top:2px;">no local: máx <strong style="color:${st.maxDias >= 3 ? 'var(--cor-alerta)' : 'inherit'};">${st.maxDias}d</strong>, média ${media}d${st.opsCriticas ? ` · <span style="color:var(--cor-alerta); font-weight:700;">${st.opsCriticas} crítica${st.opsCriticas === 1 ? '' : 's'} (3+ dias)</span>` : ''}${st.opsComPedido ? ` · <span style="font-weight:700;">${st.opsComPedido} com pedido${st.opsComPedidoUrgente ? ` (${st.opsComPedidoUrgente} urgente${st.opsComPedidoUrgente === 1 ? '' : 's'})` : ''}</span>` : ''}</div>
+                ${temFila ? `<div style="font-size:11px; color:var(--texto-secundario); margin-top:2px;">÷ ritmo de <strong>${fmt(Math.round(st.ritmo.media))}</strong> pçs/dia (últimos ${st.ritmo.dias} dias úteis, só fábrica)</div>` : '<div style="font-size:11px; color:var(--texto-secundario); margin-top:2px;">Sem ritmo do KPI pra calcular dias de fila.</div>'}</div>
+            ${temFila ? `<div style="text-align:right;"><div style="font-size:24px; font-weight:900; line-height:1; color:${corDaFila(st.diasFila)};">${st.diasFila.toFixed(1).replace('.', ',')}</div><div style="font-size:10px; color:var(--texto-secundario);">dias de fila</div></div>` : ''}
+        </div>
+        <details style="margin-top:6px;"><summary style="cursor:pointer; font-size:12px; padding:6px 2px; color:var(--texto-secundario);">Ver as ${st.qtdOps} OPs na etapa (estrela = aba Prioridades)</summary>
+            <div style="max-height:260px; overflow-y:auto; border-top:1px solid var(--borda-cor);"><table class="tabela-dados" style="width:100%;"><thead><tr><th>OP</th><th>DESCRIÇÃO</th><th style="text-align:right;">PEÇAS</th><th style="text-align:right;">NO LOCAL</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div></details>
+    </div>`;
+}
+
 function abrirDetalheSetorKPI(setor, anoMes) {
     anoMes = anoMes || ($('seletorMesKPI') ? $('seletorMesKPI').value : '');
     if (!anoMes) return;
@@ -4919,6 +4953,7 @@ function abrirDetalheSetorKPI(setor, anoMes) {
                 ${card('Média por dia (fábrica)', fmt(media), `${diasFab.length} dia(s) com movimento`)}
                 ${card('Melhor / menor dia', melhor ? `${fmt(dias[melhor].fab.pecas)} / ${fmt(dias[pior].fab.pecas)}` : '—', melhor ? `${formatarChaveDataBR(melhor).slice(0, 5)} / ${formatarChaveDataBR(pior).slice(0, 5)}` : '')}
             </div>
+            ${montarFilaSetorKPI(setor)}
             ${montarComparacaoSetorKPI(setor, anoMes)}
             ${total ? `<div style="display:flex; height:10px; border-radius:5px; overflow:hidden; margin-bottom:14px;" title="Fábrica x externo"><div style="width:${100 - pctExt}%; background:${cor};"></div><div style="width:${pctExt}%; background:var(--cor-alerta);"></div></div>` : ''}
             <div style="font-size:11px; color:var(--texto-secundario); margin-bottom:6px;">Clique num dia para ver as OPs que foram movimentadas. <span style="color:var(--cor-selecao);">▲</span> = dia bem acima da média. Linhas em vermelho são OPs de oficina externa.</div>
