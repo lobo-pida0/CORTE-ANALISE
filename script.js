@@ -3496,9 +3496,14 @@ function salvarMovimentacoesPorSetor(obj) {
 // pelo mesmo setor em dias diferentes colide na mesma linha da nuvem e
 // uma sobrescreve a outra (mesmo bug que existia no armazenamento local,
 // corrigido junto).
+// Identidade de uma OP no KPI: "ciclo-OP" (o mesmo número pode existir em ciclos diferentes). Sem ciclo, só o número.
+function idOPKPI(m) { return m && m.ciclo ? `${String(m.ciclo).trim()}-${m.op}` : String(m && m.op); }
+// Chave da movimentação dentro do setor: ciclo + OP + dia (antes era só OP + dia, e duas OPs de mesmo número em ciclos diferentes se sobrescreviam).
+function chaveMovimentoKPI(op, ciclo, diaSlice) { return `${ciclo ? String(ciclo).trim() + '-' : ''}${op}|${diaSlice}`; }
+
 function linhaSupabaseDeMovimentoKPI(setor, m) {
     const dataSlice = m.data ? new Date(m.data).toISOString().slice(0, 10) : 'semdata';
-    return { id: `${setor}|${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, oficina: m.of || '', atualizado_em: new Date().toISOString() };
+    return { id: `${setor}|${m.ciclo ? m.ciclo + '-' : ''}${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, oficina: m.of || '', atualizado_em: new Date().toISOString() };
 }
 
 // Depois de importar um relatório de movimentação, publica na nuvem SÓ o que
@@ -3553,7 +3558,7 @@ function linhasSupabaseParaMovimentacoes(linhas) {
         if (!l.setor || !l.op) return;
         if (!todas[l.setor]) todas[l.setor] = {};
         const dataSlice = l.data ? String(l.data).slice(0, 10) : 'semdata';
-        const chaveMovimento = `${l.op}|${dataSlice}`;
+        const chaveMovimento = chaveMovimentoKPI(l.op, l.ciclo, dataSlice);
         todas[l.setor][chaveMovimento] = { op: l.op, ciclo: l.ciclo || '', data: l.data, qtd: l.qtd || 0 };
         if (l.oficina) todas[l.setor][chaveMovimento].of = normalizarOficinaKPI(l.oficina);
     });
@@ -4265,7 +4270,10 @@ function processarMovimentacaoSetor() {
                 // apagava a primeira silenciosamente (bug real encontrado
                 // pelo usuário: OP 3612 no Corte em 04/09 E 11/09, só a
                 // segunda sobrevivia).
-                const chaveMovimento = `${opId}|${data.toISOString().slice(0, 10)}`;
+                const diaSlice = data.toISOString().slice(0, 10);
+                const chaveMovimento = chaveMovimentoKPI(opId, ciclo, diaSlice);
+                const chaveAntiga = `${opId}|${diaSlice}`;   // formato antigo (sem ciclo): sai, pra não ficar duplicado
+                if (chaveAntiga !== chaveMovimento && todas[setor] && todas[setor][chaveAntiga] && (!todas[setor][chaveAntiga].ciclo || todas[setor][chaveAntiga].ciclo === ciclo)) delete todas[setor][chaveAntiga];
                 const movimentoLido = { op: opId, ciclo, data: data.toISOString(), qtd };
                 let oficinaTxt = idxOficina !== -1 && campos[idxOficina] ? normalizarOficinaKPI(campos[idxOficina]) : '';
                 if (DESTINOS_EXTERNOS_KPI[setor] && DESTINOS_EXTERNOS_KPI[setor].test(normalizarOficinaKPI(localDestinoBruto))) {
@@ -4331,11 +4339,14 @@ function processarExternoAlmox() {
                 if ((origem !== 'ALMOX TECIDO' && origem !== 'PCP PROGRAMACAO-CORTE') || !/EXTERNO/.test(destino)) { ignoradas++; continue; }
                 const qtd = parseInt(c[iQtd]) || 0;
                 const mov = { op: opId, ciclo: iCiclo !== -1 ? (c[iCiclo] || '').trim() : '', data: data.toISOString(), qtd, of: `DESTINO EXTERNO: ${destino}` };
-                const chave = `${opId}|${data.toISOString().slice(0, 10)}`;
+                const diaSlice = data.toISOString().slice(0, 10);
+                const chave = chaveMovimentoKPI(opId, mov.ciclo, diaSlice);
+                const chaveAntiga = `${opId}|${diaSlice}`;
                 const alvos = origem === 'PCP PROGRAMACAO-CORTE' ? ['ALMOX TECIDO', 'PCP PROGRAMACAO-CORTE'] : ['ALMOX TECIDO'];
                 alvos.forEach(setor => {
                     if (!todas[setor]) todas[setor] = {};
                     const m = { ...mov };
+                    if (chaveAntiga !== chave && todas[setor][chaveAntiga] && (!todas[setor][chaveAntiga].ciclo || todas[setor][chaveAntiga].ciclo === mov.ciclo)) delete todas[setor][chaveAntiga];
                     todas[setor][chave] = m;
                     importados.push({ setor, m });
                     if (setor === 'ALMOX TECIDO') nAlmox++; else nPcp++;
@@ -4420,7 +4431,7 @@ function calcularMediaPorSemanaDoMes(setor, anoMes) {
         const dia = data.getUTCDate();
         totalPorDia[dia] = (totalPorDia[dia] || 0) + m.qtd;
         if (!opsPorDia[dia]) opsPorDia[dia] = new Set();
-        opsPorDia[dia].add(m.op);
+        opsPorDia[dia].add(idOPKPI(m));
     });
 
     // Agrupa os dias úteis do mês em semanas de segunda a sexta — a chave
@@ -4473,11 +4484,11 @@ function calcularLeadTimeSetor(setor) {
     const primeiraChegadaPorOP = {};
     Object.values(movimentos).forEach(m => {
         if (!m.data) return;
-        if (!primeiraChegadaPorOP[m.op] || m.data < primeiraChegadaPorOP[m.op]) primeiraChegadaPorOP[m.op] = m.data;
+        if (!primeiraChegadaPorOP[idOPKPI(m)] || m.data < primeiraChegadaPorOP[idOPKPI(m)]) primeiraChegadaPorOP[idOPKPI(m)] = m.data;
     });
     const leadTimes = [];
     Object.entries(primeiraChegadaPorOP).forEach(([opId, dataChegada]) => {
-        const op = bancoDadosOPs.find(o => o.id === opId);
+        const op = bancoDadosOPs.find(o => chaveDaOP(o) === opId) || bancoDadosOPs.find(o => o.id === opId);
         if (!op || !op.dataInclusao) return;
         const dataEntradaSetor = new Date(dataChegada);
         const dataInclusao = new Date(op.dataInclusao);
@@ -4509,7 +4520,7 @@ function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
         const dia = new Date(m.data).toISOString().slice(0, 10);
         if (!dia.startsWith(anoMes)) return;
         if (!opsPorDiaOrigem[dia]) opsPorDiaOrigem[dia] = new Set();
-        opsPorDiaOrigem[dia].add(m.op);
+        opsPorDiaOrigem[dia].add(idOPKPI(m));
     });
 
     // Pra cada OP, todas as datas em que ela aparece no destino (uma OP
@@ -4519,8 +4530,8 @@ function calcularAcertividadeSetores(setorOrigem, setorDestino, anoMes) {
     Object.values(movsDestino).forEach(m => {
         if (!m.data) return;
         const dia = new Date(m.data).toISOString().slice(0, 10);
-        if (!datasDestinoPorOP[m.op]) datasDestinoPorOP[m.op] = new Set();
-        datasDestinoPorOP[m.op].add(dia);
+        if (!datasDestinoPorOP[idOPKPI(m)]) datasDestinoPorOP[idOPKPI(m)] = new Set();
+        datasDestinoPorOP[idOPKPI(m)].add(dia);
     });
 
     const resultado = [];
@@ -4693,7 +4704,7 @@ function renderizarGraficoKPI() {
             if (mesSelecionado && !dia.startsWith(mesSelecionado)) return;
             totalPorSetorPorDia[setor][dia] = (totalPorSetorPorDia[setor][dia] || 0) + m.qtd;
             if (!opsPorSetorPorDia[setor][dia]) opsPorSetorPorDia[setor][dia] = new Set();
-            opsPorSetorPorDia[setor][dia].add(m.op);
+            opsPorSetorPorDia[setor][dia].add(idOPKPI(m));
             todasDatas.add(dia);
         });
     });
@@ -4878,7 +4889,7 @@ function somarDiasUteisSetorKPI(setor, externo, anoMes, ateDia) {
         const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
         if (dow === 0 || dow === 6) return;
         const d = porDia[dia] = porDia[dia] || { pecas: 0, ops: new Set() };
-        d.pecas += m.qtd || 0; d.ops.add(m.op);
+        d.pecas += m.qtd || 0; d.ops.add(idOPKPI(m));
     });
     const chaves = Object.keys(porDia), ops = new Set();
     let total = 0; chaves.forEach(k => { total += porDia[k].pecas; porDia[k].ops.forEach(o => ops.add(o)); });
@@ -4955,7 +4966,6 @@ function abrirDetalheSetorKPI(setor, anoMes) {
     if (!anoMes) return;
     const classif = obterClassificacaoOficinasKPI();
     const movs = Object.values(obterMovimentacoesPorSetorBruto()[setor] || {}).filter(m => m.data && new Date(m.data).toISOString().slice(0, 7) === anoMes);
-    const opsPorId = new Map((bancoDadosOPs || []).map(o => [o.id, o]));
     const dias = {}; let fimDeSemana = 0;
     movs.forEach(m => {
         const dia = new Date(m.data).toISOString().slice(0, 10);
@@ -4964,8 +4974,8 @@ function abrirDetalheSetorKPI(setor, anoMes) {
         const d = dias[dia] = dias[dia] || { dow, fab: { pecas: 0, ops: new Set() }, ext: { pecas: 0, ops: new Set() }, lista: [] };
         const ext = oficinaEhExternaKPI(m.of, classif);
         const alvo = ext ? d.ext : d.fab;
-        alvo.pecas += m.qtd || 0; alvo.ops.add(m.op);
-        d.lista.push({ op: m.op, ciclo: m.ciclo, qtd: m.qtd || 0, ext, of: m.of || '', desc: (opsPorId.get(m.op) || {}).desc || '' });
+        alvo.pecas += m.qtd || 0; alvo.ops.add(idOPKPI(m));
+        d.lista.push({ op: m.op, ciclo: m.ciclo, qtd: m.qtd || 0, ext, of: m.of || '', desc: (acharOPNaSincronizacao(m.op, m.ciclo) || {}).desc || '' });
     });
     const chaves = Object.keys(dias).sort();
     const nomesDia = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -4985,7 +4995,7 @@ function abrirDetalheSetorKPI(setor, anoMes) {
         const pico = media && d.fab.pecas > media * 1.6;
         const marca = k === melhor && diasFab.length > 1 ? '<span class="pill" style="background:var(--cor-despacho); color:white; font-size:9px; padding:1px 6px; margin-left:6px;">MELHOR</span>' : (k === pior && diasFab.length > 1 ? '<span class="pill" style="background:var(--cor-alerta); color:white; font-size:9px; padding:1px 6px; margin-left:6px;">MENOR</span>' : '');
         const lista = d.lista.sort((a, b) => b.qtd - a.qtd).map(x => `<tr${x.ext ? ' style="background:rgba(193,68,78,.10);"' : ''}>
-            <td><strong>${x.op}</strong>${x.ciclo ? ` <span style="color:var(--texto-secundario); font-size:10px;">c${x.ciclo}</span>` : ''}</td>
+            <td><strong>${x.op}</strong>${x.ciclo ? ` <span style="color:var(--texto-secundario); font-size:11px;">· ciclo ${x.ciclo}</span>` : ''}</td>
             <td style="font-size:11px; color:var(--texto-secundario);">${String(x.desc).replace(/</g, '&lt;').slice(0, 60)}</td>
             <td style="text-align:right;">${fmt(x.qtd)}</td>
             <td>${x.ext ? `<span style="color:var(--cor-alerta); font-weight:700; font-size:11px;">EXTERNO</span> <span style="font-size:10px; color:var(--texto-secundario);">${String(x.of).replace(/</g, '&lt;')}</span>` : '<span style="font-size:11px; color:var(--texto-secundario);">fábrica</span>'}</td></tr>`).join('');
@@ -5097,9 +5107,9 @@ function calcularLeadTimeSetorNoMes(setor, anoMes) {
     const primeiraChegadaPorOP = {};
     Object.values(movimentos).forEach(m => {
         if (!m.data) return;
-        if (!primeiraChegadaPorOP[m.op] || m.data < primeiraChegadaPorOP[m.op]) primeiraChegadaPorOP[m.op] = m.data;
+        if (!primeiraChegadaPorOP[idOPKPI(m)] || m.data < primeiraChegadaPorOP[idOPKPI(m)]) primeiraChegadaPorOP[idOPKPI(m)] = m.data;
     });
-    const opsPorId = new Map(bancoDadosOPs.map(o => [o.id, o]));
+    const opsPorId = new Map(); bancoDadosOPs.forEach(o => { opsPorId.set(chaveDaOP(o), o); if (!opsPorId.has(o.id)) opsPorId.set(o.id, o); });
     const leadTimes = [];
     let opsQueChegaramNoMes = 0;
     Object.entries(primeiraChegadaPorOP).forEach(([opId, dataChegada]) => {
@@ -5133,9 +5143,9 @@ function montarPlanilhasMesKPI(anoMes) {
             const d = porSetor[setor];
             d.movs.push({ dia, op: m.op, ciclo: m.ciclo || '', qtd: m.qtd });
             if (!d.dias[dia]) d.dias[dia] = { pecas: 0, ops: new Set() };
-            d.dias[dia].pecas += m.qtd; d.dias[dia].ops.add(m.op);
+            d.dias[dia].pecas += m.qtd; d.dias[dia].ops.add(idOPKPI(m));
             const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
-            if (dow === 0 || dow === 6) d.foraDoTotal += m.qtd; else d.opsUteis.add(m.op);
+            if (dow === 0 || dow === 6) d.foraDoTotal += m.qtd; else d.opsUteis.add(idOPKPI(m));
         });
     });
 
