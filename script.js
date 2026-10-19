@@ -1536,7 +1536,7 @@ function mostrarTooltipOP(e, id) {
 function esconderTooltipOP() { const tt = $('tooltip-op'); if (!tt) return; tt.style.opacity = '0'; tt.style.display = 'none'; }
 
 // MODAIS E MENUS
-function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; $('modalBalancoUrgencias').style.display = 'none'; $('modalMaquinasEnfesto').style.display = 'none'; if ($('modalOficinasKPI')) $('modalOficinasKPI').style.display = 'none'; }
+function fecharModais() { $('ctxMenu').style.display = 'none'; $('omniSearchOverlay').style.display = 'none'; $('modalFracionarOverlay').style.display = 'none'; $('modalGargalo').style.display = 'none'; $('modalPrioridadeClientes').style.display = 'none'; $('modalSequenciaPedidos').style.display = 'none'; $('modalSequenciamentoFifo').style.display = 'none'; $('modalGuiaSequenciamento').style.display = 'none'; $('modalAgrupamentoReferencia').style.display = 'none'; $('modalBalancoSincronizacao').style.display = 'none'; $('modalGuiaSistema').style.display = 'none'; $('modalLoginAdmin').style.display = 'none'; $('modalPerguntarIA').style.display = 'none'; $('modalPrioridadeManual').style.display = 'none'; $('modalFeriados').style.display = 'none'; $('modalBalancoUrgencias').style.display = 'none'; $('modalMaquinasEnfesto').style.display = 'none'; if ($('modalOficinasKPI')) $('modalOficinasKPI').style.display = 'none'; if ($('modalDetalheSetorKPI')) $('modalDetalheSetorKPI').style.display = 'none'; }
 
 // =========================================================================
 // 👑 PRIORIDADE DE CLIENTES — lista editável, do mais pro menos prioritário.
@@ -4787,6 +4787,86 @@ function renderizarGraficoAcertividadeKPI() {
     });
 }
 
+
+// =========================================================================
+// 🔎 DETALHE DO SETOR (clique no card do KPI) — dia a dia do mês escolhido, fábrica x externo, e as OPs de cada dia.
+// Sempre mostra fábrica e externo juntos (separados em colunas), independente do seletor FÁBRICA/EXTERNO/JUNTOS.
+// Só dias úteis (igual aos cards) — o que aconteceu em fim de semana aparece num aviso.
+// =========================================================================
+function abrirDetalheSetorKPI(setor, anoMes) {
+    anoMes = anoMes || ($('seletorMesKPI') ? $('seletorMesKPI').value : '');
+    if (!anoMes) return;
+    const classif = obterClassificacaoOficinasKPI();
+    const movs = Object.values(obterMovimentacoesPorSetorBruto()[setor] || {}).filter(m => m.data && new Date(m.data).toISOString().slice(0, 7) === anoMes);
+    const opsPorId = new Map((bancoDadosOPs || []).map(o => [o.id, o]));
+    const dias = {}; let fimDeSemana = 0;
+    movs.forEach(m => {
+        const dia = new Date(m.data).toISOString().slice(0, 10);
+        const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
+        if (dow === 0 || dow === 6) { fimDeSemana += m.qtd || 0; return; }
+        const d = dias[dia] = dias[dia] || { dow, fab: { pecas: 0, ops: new Set() }, ext: { pecas: 0, ops: new Set() }, lista: [] };
+        const ext = oficinaEhExternaKPI(m.of, classif);
+        const alvo = ext ? d.ext : d.fab;
+        alvo.pecas += m.qtd || 0; alvo.ops.add(m.op);
+        d.lista.push({ op: m.op, ciclo: m.ciclo, qtd: m.qtd || 0, ext, of: m.of || '', desc: (opsPorId.get(m.op) || {}).desc || '' });
+    });
+    const chaves = Object.keys(dias).sort();
+    const nomesDia = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+    const fmt = v => v.toLocaleString('pt-BR');
+    const totFab = chaves.reduce((a, k) => a + dias[k].fab.pecas, 0), totExt = chaves.reduce((a, k) => a + dias[k].ext.pecas, 0);
+    const opsFab = new Set(), opsExt = new Set();
+    chaves.forEach(k => { dias[k].fab.ops.forEach(o => opsFab.add(o)); dias[k].ext.ops.forEach(o => opsExt.add(o)); });
+    const diasFab = chaves.filter(k => dias[k].fab.pecas > 0);
+    const media = diasFab.length ? Math.round(totFab / diasFab.length) : 0;   // média da FÁBRICA por dia com movimento (mesma ideia dos cards)
+    const melhor = diasFab.reduce((a, k) => (!a || dias[k].fab.pecas > dias[a].fab.pecas) ? k : a, null);
+    const pior = diasFab.reduce((a, k) => (!a || dias[k].fab.pecas < dias[a].fab.pecas) ? k : a, null);
+    const total = totFab + totExt;
+    const pctExt = total ? Math.round((totExt / total) * 100) : 0;
+    const card = (t, v, sub, cor) => `<div style="flex:1; min-width:140px; padding:10px 12px; background:var(--bg-card); border-radius:8px; border-top:3px solid ${cor || 'var(--borda-cor)'};"><div style="font-size:10px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">${t}</div><div style="font-size:20px; font-weight:900;">${v}</div><div style="font-size:10px; color:var(--texto-secundario);">${sub || ''}</div></div>`;
+    const blocos = chaves.length ? chaves.map(k => {
+        const d = dias[k];
+        const pico = media && d.fab.pecas > media * 1.6;
+        const marca = k === melhor && diasFab.length > 1 ? '<span class="pill" style="background:var(--cor-despacho); color:white; font-size:9px; padding:1px 6px; margin-left:6px;">MELHOR</span>' : (k === pior && diasFab.length > 1 ? '<span class="pill" style="background:var(--cor-alerta); color:white; font-size:9px; padding:1px 6px; margin-left:6px;">MENOR</span>' : '');
+        const lista = d.lista.sort((a, b) => b.qtd - a.qtd).map(x => `<tr${x.ext ? ' style="background:rgba(193,68,78,.10);"' : ''}>
+            <td><strong>${x.op}</strong>${x.ciclo ? ` <span style="color:var(--texto-secundario); font-size:10px;">c${x.ciclo}</span>` : ''}</td>
+            <td style="font-size:11px; color:var(--texto-secundario);">${String(x.desc).replace(/</g, '&lt;').slice(0, 60)}</td>
+            <td style="text-align:right;">${fmt(x.qtd)}</td>
+            <td>${x.ext ? `<span style="color:var(--cor-alerta); font-weight:700; font-size:11px;">EXTERNO</span> <span style="font-size:10px; color:var(--texto-secundario);">${String(x.of).replace(/</g, '&lt;')}</span>` : '<span style="font-size:11px; color:var(--texto-secundario);">fábrica</span>'}</td></tr>`).join('');
+        return `<details style="border-bottom:1px solid var(--borda-cor);">
+            <summary style="display:grid; grid-template-columns:150px 1fr 1fr 1fr; gap:8px; padding:8px 6px; cursor:pointer; font-size:12px; align-items:center; ${pico ? 'background:rgba(217,164,65,.14);' : ''}">
+                <span><strong>${formatarChaveDataBR(k).slice(0, 5)}</strong> <span style="color:var(--texto-secundario);">${nomesDia[d.dow]}</span>${marca}</span>
+                <span style="text-align:right;">${d.fab.pecas ? `<strong>${fmt(d.fab.pecas)}</strong> <span style="font-size:10px; color:var(--texto-secundario);">(${d.fab.ops.size} OP${d.fab.ops.size === 1 ? '' : 's'})</span>` : '—'}${pico ? ' <span title="Bem acima da média dos dias do mês" style="color:var(--cor-selecao);">▲</span>' : ''}</span>
+                <span style="text-align:right; color:${d.ext.pecas ? 'var(--cor-alerta)' : 'var(--texto-secundario)'};">${d.ext.pecas ? `<strong>${fmt(d.ext.pecas)}</strong> <span style="font-size:10px;">(${d.ext.ops.size} OP${d.ext.ops.size === 1 ? '' : 's'})</span>` : '—'}</span>
+                <span style="text-align:right; font-weight:700;">${fmt(d.fab.pecas + d.ext.pecas)}</span>
+            </summary>
+            <div style="padding:4px 6px 10px 20px;"><table class="tabela-dados" style="width:100%;"><thead><tr><th>OP</th><th>PRODUTO</th><th style="text-align:right;">PEÇAS</th><th>ORIGEM</th></tr></thead><tbody>${lista}</tbody></table></div>
+        </details>`;
+    }).join('') : '<div style="padding:20px; text-align:center; color:var(--texto-secundario);">Sem movimentação desse setor nesse mês.</div>';
+    const cor = CORES_SETORES_KPI[setor] || '#999';
+    const modal = $('modalDetalheSetorKPI');
+    modal.innerHTML = `<div class="modal-card" style="width:820px; max-width:95vw; border-top:5px solid ${cor}; max-height:90vh;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px;">
+            <h2 style="margin:0; color:var(--texto-cor); font-size:18px;">${setor} <span style="font-weight:400; font-size:13px; color:var(--texto-secundario);">— ${rotuloMesKPI(anoMes)}</span></h2>
+            <button onclick="document.getElementById('modalDetalheSetorKPI').style.display='none'" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <div style="overflow-y:auto; flex:1; padding-right:4px;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+                ${card('Fábrica no mês', fmt(totFab), `${fmt(opsFab.size)} OPs`, cor)}
+                ${card('Externo no mês', fmt(totExt), `${fmt(opsExt.size)} OPs${total ? ` · ${pctExt}% do total` : ''}`, 'var(--cor-alerta)')}
+                ${card('Média por dia (fábrica)', fmt(media), `${diasFab.length} dia(s) com movimento`)}
+                ${card('Melhor / menor dia', melhor ? `${fmt(dias[melhor].fab.pecas)} / ${fmt(dias[pior].fab.pecas)}` : '—', melhor ? `${formatarChaveDataBR(melhor).slice(0, 5)} / ${formatarChaveDataBR(pior).slice(0, 5)}` : '')}
+            </div>
+            ${total ? `<div style="display:flex; height:10px; border-radius:5px; overflow:hidden; margin-bottom:14px;" title="Fábrica x externo"><div style="width:${100 - pctExt}%; background:${cor};"></div><div style="width:${pctExt}%; background:var(--cor-alerta);"></div></div>` : ''}
+            <div style="font-size:11px; color:var(--texto-secundario); margin-bottom:6px;">Clique num dia para ver as OPs que foram movimentadas. <span style="color:var(--cor-selecao);">▲</span> = dia bem acima da média. Linhas em vermelho são OPs de oficina externa.</div>
+            <div style="display:grid; grid-template-columns:150px 1fr 1fr 1fr; gap:8px; padding:6px; font-size:10px; font-weight:700; text-transform:uppercase; color:var(--texto-secundario); border-bottom:2px solid var(--borda-cor);"><span>DIA</span><span style="text-align:right;">FÁBRICA</span><span style="text-align:right;">EXTERNO</span><span style="text-align:right;">TOTAL</span></div>
+            ${blocos}
+            ${fimDeSemana ? `<div style="font-size:11px; color:var(--texto-secundario); margin-top:10px;">Obs.: ${fmt(fimDeSemana)} peças foram movimentadas em fim de semana e não entram nessa conta (os cards também não contam).</div>` : ''}
+        </div>
+        <div style="display:flex; justify-content:flex-end; border-top:1px solid var(--borda-cor); padding-top:12px; margin-top:10px;"><button onclick="document.getElementById('modalDetalheSetorKPI').style.display='none'" class="btn" style="background:var(--borda-cor); color:var(--texto-cor);">FECHAR</button></div>
+    </div>`;
+    modal.style.display = 'flex';
+}
+
 // Cards com a média diária de cada SEMANA DO MÊS escolhido + lead time —
 // um card por setor sendo mostrado no momento (1 se um setor específico, 7
 // se "Todos").
@@ -4825,8 +4905,8 @@ function renderizarStatsKPI(setoresParaMostrar, mesSelecionado) {
             }).join('')
             : `<div style="font-size:11px; color:var(--texto-secundario); padding:8px 0;">Sem dados importados pra esse mês ainda.</div>`;
         return `
-        <div class="kpi-card" style="flex:1; min-width:240px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px;">
-            <div style="font-weight:700; margin-bottom:8px; font-size:12px;">${setor}</div>
+        <div class="kpi-card" onclick="abrirDetalheSetorKPI('${setor}')" title="Clique para ver o detalhe do setor (dia a dia, OPs de cada dia, fábrica x externo)" style="flex:1; min-width:240px; border-top:4px solid ${CORES_SETORES_KPI[setor] || '#999'}; padding:14px; background:var(--bg-card); border-radius:8px; cursor:pointer;">
+            <div style="font-weight:700; margin-bottom:8px; font-size:12px; display:flex; justify-content:space-between; align-items:center;"><span>${setor}</span><span style="font-size:10px; font-weight:600; color:var(--texto-secundario);">detalhes <i class="fas fa-chevron-right"></i></span></div>
             ${linhasSemanas}
             <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:8px;">
                 <div>
@@ -9656,6 +9736,7 @@ function inicializarEventosUI() {
         wireEvento('confirmarFracionamento', 'click', () => { confirmarFracionamento(); });
         wireEvento('omniSearchOverlay', 'click', function(event){ if(event.target === this) fecharModais(); });
         wireEvento('omniInput', 'keyup', () => { pesquisaOmni(); });
+        wireEvento('modalDetalheSetorKPI', 'click', function(event){ if(event.target === this) this.style.display='none'; });
         wireEvento('modalOficinasKPI', 'click', function(event){ if(event.target === this) this.style.display='none'; });
         wireEvento('modalGargalo', 'click', function(event){ if(event.target === this) this.style.display='none'; });
         wireEvento('ctxAcao-copiar', 'click', () => { ctxAcao('copiar'); });
