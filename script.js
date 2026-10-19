@@ -4816,15 +4816,10 @@ function mesAnteriorKPI(anoMes) {
     const [a, m] = anoMes.split('-').map(Number);
     return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`;
 }
-// Bloco "COMPARAÇÃO" do detalhe do setor: mês contra mês anterior (no MESMO período, se o mês ainda está rolando) e semana contra semana.
+// Bloco de comparação do detalhe do setor: última semana contra a anterior (só aparece se a semana anterior tem dados — o mês anterior
+// normalmente já foi baixado e apagado, então não há comparação entre meses).
 function montarComparacaoSetorKPI(setor, anoMes) {
     const fmt = v => v.toLocaleString('pt-BR');
-    const hoje = new Date(); const hojeMes = hoje.toISOString().slice(0, 7);
-    const emAndamento = anoMes === hojeMes;
-    const ant = mesAnteriorKPI(anoMes);
-    const ateDia = emAndamento ? hoje.getDate() : null;
-    const aF = somarDiasUteisSetorKPI(setor, false, anoMes, ateDia), pF = somarDiasUteisSetorKPI(setor, false, ant, ateDia);
-    const aE = somarDiasUteisSetorKPI(setor, true, anoMes, ateDia), pE = somarDiasUteisSetorKPI(setor, true, ant, ateDia);
     const variacao = (a, p, bomQuandoSobe = true) => {
         if (!p) return '<span style="color:var(--texto-secundario);">—</span>';
         const v = Math.round(((a - p) / p) * 100);
@@ -4843,17 +4838,10 @@ function montarComparacaoSetorKPI(setor, anoMes) {
         const semana = ini => { const dias = [0, 1, 2, 3, 4].map(i => new Date(ini.getTime() + i * 86400000).toISOString().slice(0, 10)).filter(d => todosDias[d]); const tot = dias.reduce((x, d) => x + todosDias[d].pecas, 0); return { dias: dias.length, tot, media: dias.length ? Math.round(tot / dias.length) : 0 }; };
         const sA = semana(segunda), sP = semana(new Date(segunda.getTime() - 7 * 86400000));
         const rot = ini => { const f = new Date(ini.getTime() + 4 * 86400000); return `${String(ini.getUTCDate()).padStart(2, '0')}/${String(ini.getUTCMonth() + 1).padStart(2, '0')}–${String(f.getUTCDate()).padStart(2, '0')}/${String(f.getUTCMonth() + 1).padStart(2, '0')}`; };
-        semanaTxt = `<table class="tabela-dados" style="width:100%; margin-top:10px;"><thead><tr><th></th><th style="text-align:right;">SEMANA ${rot(segunda)} <span style="font-weight:400;">(${sA.dias} dia${sA.dias === 1 ? '' : 's'})</span></th><th style="text-align:right;">SEMANA ${rot(new Date(segunda.getTime() - 7 * 86400000))} <span style="font-weight:400;">(${sP.dias} dia${sP.dias === 1 ? '' : 's'})</span></th><th style="text-align:right;">VARIAÇÃO</th></tr></thead><tbody>
+        if (sP.dias) semanaTxt = `<table class="tabela-dados" style="width:100%;"><thead><tr><th>COMPARAÇÃO DE SEMANAS</th><th style="text-align:right;">SEMANA ${rot(segunda)} <span style="font-weight:400;">(${sA.dias} dia${sA.dias === 1 ? '' : 's'})</span></th><th style="text-align:right;">SEMANA ${rot(new Date(segunda.getTime() - 7 * 86400000))} <span style="font-weight:400;">(${sP.dias} dia${sP.dias === 1 ? '' : 's'})</span></th><th style="text-align:right;">VARIAÇÃO</th></tr></thead><tbody>
             ${linha('Média por dia (fábrica)', sA.media, sP.media, true)}</tbody></table>`;
     }
-    return `<div style="margin-bottom:14px;">
-        <div style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase; margin-bottom:6px;">Comparação com ${rotuloMesKPI(ant)}${emAndamento ? ` <span style="font-weight:400; text-transform:none;">(mesmo período: até o dia ${ateDia})</span>` : ''}</div>
-        <table class="tabela-dados" style="width:100%;"><thead><tr><th></th><th style="text-align:right;">${rotuloMesKPI(anoMes)}</th><th style="text-align:right;">${rotuloMesKPI(ant)}</th><th style="text-align:right;">VARIAÇÃO</th></tr></thead><tbody>
-            ${linha('Peças da fábrica', aF.total, pF.total, true)}
-            ${linha('Média por dia (fábrica)', aF.media, pF.media, true)}
-            ${linha('OPs da fábrica', aF.ops, pF.ops, true)}
-            ${linha('Peças de externo', aE.total, pE.total, null)}
-        </tbody></table>${semanaTxt}</div>`;
+    return semanaTxt ? `<div style="margin-bottom:14px;">${semanaTxt}</div>` : '';
 }
 
 
