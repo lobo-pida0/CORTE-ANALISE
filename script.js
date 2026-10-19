@@ -3343,12 +3343,13 @@ function oficinaEhExternaKPI(of, classif) {
     return t.includes('CORTE');
 }
 function modoVisaoKPI() {
-    try { return localStorage.getItem('kpiVisaoExterno') === '1' ? 'externo' : 'fabrica'; } catch (e) { return 'fabrica'; }
+    try { const v = localStorage.getItem('kpiVisaoExterno'); return v === 'externo' || v === '1' ? 'externo' : (v === 'juntos' ? 'juntos' : 'fabrica'); } catch (e) { return 'fabrica'; }
 }
-// modo: 'fabrica' (sem externos), 'externo' (só externos). Sem argumento, segue o botão EXTERNO da tela.
+// modo: 'fabrica' (sem externos), 'externo' (só externos), 'juntos' (tudo). Sem argumento, segue a escolha da tela.
 function obterMovimentacoesPorSetor(modo) {
     modo = modo || modoVisaoKPI();
     const todas = obterMovimentacoesPorSetorBruto();
+    if (modo === 'juntos') return todas;
     const classif = obterClassificacaoOficinasKPI();
     const querExterno = modo === 'externo';
     const resultado = {};
@@ -3361,20 +3362,25 @@ function obterMovimentacoesPorSetor(modo) {
     });
     return resultado;
 }
-function alternarVisaoExternoKPI() {
-    try { localStorage.setItem('kpiVisaoExterno', modoVisaoKPI() === 'externo' ? '0' : '1'); } catch (e) { /* ignora */ }
+function definirVisaoKPI(modo) {
+    try { localStorage.setItem('kpiVisaoExterno', modo); } catch (e) { /* ignora */ }
     renderizarGraficoKPI();
 }
 function atualizarBotaoVisaoExternoKPI() {
-    const ativo = modoVisaoKPI() === 'externo';
-    const b = $('btnVisaoExternoKPI');
-    if (b) {
-        b.style.background = ativo ? 'var(--cor-alerta)' : 'var(--bg-card)';
+    const modo = modoVisaoKPI();
+    [['fabrica', 'btnVisaoFabricaKPI'], ['externo', 'btnVisaoExternoKPI'], ['juntos', 'btnVisaoJuntosKPI']].forEach(([m, id]) => {
+        const b = $(id); if (!b) return;
+        const ativo = modo === m;
+        b.style.background = ativo ? (m === 'externo' ? 'var(--cor-alerta)' : '#35505C') : 'var(--bg-card)';
         b.style.color = ativo ? 'white' : 'var(--texto-cor)';
-        b.innerHTML = ativo ? '<i class="fas fa-industry"></i> EXTERNO (ligado)' : '<i class="fas fa-industry"></i> EXTERNO';
-    }
+    });
     const av = $('avisoVisaoExternoKPI');
-    if (av) av.style.display = ativo ? 'block' : 'none';
+    if (av) {
+        av.style.display = modo === 'fabrica' ? 'none' : 'block';
+        av.innerHTML = modo === 'externo'
+            ? '<i class="fas fa-industry"></i> <strong>Mostrando SÓ o que é de externo (oficinas).</strong> Esses números não entram no KPI normal da fábrica. Clique em FÁBRICA para voltar.'
+            : '<i class="fas fa-layer-group"></i> <strong>Mostrando fábrica + externo JUNTOS.</strong> Os números incluem as OPs de oficinas externas. Clique em FÁBRICA para ver sem elas.';
+    }
 }
 // Lista de textos da coluna N já vistos nos dados + como cada um é tratado hoje; o usuário pode forçar Externo/Fábrica.
 function listarOficinasKPI() {
@@ -5014,7 +5020,7 @@ async function baixarMesKPIExcel() {
             abas.slice(1).forEach(a => preencher(...a));
             const buf = await wb.xlsx.writeBuffer();
             const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-            const link = document.createElement('a'); link.href = url; link.download = `KPI_${anoMes}${modoVisaoKPI() === 'externo' ? '_EXTERNO' : ''}.xlsx`;
+            const link = document.createElement('a'); link.href = url; link.download = `KPI_${anoMes}${({ externo: '_EXTERNO', juntos: '_FABRICA+EXTERNO' })[modoVisaoKPI()] || ''}.xlsx`;
             document.body.appendChild(link); link.click(); link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 5000);
             showToast(`<i class="fas fa-file-excel"></i> KPI de ${dados.rotuloMes} baixado com gráficos (${dados.totalMovs.toLocaleString('pt-BR')} movimentações).`);
@@ -5030,7 +5036,7 @@ async function baixarMesKPIExcel() {
         ws['!cols'] = larguras.map(w => ({ wch: w }));
         XLSX.utils.book_append_sheet(wb, ws, nome);
     });
-    XLSX.writeFile(wb, `KPI_${anoMes}${modoVisaoKPI() === 'externo' ? '_EXTERNO' : ''}.xlsx`);
+    XLSX.writeFile(wb, `KPI_${anoMes}${({ externo: '_EXTERNO', juntos: '_FABRICA+EXTERNO' })[modoVisaoKPI()] || ''}.xlsx`);
     showToast(`<i class="fas fa-file-excel"></i> KPI de ${dados.rotuloMes} baixado SEM gráficos (a biblioteca de gráficos para Excel não carregou — recarregue a página).`);
 }
 
