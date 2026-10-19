@@ -3790,6 +3790,34 @@ function desenharGraficoEficienciaCostura(dias, serieEf) {
     });
 }
 
+
+// "Peças por dia": mesma ideia da tabela do KPI do corte — uma linha por dia, uma coluna por local, "peças (N OPs)".
+function renderizarTabelaPecasCostura(dias, todos) {
+    const el = $('efCosturaPecasTabela'); if (!el) return;
+    if (!dias.length) { el.innerHTML = ''; return; }
+    const nomes = [...new Set(dias.flatMap(d => Object.keys(todos[d].locais || {})))].sort();
+    const fmt = v => v.toLocaleString('pt-BR');
+    const totaisLocal = {}; let totalGeral = 0;
+    const linhas = dias.map(dia => {
+        const locais = todos[dia].locais || {};
+        let pecasDia = 0;
+        const celulas = nomes.map(n => {
+            const l = locais[n];
+            if (!l || !l.pecas) return `<td style="text-align:right; color:var(--texto-secundario);">—</td>`;
+            pecasDia += l.pecas; totaisLocal[n] = (totaisLocal[n] || 0) + l.pecas;
+            return `<td style="text-align:right;">${fmt(l.pecas)} <span style="color:var(--texto-secundario); font-size:11px;">(${l.ops} OP${l.ops === 1 ? '' : 's'})</span></td>`;
+        }).join('');
+        totalGeral += pecasDia;
+        const opsDia = todos[dia].opsTotal;
+        return `<tr><td><strong>${formatarChaveDataBR(dia)}</strong></td>${celulas}<td style="text-align:right; font-weight:700;">${pecasDia ? fmt(pecasDia) : '—'}${pecasDia && opsDia ? ` <span style="color:var(--texto-secundario); font-size:11px; font-weight:400;">(${opsDia} OP${opsDia === 1 ? '' : 's'})</span>` : ''}</td></tr>`;
+    }).join('');
+    el.innerHTML = `<table class="tabela-dados" style="width:100%;">
+        <thead><tr><th>DATA</th>${nomes.map(n => `<th style="text-align:right;">${nomeLocalEfCostura(n)}</th>`).join('')}<th style="text-align:right;">TOTAL</th></tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot><tr style="font-weight:700; background:var(--bg-painel);"><td>TOTAL DO MÊS</td>${nomes.map(n => `<td style="text-align:right;">${fmt(totaisLocal[n] || 0)}</td>`).join('')}<td style="text-align:right;">${fmt(totalGeral)}</td></tr></tfoot>
+    </table>`;
+}
+
 function renderizarEficienciaCostura() {
     const corpo = $('efCosturaCorpo'); if (!corpo) return;
     setTimeout(atualizarEficienciaSeqCostura, 0);
@@ -3799,7 +3827,7 @@ function renderizarEficienciaCostura() {
     const dias = Object.keys(todos).filter(d => d.startsWith(mes)).sort();
     if (!dias.length) {
         corpo.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhum dado ainda — importe o relatório de movimentação.</td></tr>';
-        $('efCosturaResumo').innerHTML = ''; if ($('efCosturaPorLocal')) $('efCosturaPorLocal').innerHTML = '';
+        $('efCosturaResumo').innerHTML = ''; if ($('efCosturaPorLocal')) $('efCosturaPorLocal').innerHTML = ''; if ($('efCosturaPecasTabela')) $('efCosturaPecasTabela').innerHTML = '';
         return;
     }
     const nomeCurto = nomeLocalEfCostura;
@@ -3854,6 +3882,7 @@ function renderizarEficienciaCostura() {
     }).join('');
 
     desenharGraficoEficienciaCostura(dias, serieEf);
+    renderizarTabelaPecasCostura(dias, todos);
     const eficMes = minDisp ? (minComPessoas / minDisp) * 100 : null;
     const card = (titulo, valor, sub) => `<div class="kpi-card" style="flex:1; min-width:180px; border-top:4px solid #35505C; padding:14px; background:var(--bg-card); border-radius:8px;"><div style="font-size:11px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">${titulo}</div><div style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">${valor}</div><div style="font-size:11px; color:var(--texto-secundario);">${sub}</div></div>`;
     $('efCosturaResumo').innerHTML =
