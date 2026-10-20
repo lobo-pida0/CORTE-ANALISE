@@ -26,6 +26,65 @@ function mesAnteriorKPI(anoMes) {
     const [a, m] = anoMes.split('-').map(Number);
     return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`;
 }
+// Tempo que cada OP FICOU no setor: da saída do setor anterior da esteira (= entrada aqui) até a saída daqui, em DIAS ÚTEIS (seg-sex).
+// No primeiro setor da esteira a entrada é a data de inclusão da OP. Usa a 1ª passagem de cada OP (ciclo+OP). Só conta saídas de FÁBRICA
+// (OP que foi direto pro externo não "ficou" no setor). Só entram OPs que saíram do setor dentro do mês escolhido.
+function diasUteisEntreKPI(inicioIso, fimIso) {
+    let n = 0; const d = new Date(String(inicioIso).slice(0, 10) + 'T00:00:00Z'), fim = new Date(String(fimIso).slice(0, 10) + 'T00:00:00Z');
+    while (d < fim) { d.setUTCDate(d.getUTCDate() + 1); const w = d.getUTCDay(); if (w !== 0 && w !== 6) n++; }
+    return n;
+}
+function calcularTempoNoSetorKPI(setor, anoMes) {
+    const todas = obterMovimentacoesPorSetorBruto();
+    const classif = obterClassificacaoOficinasKPI();
+    const idx = SETORES_KPI.indexOf(setor), anterior = idx > 0 ? SETORES_KPI[idx - 1] : null;
+    const primeiraPorOP = (movs, soFabrica) => {
+        const r = {};
+        Object.values(movs || {}).forEach(m => {
+            if (!m.data || (soFabrica && oficinaEhExternaKPI(m.of, classif))) return;
+            const k = idOPKPI(m);
+            if (!r[k] || m.data < r[k].data) r[k] = m;
+        });
+        return r;
+    };
+    const saidas = primeiraPorOP(todas[setor], true);
+    const entradas = anterior ? primeiraPorOP(todas[anterior], false) : null;
+    const itens = []; let semEntrada = 0;
+    Object.entries(saidas).forEach(([k, m]) => {
+        if (new Date(m.data).toISOString().slice(0, 7) !== anoMes) return;
+        let entradaIso = null;
+        if (entradas) { const e = entradas[k]; if (e && e.data <= m.data) entradaIso = e.data; }
+        else { const op = acharOPNaSincronizacao(m.op, m.ciclo); if (op && op.dataInclusao) entradaIso = new Date(op.dataInclusao).toISOString(); }
+        if (!entradaIso || entradaIso.slice(0, 10) > m.data.slice(0, 10)) { semEntrada++; return; }
+        itens.push({ op: m.op, ciclo: m.ciclo || '', dias: diasUteisEntreKPI(entradaIso, m.data), entrada: entradaIso, saida: m.data, qtd: m.qtd || 0, desc: m.ds || (acharOPNaSincronizacao(m.op, m.ciclo) || {}).desc || '' });
+    });
+    const ord = itens.map(x => x.dias).sort((a, b) => a - b);
+    const media = ord.length ? Math.round(ord.reduce((a, b) => a + b, 0) / ord.length * 10) / 10 : null;
+    const mediana = ord.length ? (ord.length % 2 ? ord[(ord.length - 1) / 2] : (ord[ord.length / 2 - 1] + ord[ord.length / 2]) / 2) : null;
+    return { itens, media, mediana, semEntrada, anterior };
+}
+function montarTempoNoSetorKPI(setor, anoMes) {
+    const t = calcularTempoNoSetorKPI(setor, anoMes);
+    const f1 = v => v === null ? '—' : String(v).replace('.', ',');
+    const titulo = '<div style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase; margin-bottom:6px;">Tempo no setor <span style="font-weight:400; text-transform:none;">(da saída de ' + (t.anterior || 'inclusão da OP') + ' até a saída daqui, em dias úteis)</span></div>';
+    if (!t.itens.length) return `<div style="margin-bottom:14px;">${titulo}<div style="font-size:12px; color:var(--texto-secundario); padding:8px 0;">Sem OPs com entrada e saída conhecidas nesse mês${t.semEntrada ? ` (${t.semEntrada} saíram daqui sem registro da entrada)` : ''}.</div></div>`;
+    const lentas = [...t.itens].sort((a, b) => b.dias - a.dias).slice(0, 8);
+    const fmtD = iso => formatarChaveDataBR(String(iso).slice(0, 10)).slice(0, 5);
+    const linhas = lentas.map(x => `<tr><td style="white-space:nowrap;"><strong>${x.op}</strong>${x.ciclo ? ` <span style="font-size:11px; color:var(--texto-secundario);">· ciclo ${x.ciclo}</span>` : ''}</td>
+        <td style="font-size:11px; color:var(--texto-secundario);">${String(x.desc).replace(/</g, '&lt;').slice(0, 46)}</td>
+        <td style="font-size:11px; color:var(--texto-secundario);">${fmtD(x.entrada)} → ${fmtD(x.saida)}</td>
+        <td style="text-align:right; ${x.dias >= 5 ? 'color:var(--cor-alerta); font-weight:700;' : ''}">${x.dias}d</td></tr>`).join('');
+    return `<div style="margin-bottom:14px;">${titulo}
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+            <div style="flex:1; min-width:130px; padding:8px 12px; background:var(--bg-card); border-radius:8px;"><div style="font-size:10px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">Média</div><div style="font-size:20px; font-weight:900;">${f1(t.media)}<span style="font-size:11px; font-weight:400; color:var(--texto-secundario);"> dias</span></div></div>
+            <div style="flex:1; min-width:130px; padding:8px 12px; background:var(--bg-card); border-radius:8px;"><div style="font-size:10px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">Mediana</div><div style="font-size:20px; font-weight:900;">${f1(t.mediana)}<span style="font-size:11px; font-weight:400; color:var(--texto-secundario);"> dias</span></div></div>
+            <div style="flex:1; min-width:130px; padding:8px 12px; background:var(--bg-card); border-radius:8px;"><div style="font-size:10px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">OPs medidas</div><div style="font-size:20px; font-weight:900;">${t.itens.length}</div><div style="font-size:10px; color:var(--texto-secundario);">${t.semEntrada ? `${t.semEntrada} sem entrada registrada` : 'todas com entrada'}</div></div>
+        </div>
+        <details><summary style="cursor:pointer; font-size:12px; padding:4px 2px; color:var(--texto-secundario);">Ver as ${lentas.length} OPs mais lentas do mês</summary>
+            <table class="tabela-dados" style="width:100%; margin-top:4px;"><thead><tr><th>OP</th><th>PRODUTO</th><th>ENTROU → SAIU</th><th style="text-align:right;">NO SETOR</th></tr></thead><tbody>${linhas}</tbody></table></details>
+    </div>`;
+}
+
 // Bloco de comparação do detalhe do setor: última semana contra a anterior (só aparece se a semana anterior tem dados — o mês anterior
 // normalmente já foi baixado e apagado, então não há comparação entre meses).
 function montarComparacaoSetorKPI(setor, anoMes) {
@@ -174,6 +233,7 @@ function abrirDetalheSetorKPI(setor, anoMes) {
                 ${card('Melhor / menor dia', melhor ? `${fmt(dias[melhor].fab.pecas)} / ${fmt(dias[pior].fab.pecas)}` : '—', melhor ? `${formatarChaveDataBR(melhor).slice(0, 5)} / ${formatarChaveDataBR(pior).slice(0, 5)}` : '')}
             </div>
             ${montarFilaSetorKPI(setor)}
+            ${montarTempoNoSetorKPI(setor, anoMes)}
             ${montarProdutosSetorKPI(porProduto, cor)}
             ${montarComparacaoSetorKPI(setor, anoMes)}
             ${total ? `<div style="margin-bottom:14px;" title="Fábrica x externo"><div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700; margin-bottom:4px;"><span style="color:${cor};">FÁBRICA ${100 - pctExt}% <span style="font-weight:400; font-size:11px; color:var(--texto-secundario);">(${fmt(totFab)} pçs)</span></span><span style="color:var(--cor-alerta);"><span style="font-weight:400; font-size:11px; color:var(--texto-secundario);">(${fmt(totExt)} pçs)</span> EXTERNO ${pctExt}%</span></div><div style="display:flex; height:10px; border-radius:5px; overflow:hidden;"><div style="width:${100 - pctExt}%; background:${cor};"></div><div style="width:${pctExt}%; background:var(--cor-alerta);"></div></div></div>` : ''}
