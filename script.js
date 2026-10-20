@@ -3316,6 +3316,20 @@ function multiplicadorDeCamadas(descricao) {
     return encontrado ? encontrado.vezes : 1;
 }
 
+// Grupo de produto (calça, camisa, jaqueta...) a partir da descrição ("CORTE CALCA UNX CARGO SARJA...", "CAMISA FEM ML MICROFIBRA..."). Ordem importa: o mais específico primeiro.
+const GRUPOS_PRODUTO_KPI = [
+    ['CAMISA POLO', /\bPOLO\b/], ['CAMISETA', /CAMISETA/], ['CAMISA', /CAMISA|CAMISOLA/], ['BLUSA', /BLUSA|BLUSINHA/],
+    ['CALÇA', /CALCA|CALÇA|LEGGING/], ['BERMUDA', /BERMUDA|SHORT/], ['JAQUETA', /JAQUETA|JAQ\b|CASACO|PARKA|MOLETOM/],
+    ['COLETE', /COLETE/], ['PALETÓ / BLAZER', /PALET[OÓ]|BLAZER|SOBRETUDO/], ['JALECO', /JALECO/], ['AVENTAL', /AVENTAL/],
+    ['SAIA', /SAIA/], ['VESTIDO', /VESTIDO/], ['MACACÃO', /MACAC[AÃ]O|JARDINEIRA|MACAQUINHO/], ['BONÉ', /BON[EÉ]\b/], ['CALÇADO', /CALCADO|CALÇADO|BOTA\b|SAPATO/],
+];
+function grupoProdutoKPI(descricao) {
+    const d = String(descricao || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    if (!d.trim()) return 'SEM PRODUTO';
+    const g = GRUPOS_PRODUTO_KPI.find(([, re]) => re.test(d));
+    return g ? g[0] : 'OUTROS';
+}
+
 function obterMovimentacoesPorSetorBruto() {
     try { return JSON.parse(localStorage.getItem('movimentacoesPorSetorKPI') || '{}'); } catch (e) { return {}; }
 }
@@ -3503,7 +3517,7 @@ function chaveMovimentoKPI(op, ciclo, diaSlice) { return `${ciclo ? String(ciclo
 
 function linhaSupabaseDeMovimentoKPI(setor, m) {
     const dataSlice = m.data ? new Date(m.data).toISOString().slice(0, 10) : 'semdata';
-    return { id: `${setor}|${m.ciclo ? m.ciclo + '-' : ''}${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, oficina: m.of || '', atualizado_em: new Date().toISOString() };
+    return { id: `${setor}|${m.ciclo ? m.ciclo + '-' : ''}${m.op}|${dataSlice}`, setor, op: m.op, ciclo: m.ciclo || '', data: m.data ? new Date(m.data).toISOString().slice(0, 10) : null, qtd: m.qtd || 0, oficina: m.of || '', produto: m.ds || '', atualizado_em: new Date().toISOString() };
 }
 
 // Depois de importar um relatório de movimentação, publica na nuvem SÓ o que
@@ -3519,6 +3533,10 @@ async function publicarMovimentacoesKPILinhas(linhas) {
     try {
         return await publicarSemApagar('movimentacoes_kpi', linhas);
     } catch (e) {
+        if (/produto/i.test(String(e && e.message || e)) && !/oficina/i.test(String(e && e.message || e))) {   // nuvem ainda sem a coluna "produto": publica sem ela
+            registrarLogDebug('error', ['[NUVEM] Falta a coluna "produto" em movimentacoes_kpi: KPI publicado SEM a descrição do produto.']);
+            return await publicarMovimentacoesKPILinhas(linhas.map(({ produto, ...resto }) => resto));
+        }
         if (!/oficina/i.test(String(e && e.message || e))) throw e;
         registrarLogDebug('error', ['[NUVEM] Falta rodar o SQL 29 (coluna "oficina" em movimentacoes_kpi): KPI publicado SEM a informação de externo.']);
         showToast('<i class="fas fa-triangle-exclamation"></i> A nuvem ainda não tem a coluna "oficina" (SQL 29): o KPI foi publicado, mas a informação de externo ficou só neste navegador.', true, 8000);
@@ -3561,6 +3579,7 @@ function linhasSupabaseParaMovimentacoes(linhas) {
         const chaveMovimento = chaveMovimentoKPI(l.op, l.ciclo, dataSlice);
         todas[l.setor][chaveMovimento] = { op: l.op, ciclo: l.ciclo || '', data: l.data, qtd: l.qtd || 0 };
         if (l.oficina) todas[l.setor][chaveMovimento].of = normalizarOficinaKPI(l.oficina);
+        if (l.produto) todas[l.setor][chaveMovimento].ds = l.produto;
     });
     return todas;
 }
@@ -4275,6 +4294,7 @@ function processarMovimentacaoSetor() {
                 const chaveAntiga = `${opId}|${diaSlice}`;   // formato antigo (sem ciclo): sai, pra não ficar duplicado
                 if (chaveAntiga !== chaveMovimento && todas[setor] && todas[setor][chaveAntiga] && (!todas[setor][chaveAntiga].ciclo || todas[setor][chaveAntiga].ciclo === ciclo)) delete todas[setor][chaveAntiga];
                 const movimentoLido = { op: opId, ciclo, data: data.toISOString(), qtd };
+                if (descricao) movimentoLido.ds = descricao;
                 let oficinaTxt = idxOficina !== -1 && campos[idxOficina] ? normalizarOficinaKPI(campos[idxOficina]) : '';
                 if (DESTINOS_EXTERNOS_KPI[setor] && DESTINOS_EXTERNOS_KPI[setor].test(normalizarOficinaKPI(localDestinoBruto))) {
                     oficinaTxt = `DESTINO EXTERNO: ${normalizarOficinaKPI(localDestinoBruto)}`;   // o destino manda nesse setor (o texto da coluna N, sujo, é descartado)
@@ -4324,7 +4344,7 @@ function processarExternoAlmox() {
             if (linhas.length < 2) throw new Error("Arquivo vazio ou só com cabeçalho.");
             const cab = linhas[0].split(';').map(c => c.trim().toUpperCase());
             const iOP = cab.indexOf('NR. OP'), iCiclo = cab.indexOf('CICLO'), iData = cab.indexOf('DT. MOVIMENTO'), iQtd = cab.indexOf('QT. MOVIMENTO');
-            const iOri = cab.indexOf('DS. LOCALORIGEM'), iDes = cab.indexOf('DS. LOCALDESTINO');
+            const iOri = cab.indexOf('DS. LOCALORIGEM'), iDes = cab.indexOf('DS. LOCALDESTINO'), iProd = cab.findIndex(c => c === 'DS. PRODUTO');
             if ([iOP, iData, iQtd, iOri, iDes].includes(-1)) throw new Error("Não encontrei as colunas Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localorigem e Ds. Localdestino.");
             const todas = obterMovimentacoesPorSetorBruto();
             const importados = [];
@@ -4339,6 +4359,7 @@ function processarExternoAlmox() {
                 if ((origem !== 'ALMOX TECIDO' && origem !== 'PCP PROGRAMACAO-CORTE') || !/EXTERNO/.test(destino)) { ignoradas++; continue; }
                 const qtd = parseInt(c[iQtd]) || 0;
                 const mov = { op: opId, ciclo: iCiclo !== -1 ? (c[iCiclo] || '').trim() : '', data: data.toISOString(), qtd, of: `DESTINO EXTERNO: ${destino}` };
+                if (iProd !== -1 && (c[iProd] || '').trim()) mov.ds = c[iProd].trim();
                 const diaSlice = data.toISOString().slice(0, 10);
                 const chave = chaveMovimentoKPI(opId, mov.ciclo, diaSlice);
                 const chaveAntiga = `${opId}|${diaSlice}`;
@@ -4930,6 +4951,24 @@ function montarComparacaoSetorKPI(setor, anoMes) {
 
 // Bloco "FILA AGORA" do detalhe do setor: as OPs que estão NESTA etapa neste momento (não depende do mês escolhido),
 // com os mesmos números do Gargalo (dias de fila = peças na etapa ÷ ritmo do KPI), ordenadas por prioridade → pedido urgente → dias no local.
+// Quadro "O que saiu": peças por grupo de produto no mês (calça, camisa, jaqueta...), com fábrica x externo.
+function montarProdutosSetorKPI(porProduto, cor) {
+    const fmt = v => v.toLocaleString('pt-BR');
+    const lista = Object.entries(porProduto).map(([g, v]) => ({ g, ...v, total: v.fab + v.ext })).filter(x => x.total > 0).sort((a, b) => b.total - a.total);
+    if (!lista.length) return '';
+    const totalGeral = lista.reduce((a, x) => a + x.total, 0), maior = lista[0].total;
+    const temExt = lista.some(x => x.ext > 0);
+    const linhas = lista.map(x => `<tr>
+        <td style="white-space:nowrap;"><strong>${x.g}</strong></td>
+        <td style="width:34%;"><div style="display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--borda-cor); width:${Math.max(4, Math.round(x.total / maior * 100))}%;"><div style="width:${x.total ? x.fab / x.total * 100 : 0}%; background:${cor};"></div><div style="width:${x.total ? x.ext / x.total * 100 : 0}%; background:var(--cor-alerta);"></div></div></td>
+        <td style="text-align:right;"><strong>${fmt(x.total)}</strong></td>
+        <td style="text-align:right; color:var(--texto-secundario);">${Math.round(x.total / totalGeral * 100)}%</td>
+        ${temExt ? `<td style="text-align:right; font-size:11px; color:${x.ext ? 'var(--cor-alerta)' : 'var(--texto-secundario)'};">${x.ext ? fmt(x.ext) : '—'}</td>` : ''}
+        <td style="text-align:right; font-size:11px; color:var(--texto-secundario);">${x.ops.size}</td></tr>`).join('');
+    return `<div style="margin-bottom:14px;"><div style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase; margin-bottom:6px;">O que saiu no mês <span style="font-weight:400; text-transform:none;">(peças por grupo de produto, dias úteis${temExt ? '; vermelho = externo' : ''})</span></div>
+        <div style="max-height:240px; overflow-y:auto; border:1px solid var(--borda-cor); border-radius:8px;"><table class="tabela-dados" style="width:100%;"><thead><tr><th>PRODUTO</th><th></th><th style="text-align:right;">PEÇAS</th><th style="text-align:right;">%</th>${temExt ? '<th style="text-align:right;">EXTERNO</th>' : ''}<th style="text-align:right;">OPs</th></tr></thead><tbody>${linhas}</tbody></table></div></div>`;
+}
+
 function montarFilaSetorKPI(setor) {
     const fmt = v => v.toLocaleString('pt-BR');
     const idEtapa = Object.keys(SETOR_KPI_DA_ETAPA).find(k => SETOR_KPI_DA_ETAPA[k] === setor);
@@ -4967,6 +5006,7 @@ function abrirDetalheSetorKPI(setor, anoMes) {
     const classif = obterClassificacaoOficinasKPI();
     const movs = Object.values(obterMovimentacoesPorSetorBruto()[setor] || {}).filter(m => m.data && new Date(m.data).toISOString().slice(0, 7) === anoMes);
     const dias = {}; let fimDeSemana = 0;
+    const porProduto = {};   // grupo de produto -> { fab, ext, ops }
     movs.forEach(m => {
         const dia = new Date(m.data).toISOString().slice(0, 10);
         const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
@@ -4975,7 +5015,11 @@ function abrirDetalheSetorKPI(setor, anoMes) {
         const ext = oficinaEhExternaKPI(m.of, classif);
         const alvo = ext ? d.ext : d.fab;
         alvo.pecas += m.qtd || 0; alvo.ops.add(idOPKPI(m));
-        d.lista.push({ op: m.op, ciclo: m.ciclo, qtd: m.qtd || 0, ext, of: m.of || '', desc: (acharOPNaSincronizacao(m.op, m.ciclo) || {}).desc || '' });
+        const descProd = m.ds || (acharOPNaSincronizacao(m.op, m.ciclo) || {}).desc || '';
+        const grupo = grupoProdutoKPI(descProd);
+        const gp = porProduto[grupo] = porProduto[grupo] || { fab: 0, ext: 0, ops: new Set() };
+        gp[ext ? 'ext' : 'fab'] += m.qtd || 0; gp.ops.add(idOPKPI(m));
+        d.lista.push({ op: m.op, ciclo: m.ciclo, qtd: m.qtd || 0, ext, of: m.of || '', desc: descProd, grupo });
     });
     const chaves = Object.keys(dias).sort();
     const nomesDia = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -5024,6 +5068,7 @@ function abrirDetalheSetorKPI(setor, anoMes) {
                 ${card('Melhor / menor dia', melhor ? `${fmt(dias[melhor].fab.pecas)} / ${fmt(dias[pior].fab.pecas)}` : '—', melhor ? `${formatarChaveDataBR(melhor).slice(0, 5)} / ${formatarChaveDataBR(pior).slice(0, 5)}` : '')}
             </div>
             ${montarFilaSetorKPI(setor)}
+            ${montarProdutosSetorKPI(porProduto, cor)}
             ${montarComparacaoSetorKPI(setor, anoMes)}
             ${total ? `<div style="margin-bottom:14px;" title="Fábrica x externo"><div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700; margin-bottom:4px;"><span style="color:${cor};">FÁBRICA ${100 - pctExt}% <span style="font-weight:400; font-size:11px; color:var(--texto-secundario);">(${fmt(totFab)} pçs)</span></span><span style="color:var(--cor-alerta);"><span style="font-weight:400; font-size:11px; color:var(--texto-secundario);">(${fmt(totExt)} pçs)</span> EXTERNO ${pctExt}%</span></div><div style="display:flex; height:10px; border-radius:5px; overflow:hidden;"><div style="width:${100 - pctExt}%; background:${cor};"></div><div style="width:${pctExt}%; background:var(--cor-alerta);"></div></div></div>` : ''}
             <div style="font-size:11px; color:var(--texto-secundario); margin-bottom:6px;">Clique num dia para ver as OPs que foram movimentadas. <span style="color:var(--cor-selecao);">▲</span> = dia bem acima da média. Linhas em vermelho são OPs de oficina externa.</div>
