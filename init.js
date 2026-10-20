@@ -421,7 +421,8 @@ function executarDownloadBackup(dataHoje) {
 }
 
 // Dispara o verificador invisível assim que o sistema terminar de carregar a tela
-setTimeout(verificarBackupSexta, 3000); // Aguarda 3 segundos após abrir o painel
+// Download automático de sexta DESLIGADO: agora o backup é feito sozinho na nuvem (backup-nuvem.js). Os botões BAIXAR BACKUP / BAIXAR BACKUP DA NUVEM continuam no menu Sistema, pra baixar na mão quando quiser.
+// setTimeout(verificarBackupSexta, 3000);
 // =========================================================
 
 // ==========================================
