@@ -348,19 +348,25 @@ function montarPlanilhasMesKPI(anoMes) {
     // Tudo do mês, por setor, uma única passada
     const porSetor = {};
     SETORES_KPI.forEach(setor => {
-        porSetor[setor] = { dias: {}, opsUteis: new Set(), foraDoTotal: 0, movs: [], pecasExt: 0 };
+        porSetor[setor] = { dias: {}, opsUteis: new Set(), foraDoTotal: 0, movs: [], pecasExt: 0, produtos: {} };
         Object.values(todas[setor] || {}).forEach(m => {
             if (!m.data) return;
             const dia = new Date(m.data).toISOString().slice(0, 10);
             if (!dia.startsWith(anoMes)) return;
             const d = porSetor[setor];
             const ext = juntos && oficinaEhExternaKPI(m.of, classifX);
-            d.movs.push({ dia, op: m.op, ciclo: m.ciclo || '', qtd: m.qtd, ext, of: m.of || '' });
+            const descProd = m.ds || (acharOPNaSincronizacao(m.op, m.ciclo) || {}).desc || '';
+            const grupo = grupoProdutoKPI(descProd);
+            d.movs.push({ dia, op: m.op, ciclo: m.ciclo || '', qtd: m.qtd, ext, of: m.of || '', grupo, desc: descProd });
             if (!d.dias[dia]) d.dias[dia] = { pecas: 0, ops: new Set(), pecasExt: 0 };
             d.dias[dia].pecas += m.qtd; d.dias[dia].ops.add(idOPKPI(m));
             if (ext) d.dias[dia].pecasExt += m.qtd;
             const dow = new Date(dia + 'T00:00:00Z').getUTCDay();
-            if (dow === 0 || dow === 6) d.foraDoTotal += m.qtd; else { d.opsUteis.add(idOPKPI(m)); if (ext) d.pecasExt += m.qtd; }
+            if (dow === 0 || dow === 6) d.foraDoTotal += m.qtd; else {
+                d.opsUteis.add(idOPKPI(m)); if (ext) d.pecasExt += m.qtd;
+                const gp = d.produtos[grupo] = d.produtos[grupo] || { fab: 0, ext: 0, ops: new Set() };   // peças por grupo de produto (só dias úteis, igual ao total)
+                gp[ext ? 'ext' : 'fab'] += m.qtd; gp.ops.add(idOPKPI(m));
+            }
         });
     });
 
@@ -406,16 +412,25 @@ function montarPlanilhasMesKPI(anoMes) {
     });
 
     // ---- MOVIMENTAÇÕES (os dados brutos do mês, linha a linha)
-    const movimentacoes = [['SETOR', 'OP', 'CICLO', 'DATA', 'QTD (já com o multiplicador de camadas no Enfesto/Corte)', ...(juntos ? ['TIPO', 'OFICINA / DESTINO'] : [])]];
+    const movimentacoes = [['SETOR', 'OP', 'CICLO', 'DATA', 'QTD (já com o multiplicador de camadas no Enfesto/Corte)', ...(juntos ? ['TIPO', 'OFICINA / DESTINO'] : []), 'GRUPO DE PRODUTO', 'DESCRIÇÃO DO PRODUTO']];
     let totalMovs = 0;
     SETORES_KPI.forEach(setor => {
         porSetor[setor].movs.sort((a, b) => a.dia.localeCompare(b.dia) || String(a.op).localeCompare(String(b.op), 'pt-BR', { numeric: true }))
-            .forEach(m => { movimentacoes.push([setor, m.op, m.ciclo, formatarChaveDataBR(m.dia), m.qtd, ...(juntos ? [m.ext ? 'EXTERNO' : 'FÁBRICA', m.of || ''] : [])]); totalMovs++; });
+            .forEach(m => { movimentacoes.push([setor, m.op, m.ciclo, formatarChaveDataBR(m.dia), m.qtd, ...(juntos ? [m.ext ? 'EXTERNO' : 'FÁBRICA', m.of || ''] : []), m.grupo, m.desc]); totalMovs++; });
+    });
+
+    // ---- PRODUTOS (o que saiu de cada setor, por grupo de produto — só dias úteis, igual ao total do mês)
+    const produtos = [['SETOR', 'GRUPO DE PRODUTO', 'PEÇAS', '% DO SETOR', 'OPs DISTINTAS', ...(juntos ? ['FÁBRICA (peças)', 'EXTERNO (peças)'] : [])]];
+    SETORES_KPI.forEach(setor => {
+        const lista = Object.entries(porSetor[setor].produtos).map(([g, v]) => ({ g, ...v, total: v.fab + v.ext })).filter(x => x.total > 0).sort((a, b) => b.total - a.total);
+        const totalSetor = lista.reduce((a, x) => a + x.total, 0);
+        lista.forEach(x => produtos.push([setor, x.g, x.total, totalSetor ? Math.round(x.total / totalSetor * 100) + '%' : '', x.ops.size, ...(juntos ? [x.fab, x.ext || ''] : [])]));
+        if (lista.length) produtos.push([setor, 'TOTAL DO SETOR', totalSetor, '100%', porSetor[setor].opsUteis.size, ...(juntos ? [lista.reduce((a, x) => a + x.fab, 0), lista.reduce((a, x) => a + x.ext, 0) || ''] : [])]);
     });
 
     const graficos = { datas: todasDatas, porSetor: {} };
     SETORES_KPI.forEach(setor => { graficos.porSetor[setor] = { pecas: todasDatas.map(d => (porSetor[setor].dias[d] || { pecas: 0 }).pecas), pecasExt: todasDatas.map(d => (porSetor[setor].dias[d] || { pecasExt: 0 }).pecasExt || 0), ops: todasDatas.map(d => porSetor[setor].dias[d] ? porSetor[setor].dias[d].ops.size : 0), temDado: Object.keys(porSetor[setor].dias).length > 0 }; });
-    return { rotuloMes, resumo, semanas, diaADia, acertividade, movimentacoes, totalMovs, graficos, juntos, linCabResumo: LIN_CAB_RESUMO };
+    return { rotuloMes, resumo, semanas, diaADia, acertividade, movimentacoes, produtos, totalMovs, graficos, juntos, linCabResumo: LIN_CAB_RESUMO };
 }
 
 // Desenha um gráfico de linhas fora da tela e devolve o PNG (base64) — usado pra embutir no Excel.
@@ -451,8 +466,9 @@ async function baixarMesKPIExcel() {
         ['RESUMO', dados.resumo, [26, 20, 20, 18, 20, 22, 16, 18, 22, 20, 20, 12], dados.linCabResumo],
         ['SEMANAS', dados.semanas, [26, 26, 16, 16, 18, 16, 20], 1],
         ['DIA A DIA', dados.diaADia, [12, 14, ...SETORES_KPI.flatMap(() => dados.juntos ? [14, 14, 14, 8] : [14, 8])], 1],
+        ['PRODUTOS', dados.produtos, [26, 26, 14, 12, 16, 16, 16], 1],
         ['ACERTIVIDADE', dados.acertividade, [52, 14, 24, 34], 1],
-        ['MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24, 12, 34], 1],
+        ['MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24, 12, 34, 22, 50], 1],
     ];
 
     if (typeof ExcelJS !== 'undefined' && typeof Chart !== 'undefined') {
@@ -471,6 +487,7 @@ async function baixarMesKPIExcel() {
                     cab.eachCell(c => { if (/EXTERNO/.test(String(c.value || ''))) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8A0A6' } }; c.font = { bold: true, color: { argb: 'FF8A1C26' } }; } });
                     if (nome === 'MOVIMENTAÇÕES') ws.eachRow((r, n) => { if (n > 1 && r.getCell(6).value === 'EXTERNO') { r.eachCell({ includeEmpty: true }, c => { c.fill = vermelho; c.font = { color: { argb: 'FF8A1C26' } }; }); } });
                     if (nome === 'DIA A DIA') { const extCols = linhas[0].map((t, i) => /EXTERNO/.test(String(t)) ? i + 1 : 0).filter(Boolean); ws.eachRow((r, n) => { if (n > 1) extCols.forEach(ci => { const c = r.getCell(ci); if (c.value) { c.fill = vermelho; c.font = { bold: true, color: { argb: 'FF8A1C26' } }; } }); }); }
+                    if (nome === 'PRODUTOS') ws.eachRow((r, n) => { if (n > 1) { const c = r.getCell(7); if (c.value) { c.fill = vermelho; c.font = { bold: true, color: { argb: 'FF8A1C26' } }; } } });
                     if (nome === 'RESUMO') ws.eachRow((r, n) => { if (n > linhaCab) [11, 12].forEach(ci => { r.getCell(ci).fill = vermelho; }); });
                 }
                 return ws;
