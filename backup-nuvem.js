@@ -12,6 +12,20 @@ const TABELAS_BACKUP_NUVEM = ['ops', 'pedidos', 'grade', 'prioridade_clientes', 
 const DIAS_ENTRE_BACKUPS_NUVEM = 7;
 const QTD_BACKUPS_NUVEM_GUARDADOS = 8;
 
+// Tudo que o sistema guarda só no navegador (histórico de lotes, o que ainda não foi publicado, preferências...).
+// Fica de fora: o log do console de depuração (ruído) e a sessão de login do Supabase.
+function coletarDadosNavegadorBackup() {
+    const dados = {};
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k || k === 'logsConsoleDebug' || /^sb-|supabase/i.test(k)) continue;
+            dados[k] = localStorage.getItem(k);
+        }
+    } catch (e) { /* ignora */ }
+    return dados;
+}
+
 async function comprimirTextoBackup(texto) {
     const bytes = new TextEncoder().encode(texto);
     let saida = bytes, prefixo = 'raw:';
@@ -41,9 +55,10 @@ async function criarBackupNaNuvem(manual) {
             try { dados[t] = await buscarTodasLinhasSupabase(t); linhas += dados[t].length; }
             catch (e) { registrarLogDebug('error', [`[BACKUP NUVEM] tabela "${t}" ignorada: ${e.message}`]); }
         }
+        dados._navegador = coletarDadosNavegadorBackup();   // dados que só existem neste navegador
         const conteudo = await comprimirTextoBackup(JSON.stringify(dados));
         const id = new Date().toISOString().slice(0, 10);   // 1 por dia: refazer no mesmo dia substitui
-        const { error } = await supabaseClient.from('backups_nuvem').upsert({ id, criado_em: new Date().toISOString(), tabelas: Object.keys(dados).length, linhas, tamanho_bytes: conteudo.length, conteudo }, { onConflict: 'id' });
+        const { error } = await supabaseClient.from('backups_nuvem').upsert({ id, criado_em: new Date().toISOString(), tabelas: Object.keys(dados).length - 1, linhas, tamanho_bytes: conteudo.length, conteudo }, { onConflict: 'id' });
         if (error) throw error;
         const { data: lista } = await supabaseClient.from('backups_nuvem').select('id').order('id', { ascending: false });
         const velhos = (lista || []).slice(QTD_BACKUPS_NUVEM_GUARDADOS).map(x => x.id);
@@ -101,7 +116,7 @@ async function abrirBackupsNuvem() {
                 <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
             </div>
             <div style="overflow-y:auto; flex:1;">
-                <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:10px;">Uma cópia de todas as tabelas é guardada sozinha toda semana (quando o admin entra) e ficam as ${QTD_BACKUPS_NUVEM_GUARDADOS} mais recentes. Para voltar um deles, baixe e use <strong>RESTAURAR BACKUP DA NUVEM</strong> no menu Sistema.</div>
+                <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:10px;">Uma cópia de todas as tabelas (e dos dados guardados só no navegador de quem fez o backup, como o histórico de lotes) é guardada sozinha toda semana (quando o admin entra) e ficam as ${QTD_BACKUPS_NUVEM_GUARDADOS} mais recentes. Para voltar um deles, baixe e use <strong>RESTAURAR BACKUP DA NUVEM</strong> no menu Sistema.</div>
                 ${erro ? `<div style="color:var(--cor-alerta); font-size:12px; padding:10px;">Não consegui listar: ${erro}</div>` : (lista.length ? `<table class="tabela-dados" style="width:100%;"><thead><tr><th>DATA</th><th style="text-align:right;">LINHAS</th><th style="text-align:right;">TAMANHO</th><th></th></tr></thead><tbody>${linhas}</tbody></table>` : '<div style="padding:16px; text-align:center; color:var(--texto-secundario);">Ainda não há backups guardados.</div>')}
             </div>
             <div style="display:flex; justify-content:space-between; border-top:1px solid var(--borda-cor); padding-top:12px; margin-top:10px;">

@@ -718,6 +718,7 @@ async function baixarBackupNuvem() {
         for (const tabela of TABELAS_NUVEM) {
             dados[tabela] = await buscarTodasLinhasSupabase(tabela);
         }
+        if (typeof coletarDadosNavegadorBackup === 'function') dados._navegador = coletarDadosNavegadorBackup();
         const dataHoje = new Date().toISOString().split('T')[0];
         const conteudoJSON = JSON.stringify(dados, null, 2);
         const blob = new Blob([conteudoJSON], { type: 'application/json' });
@@ -757,6 +758,13 @@ async function restaurarBackupNuvem(e) {
             }
             await supabaseClient.from('metadados_sistema').upsert({ id: 'global', ultima_publicacao: new Date().toISOString() });
             showToast(`<i class="fas fa-check"></i> Backup restaurado: ${resumo.join(' + ')}!`);
+            // Dados que só existiam no navegador de quem fez o backup (histórico de lotes etc.): restaura só se a pessoa quiser
+            const nav = dados._navegador && typeof dados._navegador === 'object' ? Object.keys(dados._navegador) : [];
+            if (nav.length && confirm(`Esse backup também tem ${nav.length} item(ns) que ficam só no navegador (histórico de lotes, preferências, importações não publicadas...).\n\nRestaurar esses dados NESTE navegador também? Isso substitui o que existe aqui com o mesmo nome.`)) {
+                nav.forEach(k => { try { localStorage.setItem(k, dados._navegador[k]); } catch (e) { /* ignora */ } });
+                showToast('<i class="fas fa-check"></i> Dados do navegador restaurados. Recarregando...');
+                setTimeout(() => location.reload(), 1500);
+            }
         } catch (err) {
             registrarLogDebug('error', ['Falha ao restaurar backup da nuvem: ' + err.message]);
             showToast('<i class="fas fa-triangle-exclamation"></i> Falha ao restaurar. Arquivo pode estar corrompido ou não ser um backup da nuvem. Veja o console.', true);
