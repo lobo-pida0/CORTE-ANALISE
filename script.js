@@ -2894,13 +2894,6 @@ function exibirHistoricoBalancoCostura() {
     let conteudo;
     if (!hist.length) conteudo = '<div style="text-align:center; padding:20px; color:var(--texto-secundario);">Ainda não há balanços guardados. Eles passam a ser guardados a cada importação do POR OP (a partir da segunda).</div>';
     else {
-        // peças que saíram por dia (soma dos balanços do mesmo dia), dos últimos 14 dias com dado
-        const porDia = {};
-        hist.forEach(h => { const d = new Date(h.em).toLocaleDateString('pt-BR'); porDia[d] = (porDia[d] || 0) + h.pecasSairam; });
-        const dias = Object.entries(porDia).slice(0, 14).reverse();
-        const max = Math.max(1, ...dias.map(([, v]) => v));
-        const grafico = `<div style="display:flex; align-items:flex-end; gap:6px; height:110px; padding:6px 4px 0; border-bottom:2px solid var(--borda-cor); margin-bottom:6px;">${dias.map(([d, v]) => `<div title="${d}: ${n(v)} peças" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0;"><span style="font-size:10px; color:var(--texto-secundario);">${n(v)}</span><div style="width:100%; max-width:34px; height:${Math.max(3, Math.round((v / max) * 70))}px; background:var(--cor-sugestao); border-radius:4px 4px 0 0;"></div></div>`).join('')}</div>
-            <div style="display:flex; gap:6px; margin-bottom:14px;">${dias.map(([d]) => `<span style="flex:1; text-align:center; font-size:9px; color:var(--texto-secundario); min-width:0;">${d.slice(0, 5)}</span>`).join('')}</div>`;
         const linhas = hist.map(h => `
             <details style="border:1px solid var(--borda-cor); border-radius:8px; padding:8px 12px; margin-bottom:6px; background:var(--bg-painel);">
                 <summary style="cursor:pointer; font-size:12px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;"><strong>${fmtData(h.em)}</strong>
@@ -2910,7 +2903,7 @@ function exibirHistoricoBalancoCostura() {
                     ${h.completas.length ? `<div><strong>Completas:</strong> ${h.completas.map(o => `<span class="pill pill-ok">${o.op}${o.ciclo ? ' · ' + o.ciclo : ''} (${n(o.saiu)})</span>`).join(' ')}</div>` : ''}
                 </div>
             </details>`).join('');
-        conteudo = `<div style="font-size:11px; color:var(--texto-secundario); margin-bottom:4px;">Peças que saíram da costura por dia</div>${grafico}${linhas}`;
+        conteudo = `<div style="font-size:11px; color:var(--texto-secundario); margin-bottom:8px;">Um registro por importação do POR OP. Clique para ver as OPs.</div>${linhas}`;
     }
     $('modalBalancoSincronizacao').innerHTML = `
         <div class="modal-card" style="width:680px; max-width:92vw; border-top:5px solid var(--cor-sugestao); max-height:85vh;">
