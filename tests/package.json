@@ -1,0 +1,7 @@
+{
+  "name": "corte-pro-testes",
+  "private": true,
+  "description": "Testes automáticos das regras do Corte Pro (rodam num navegador headless). Uso: npm install && CHROMIUM_PATH=/caminho/do/chrome npm test",
+  "scripts": { "test": "node run.js" },
+  "dependencies": { "chart.js": "^4.5.1", "exceljs": "^4.4.0", "playwright-core": "^1.64.1" }
+}
