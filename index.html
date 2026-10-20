@@ -268,6 +268,8 @@
                     <span id="statusPublicacaoSupabase" class="somente-admin" style="font-size:10px; padding:4px 12px; color:var(--texto-secundario); display:block;"></span>
                     <button id="baixarBackupNuvem" class="btn somente-admin" title="Baixa uma cópia de tudo que está publicado na nuvem — o plano gratuito do Supabase não faz backup automático" style="background:#35505C; color:white;"><i
                             class="fas fa-cloud-download-alt"></i> BAIXAR BACKUP DA NUVEM</button>
+                    <button id="abrirBackupsNuvem" class="btn somente-admin" title="Backups automáticos guardados na própria nuvem (semanais) — baixe quando precisar" style="background:#2E7D5B; color:white;"><i
+                            class="fas fa-shield-halved"></i> BACKUPS NA NUVEM</button>
                     <label class="btn somente-admin" style="background:var(--cor-historico); color:white; cursor:pointer; margin:0;" title="Restaura um backup da nuvem baixado antes — SOBRESCREVE o que está publicado hoje"><i
                             class="fas fa-cloud-upload-alt"></i> RESTAURAR BACKUP DA NUVEM <input id="restaurarBackupNuvem" type="file" accept=".json" style="display:none;"></label>
                     <div class="dropdown-separador somente-admin"></div>
@@ -1121,6 +1123,7 @@
 
         <script src="base.js"></script>
         <script src="nuvem.js"></script>
+        <script src="backup-nuvem.js"></script>
         <script src="ops-prioridades.js"></script>
         <script src="costura.js"></script>
         <script src="kpi.js"></script>

@@ -100,7 +100,7 @@ async function verificarPapelUsuario() {
     // Checagem silenciosa do espaço da nuvem — só incomoda com um toast se
     // estiver alto (80%+); senão não aparece nada, pra não virar barulho
     // toda vez que o admin entra.
-    if (papelUsuarioAtual === 'admin') verificarEspacoNuvem(false);
+    if (papelUsuarioAtual === 'admin') { verificarEspacoNuvem(false); verificarBackupNuvemAutomatico(); }
 }
 
 function atualizarIndicadorLogin() {

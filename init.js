@@ -59,6 +59,7 @@ function inicializarEventosUI() {
         wireEvento('btnLoginAdmin', 'click', () => { abrirModalLoginAdmin(); });
         wireEvento('publicarSupabase', 'click', () => { publicarTudoNoSupabase(); });
         wireEvento('baixarBackupNuvem', 'click', () => { baixarBackupNuvem(); });
+        wireEvento('abrirBackupsNuvem', 'click', () => { abrirBackupsNuvem(); });
         wireEvento('restaurarBackupNuvem', 'change', (e) => { restaurarBackupNuvem(e); });
         wireEvento('processarExcel', 'click', () => { processarExcel(); });
         wireEvento('zerarTudo', 'click', () => { zerarTudo(); });
