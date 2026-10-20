@@ -691,7 +691,8 @@ function processarMovimentacaoSetor() {
 }
 
 // Importa o relatório separado de OPs que foram para um destino EXTERNO (ex: AGRUP CORTE EXTERNO).
-// Regra do usuário: conta como externo do ALMOX TECIDO e, quando saiu do PCP PROGRAMAÇÃO-CORTE, TAMBÉM como externo do PCP PROGRAMAÇÃO-CORTE.
+// Regra do usuário: a OP que vai pra destino externo conta como externo no setor de ORIGEM e em TODOS os setores da esteira até o ALMOX TECIDO
+// (ela pulou esses setores sem a movimentação ser lançada). Ex.: origem Análise de Medidas => Análise de Medidas + CAD + PCP Programação-Corte + Almox Tecidos.
 function processarExternoAlmox() {
     if (!exigirAdmin('importar externo do Almox')) return;
     const input = $('inputExternoAlmoxKPI'); if (!input.files[0]) return;
@@ -706,7 +707,8 @@ function processarExternoAlmox() {
             if ([iOP, iData, iQtd, iOri, iDes].includes(-1)) throw new Error("Não encontrei as colunas Nr. Op, Dt. Movimento, Qt. Movimento, Ds. Localorigem e Ds. Localdestino.");
             const todas = obterMovimentacoesPorSetorBruto();
             const importados = [];
-            let nAlmox = 0, nPcp = 0, ignoradas = 0, pecas = 0;
+            const contagem = {}; let ignoradas = 0, pecas = 0;
+            const idxAlmox = SETORES_KPI.indexOf('ALMOX TECIDO');
             for (let i = 1; i < linhas.length; i++) {
                 const c = linhas[i].split(';');
                 const opId = (c[iOP] || '').trim(), dataStr = (c[iData] || '').trim();
@@ -714,28 +716,29 @@ function processarExternoAlmox() {
                 const data = parsearDataBR(dataStr); if (!data) continue;
                 const origem = MAPEAMENTO_LOCAL_DESTINO_KPI[(c[iOri] || '').trim().toUpperCase()];
                 const destino = normalizarOficinaKPI((c[iDes] || '').trim());
-                if ((origem !== 'ALMOX TECIDO' && origem !== 'PCP PROGRAMACAO-CORTE') || !/EXTERNO/.test(destino)) { ignoradas++; continue; }
+                const idxOrigem = SETORES_KPI.indexOf(origem);
+                if (!origem || idxOrigem === -1 || idxOrigem > idxAlmox || !/EXTERNO/.test(destino)) { ignoradas++; continue; }
                 const qtd = parseInt(c[iQtd]) || 0;
                 const mov = { op: opId, ciclo: iCiclo !== -1 ? (c[iCiclo] || '').trim() : '', data: data.toISOString(), qtd, of: `DESTINO EXTERNO: ${destino}` };
                 if (iProd !== -1 && (c[iProd] || '').trim()) mov.ds = c[iProd].trim();
                 const diaSlice = data.toISOString().slice(0, 10);
                 const chave = chaveMovimentoKPI(opId, mov.ciclo, diaSlice);
                 const chaveAntiga = `${opId}|${diaSlice}`;
-                const alvos = origem === 'PCP PROGRAMACAO-CORTE' ? ['ALMOX TECIDO', 'PCP PROGRAMACAO-CORTE'] : ['ALMOX TECIDO'];
+                const alvos = SETORES_KPI.slice(idxOrigem, idxAlmox + 1);
                 alvos.forEach(setor => {
                     if (!todas[setor]) todas[setor] = {};
                     const m = { ...mov };
                     if (chaveAntiga !== chave && todas[setor][chaveAntiga] && (!todas[setor][chaveAntiga].ciclo || todas[setor][chaveAntiga].ciclo === mov.ciclo)) delete todas[setor][chaveAntiga];
                     todas[setor][chave] = m;
                     importados.push({ setor, m });
-                    if (setor === 'ALMOX TECIDO') nAlmox++; else nPcp++;
+                    contagem[setor] = (contagem[setor] || 0) + 1;
                 });
                 pecas += qtd;
             }
-            if (!importados.length) throw new Error("Nenhuma linha com destino EXTERNO vinda do Almox Tecidos ou do PCP Programação-Corte.");
+            if (!importados.length) throw new Error("Nenhuma linha com destino EXTERNO vinda de um setor até o Almox Tecidos (Análise de Medidas, CAD, PCP Programação-Corte ou Almox Tecidos).");
             salvarMovimentacoesPorSetor(todas);
             input.value = '';
-            showToast(`<i class="fas fa-industry"></i> Externo importado: ${nAlmox} no Almox Tecidos e ${nPcp} no PCP Programação-Corte (${pecas.toLocaleString('pt-BR')} peças).` + (ignoradas ? ` ${ignoradas} linha(s) ignorada(s).` : ''));
+            showToast(`<i class="fas fa-industry"></i> Externo importado (${pecas.toLocaleString('pt-BR')} peças): ${SETORES_KPI.filter(st => contagem[st]).map(st => `${contagem[st]} em ${st}`).join(', ')}.` + (ignoradas ? ` ${ignoradas} linha(s) ignorada(s).` : ''));
             renderizarGraficoKPI();
             publicarMovimentacoesImportadasNaNuvem(importados);
         } catch (err) {
