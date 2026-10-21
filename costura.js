@@ -308,7 +308,7 @@ function compararSeqCostura(antes, depois) {
         const m = new Map();
         lista.forEach(i => {
             const k = chaveOPCostura(i.op, i.ciclo);
-            const r = m.get(k) || { op: i.op, ciclo: i.ciclo || '', ref: i.descRef || i.ref || '', total: 0, locais: {} };
+            const r = m.get(k) || { op: i.op, ciclo: i.ciclo || '', ref: i.descRef || i.ref || '', codRef: i.ref || '', total: 0, locais: {} };
             r.total += (i.qtd || 0);
             r.locais[i.local] = (r.locais[i.local] || 0) + (i.qtd || 0);
             m.set(k, r);
@@ -338,7 +338,12 @@ function exibirBalancoSeqCostura(antes, depois) {
             <div style="display:flex; flex-direction:column; gap:5px;">${ordenarPrioridadesPrimeiro(lista, o => [o.ciclo, o.op]).map(linha).join('')}</div>
         </div>`;
     const selo = o => seloOPBalanco(o.ciclo, o.op, `${o.op}${o.ciclo ? ' · ' + o.ciclo : ''}`, 'background:var(--bg-card); border:1px solid var(--borda-cor); color:var(--texto-cor); display:inline-block;');
-    const ref = o => o.ref ? `<span style="color:var(--texto-secundario); font-size:11px;"> ${String(o.ref).slice(0, 38)}</span>` : '';
+    const ref = o => {
+        const cod = String(o.codRef || '').trim(), desc = String(o.ref || '').trim();
+        const codHtml = cod ? `<strong style="font-size:11px; background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:4px; padding:1px 6px;" title="Referência">${cod}</strong>` : '';
+        const descSemCod = cod ? desc.replace(cod, '').trim() : desc;
+        return `${codHtml}${descSemCod ? `<span style="color:var(--texto-secundario); font-size:11px;" title="${desc.replace(/"/g, '')}"> ${descSemCod.slice(0, 45)}</span>` : ''}`;
+    };
     const barra = pct => `<span style="display:inline-block; width:70px; height:7px; background:var(--borda-cor); border-radius:4px; overflow:hidden; vertical-align:middle;"><span style="display:block; width:${Math.min(100, pct)}%; height:100%; background:var(--cor-sugestao);"></span></span>`;
     const linhaLocais = loc => Object.entries(loc).filter(([, q]) => q > 0).map(([l, q]) => `${nomeLocalBalancoCostura(l)} ${n(q)}`).join(' + ') || '—';
     const html =
@@ -469,7 +474,7 @@ function processarPorOPCostura() {
                 const row = rows[i]; if (!row || row[idxOP] === undefined || row[idxOP] === null || row[idxOP] === '') continue;
                 const local = idxDescLocal !== -1 && row[idxDescLocal] ? String(row[idxDescLocal]).trim().toUpperCase() : '';
                 if (ehLocalCosturaEficiencia(local) && normalizarCabecalhoEf(local).startsWith('PNP')) {   // foto do balanço (só PNP, sem SLV): só os locais de costura do KPI (independe dos grupos da sequência)
-                    snapshotBalanco.push({ op: String(row[idxOP]).trim(), ciclo: idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '', local: normalizarCabecalhoEf(local), descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '', qtd: idxQtd !== -1 ? (parseFloat(row[idxQtd]) || 0) : 0 });
+                    snapshotBalanco.push({ op: String(row[idxOP]).trim(), ciclo: idxCiclo !== -1 && row[idxCiclo] !== undefined && row[idxCiclo] !== null ? String(row[idxCiclo]).trim() : '', local: normalizarCabecalhoEf(local), descRef: idxDescRef !== -1 && row[idxDescRef] ? String(row[idxDescRef]).trim() : '', ref: idxRef !== -1 && row[idxRef] ? String(row[idxRef]).trim().toUpperCase() : '', qtd: idxQtd !== -1 ? (parseFloat(row[idxQtd]) || 0) : 0 });
                 }
                 if (!locaisRelevantes.has(local)) continue;
                 const opId = String(row[idxOP]).trim();
