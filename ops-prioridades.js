@@ -403,7 +403,8 @@ function processarExcel() {
                 }
 
                 let idxE = -1;
-                if (loc.includes("CORTE") && !loc.includes("PROG") && !loc.includes("ENFESTO")) idxE = 7; else if (loc.includes("ENFESTO")) idxE = 6; else if (loc.includes("DUBLA")) idxE = 5; else if (loc.includes("ALMOX") && loc.includes("TECIDO")) idxE = 4; else if (loc.includes("PROG") && loc.includes("CORTE")) idxE = 3; else if (loc.includes("CAD")) idxE = 2; else if (loc.includes("ANALISE") || loc.includes("MEDIDA")) idxE = 1; else if (loc.includes("PROGRAMACAO")) idxE = 0;
+                if (loc.includes("EXTERNO")) idxE = -1;   // local externo (ex.: AGRUP CORTE EXTERNO) não é etapa da fábrica — antes caía em CORTE só por ter a palavra "CORTE"
+                else if (loc.includes("CORTE") && !loc.includes("PROG") && !loc.includes("ENFESTO")) idxE = 7; else if (loc.includes("ENFESTO")) idxE = 6; else if (loc.includes("DUBLA")) idxE = 5; else if (loc.includes("ALMOX") && loc.includes("TECIDO")) idxE = 4; else if (loc.includes("PROG") && loc.includes("CORTE")) idxE = 3; else if (loc.includes("CAD")) idxE = 2; else if (loc.includes("ANALISE") || loc.includes("MEDIDA")) idxE = 1; else if (loc.includes("PROGRAMACAO")) idxE = 0;
 
                 if (idxE !== -1) {
                     const idOP = String(r[5]).trim(), cicloOP = String(r[4] || ""), chaveOP = montarChaveOP(cicloOP, idOP), old = mapA[chaveOP];

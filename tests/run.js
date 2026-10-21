@@ -179,6 +179,14 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   }), true);
   igual('plano guarda pessoas e eficiência do dia', await p.evaluate(() => { const c = obterPlanosCostura()[hojeISOLocalPlanoCostura()].cap; return !!c && c.pessoas === (parseFloat(document.getElementById('seqCostPessoas').value) || 0) && c.ef > 0; }), true);
   igual('balanço da costura mostra a referência da OP', await p.evaluate(() => { const r = compararSeqCostura([{ op: '9', ciclo: '1', local: 'X', descRef: 'CORTE CAMISA MASC LONGA NOME', ref: 'HSTC012', qtd: 5 }], []); return r.saidaTotal[0].codRef; }), 'HSTC012');
+  {   // sincronização: local "AGRUP CORTE EXTERNO" não pode virar etapa CORTE
+    const linhaSinc = (op, loc) => { const c = Array(41).fill(''); c[3] = 'CORTE CAMISA TESTE'; c[4] = '211'; c[5] = op; c[6] = '10'; c[21] = loc; c[25] = '1'; return c.join(';'); };
+    const fs2 = path.join(os.tmpdir(), 'corte-pro-sinc.csv');
+    fs.writeFileSync(fs2, Array(41).fill('X').join(';') + '\n' + linhaSinc('7001', 'PNP CORTE') + '\n' + linhaSinc('7002', 'PNP AGRUP CORTE EXTERNO') + '\n');
+    await p.setInputFiles('#inputExcel', fs2);
+    await p.evaluate(() => { processarExcel(); }); await p.waitForTimeout(800);
+    igual('local externo (AGRUP CORTE EXTERNO) não vira etapa CORTE na sincronização', await p.evaluate(() => [bancoDadosOPs.some(o => o.id === '7001' && o.etapa === 7), bancoDadosOPs.some(o => o.id === '7002')]), [true, false]);
+  }
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
