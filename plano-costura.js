@@ -53,7 +53,8 @@ async function carregarPlanosCosturaDaNuvem() {
 
 // ---- OPs disponíveis pra marcar: as que estão agora nos locais da Sequência (em andamento + aguardando), por grupo
 function opsDisponiveisPlanoCostura() {
-    return Object.entries(GRUPOS_SEQUENCIAMENTO_COSTURA).map(([chave, g]) => ({
+    const FORA_DO_PLANO = ['ACABAMENTO', 'ENFESTO'];   // pedido do usuário: acabamento e enfesto não entram no plano da costura
+    return Object.entries(GRUPOS_SEQUENCIAMENTO_COSTURA).filter(([chave]) => !FORA_DO_PLANO.includes(chave)).map(([chave, g]) => ({
         chave, rotulo: g.rotulo,
         ops: montarFilaSequenciamentoCostura(chave).map(o => ({ op: o.op, ciclo: o.ciclo || '', grupo: g.rotulo, local: o.situacaoCostura || '', qtd: Math.round(o.qtd || 0), desc: o.descRef || o.ref || '' })),
     })).filter(g => g.ops.length);
