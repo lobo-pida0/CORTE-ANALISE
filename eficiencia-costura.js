@@ -62,7 +62,7 @@ async function publicarDiasEfCostura(dias) {
         });
         if (mesclou) { salvarEficienciaCostura(todos); renderizarEficienciaCostura(); }
     } catch (e) { /* sem a mescla, segue com o dado local */ }
-    const linhas = dias.filter(d => todos[d]).map(d => ({ id: d, dados: { locais: todos[d].locais, opsTotal: todos[d].opsTotal ?? null, pessoasLocal: todos[d].pessoasLocal || {} }, atualizado_por: por }));
+    const linhas = dias.filter(d => todos[d]).map(d => ({ id: d, dados: { locais: todos[d].locais, opsTotal: todos[d].opsTotal ?? null, opsMov: todos[d].opsMov || null, pessoasLocal: todos[d].pessoasLocal || {} }, atualizado_por: por }));
     try {
         for (let i = 0; i < linhas.length; i += 200) {
             const { error } = await supabaseClient.from('eficiencia_costura_dias').upsert(linhas.slice(i, i + 200), { onConflict: 'id' });
@@ -91,7 +91,7 @@ async function carregarEfCosturaDaNuvem() {
         (data || []).forEach(l => {
             naNuvem.add(l.id);
             if (aindaPendentes.has(l.id) || !l.dados || !l.dados.locais) return;
-            const novo = { locais: l.dados.locais, opsTotal: l.dados.opsTotal ?? null, pessoasLocal: l.dados.pessoasLocal || {} };
+            const novo = { locais: l.dados.locais, opsTotal: l.dados.opsTotal ?? null, ...(l.dados.opsMov ? { opsMov: l.dados.opsMov } : {}), pessoasLocal: l.dados.pessoasLocal || {} };
             if (JSON.stringify(todos[l.id] || null) !== JSON.stringify(novo)) { todos[l.id] = novo; mudou = true; }
         });
         if (mudou) salvarEficienciaCostura(todos);
@@ -121,6 +121,7 @@ function processarEficienciaCostura() {
             const cab = linhas[0].split(';').map(normalizarCabecalhoEf);
             const idxLocal = cab.findIndex(c => c === 'DS LOCAL');
             const idxOP = cab.findIndex(c => c === 'OP' || c === 'NR OP');
+            const idxCicloEf = cab.findIndex(c => c === 'CICLO');
             const idxData = cab.findIndex(c => c === 'DT MOVIMENTO');
             const idxQtd = cab.findIndex(c => c === 'QT MOVIMENTO');
             const idxTempo = cab.findIndex(c => c === 'COD TEMPOLOCAL');
@@ -146,9 +147,13 @@ function processarEficienciaCostura() {
                 const tempo = numeroBR(c[idxTempo]);
                 linhasCostura++;
                 const nomeLocal = normalizarCabecalhoEf(local);
-                const reg = ((novosDias[dia] = novosDias[dia] || { locais: {}, ops: {} }).locais[nomeLocal] = novosDias[dia].locais[nomeLocal] || { pecas: 0, minutos: 0, ops: 0, semTempo: 0 });
+                const cicloEf = idxCicloEf !== -1 ? (c[idxCicloEf] || '').trim() : '';
+                const reg = ((novosDias[dia] = novosDias[dia] || { locais: {}, ops: {}, opsMov: {} }).locais[nomeLocal] = novosDias[dia].locais[nomeLocal] || { pecas: 0, minutos: 0, ops: 0, semTempo: 0 });
                 reg.pecas += qtd; reg.ops++;
                 novosDias[dia].ops[op] = true;
+                const chaveMov = montarChaveOP(cicloEf, op);   // peças que cada OP movimentou no dia (usado pelo PLANO DA COSTURA)
+                const mv = novosDias[dia].opsMov[chaveMov] = novosDias[dia].opsMov[chaveMov] || { q: 0, l: [] };
+                mv.q += qtd; if (!mv.l.includes(nomeLocal)) mv.l.push(nomeLocal);
                 if (tempo === null) { reg.semTempo += qtd; linhasSemTempo++; } else reg.minutos += qtd * tempo;
             }
             if (!linhasCostura) throw new Error('Não achei nenhuma linha de costura (locais PNP/SLV COST SUP, INF ou CEL) nesse arquivo.');
@@ -156,7 +161,7 @@ function processarEficienciaCostura() {
             const todos = obterEficienciaCostura();
             Object.entries(novosDias).forEach(([dia, v]) => {
                 Object.values(v.locais).forEach(l => { l.minutos = Math.round(l.minutos * 100) / 100; });
-                todos[dia] = { locais: v.locais, opsTotal: Object.keys(v.ops).length, pessoasLocal: todos[dia] ? (todos[dia].pessoasLocal || {}) : {} };
+                todos[dia] = { locais: v.locais, opsTotal: Object.keys(v.ops).length, opsMov: v.opsMov, pessoasLocal: todos[dia] ? (todos[dia].pessoasLocal || {}) : {} };
             });
             salvarEficienciaCostura(todos);
             input.value = '';
@@ -164,6 +169,7 @@ function processarEficienciaCostura() {
             publicarDiasEfCostura(dias).then(ok => { if (ok) showToast('<i class="fas fa-cloud-upload-alt"></i> Eficiência da costura salva na nuvem.', false, 2500); });
             popularSeletorMesEfCostura(dias[dias.length - 1].slice(0, 7));
             renderizarEficienciaCostura();
+            if (typeof renderizarPlanoCostura === 'function') renderizarPlanoCostura();   // a conferência do plano usa esse relatório
             showToast(`<i class="fas fa-check-double"></i> ${linhasCostura} linhas de costura em ${dias.length} dia(s) importadas.${linhasParte ? ` ${linhasParte} de PARTE ignorada(s).` : ''}${linhasSemTempo ? ` ⚠ ${linhasSemTempo} sem tempo (contam peças, não minutos).` : ''}`, false, linhasSemTempo ? 7000 : 3000);
         } catch (err) {
             input.value = '';

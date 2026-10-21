@@ -169,7 +169,7 @@ function importarBackup(e) {
     if (input) input.value = '';
 }
 
-const ABAS_DENTRO_DO_MENU_MAIS = ['aba-fila', 'aba-pedidos', 'aba-filacorte', 'aba-capacidade', 'aba-sequenciamento', 'aba-necessidade'];
+const ABAS_DENTRO_DO_MENU_MAIS = ['aba-fila', 'aba-pedidos', 'aba-filacorte', 'aba-capacidade', 'aba-sequenciamento', 'aba-necessidade', 'aba-plano-costura'];
 function abrirAba(ev, id) {
     if (!abaLiberadaAgora(id)) { id = 'aba-prioridades'; ev = null; }
     $$('.aba-conteudo').forEach(a => a.classList.remove('ativa'));

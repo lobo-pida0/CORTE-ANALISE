@@ -295,6 +295,7 @@
                 <button id="abrirAba-aba-capacidade" class="btn">MONTAR PRODUÇÃO</button>
                 <button id="abrirAba-aba-sequenciamento" class="btn">SEQUENCIAMENTO</button>
                 <button id="abrirAba-aba-necessidade" class="btn">LEVANTAMENTO</button>
+                <button id="abrirAba-aba-plano-costura" class="btn somente-admin">PLANO DA COSTURA</button>
             </div>
         </div>
     </div>
@@ -1066,6 +1067,26 @@
         </div>
     </div>
 
+    <div id="aba-plano-costura" class="aba-conteudo">
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:var(--cor-sugestao);"><span><i class="fas fa-clipboard-check"></i> PLANO DA COSTURA</span></div>
+            <div id="planoCosturaConteudo" style="padding:14px 20px;">
+                <div style="display:flex; align-items:flex-end; gap:var(--espaco-md); flex-wrap:wrap; margin-bottom:10px;">
+                    <div class="campo-meta" style="width:170px;"><label>DIA DO PLANO</label><input type="date" id="planoCosturaData"></div>
+                    <button id="btnSalvarPlanoCostura" class="btn somente-admin" style="background:var(--cor-despacho); color:white;"><i class="fas fa-floppy-disk"></i> SALVAR PLANO</button>
+                    <span id="planoCosturaStatusDia"></span>
+                    <span id="planoCosturaContador" style="margin-left:auto; font-size:12px;"></span>
+                </div>
+                <div id="planoCosturaAviso" style="font-size:12px; color:var(--texto-secundario); margin-bottom:12px; padding:8px 12px; border-radius:8px; background:var(--bg-painel);"></div>
+                <div id="planoCosturaLista"></div>
+            </div>
+        </div>
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:#35505C;"><span><i class="fas fa-list-check"></i> CONFERÊNCIA — O QUE SAIU DO QUE FOI PROGRAMADO</span></div>
+            <div id="planoCosturaConferencia" style="padding:14px 20px;"></div>
+        </div>
+    </div>
+
     <div id="aba-urgencias" class="aba-conteudo">
         <div class="secao" style="margin-bottom:var(--espaco-md);">
             <div class="secao-header" style="background:var(--cor-primaria);"><span>URGÊNCIAS</span><span id="urgenciasInfoNuvem" style="font-size:11px; font-weight:400; text-transform:none; letter-spacing:0;"></span></div>
@@ -1126,6 +1147,7 @@
         <script src="backup-nuvem.js"></script>
         <script src="ops-prioridades.js"></script>
         <script src="costura.js"></script>
+        <script src="plano-costura.js"></script>
         <script src="kpi.js"></script>
         <script src="eficiencia-costura.js"></script>
         <script src="kpi-detalhe.js"></script>

@@ -158,6 +158,31 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   const bk = await p.evaluate(async () => { const txt = JSON.stringify({ a: Array.from({ length: 3000 }, (_, i) => ({ i, t: 'ÁÇÃO ' + i })) }); const c = await comprimirTextoBackup(txt); return [await descomprimirTextoBackup(c) === txt, c.length < txt.length]; });
   igual('compressão do backup volta idêntica e menor', bk, [true, true]);
 
+  // ---------- 10b. Plano da costura ----------
+  await p.evaluate(() => {
+    localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');
+    const base = { local: 'PNP COST INF CALCA', ref: '', descRef: 'CALCA TESTE', cor: '', tempoPecaCostura: 1, diasLocal: 1, tipoProduto: '', prioridade: 99, minutosCostura: 10, minutosAcabamento: 0, dataFinalizacao: null };
+    localStorage.setItem('porOPCosturaDetalhado', JSON.stringify([{ ...base, op: '101', ciclo: '211', qtd: 100 }, { ...base, op: '102', ciclo: '211', qtd: 80 }, { ...base, op: '103', ciclo: '211', qtd: 60 }]));
+    abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura();   // sexta-feira
+  });
+  igual('lista as OPs da sequência para marcar', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista input[type=checkbox]').length), 3);
+  await p.evaluate(() => { document.querySelectorAll('#planoCosturaLista input[type=checkbox]').forEach(c => { c.checked = true; }); });
+  await p.evaluate(() => salvarPlanoCostura());
+  await p.waitForTimeout(300);
+  igual('plano salvo com 3 OPs / 240 peças', await p.evaluate(() => { const pl = obterPlanosCostura()['2026-10-23']; return pl && [pl.ops.length, pl.ops.reduce((t, o) => t + o.qtd, 0)]; }), [3, 240]);
+  igual('próximo dia útil de sexta é segunda', await p.evaluate(() => proximoDiaUtilPlanoCostura('2026-10-23')), '2026-10-26');
+  igual('sem relatório do dia, fica aguardando', await p.evaluate(() => compararPlanoCostura('2026-10-23').estado), 'aguardando');
+  const CABEF = 'Empresa;Grupo Local;Ds. Descricao;Tp Produto;Cd Local;Ds Local;Ref.;Ciclo;Op;Dt. Movimento;Qt. Movimento;Cod. Tempo;Cod. Tempolocal;Tipo Mov\n';
+  const lef = (ciclo, op, qtd, dt) => `1;x;desc;CALCA;1;PNP COST INF CALCA;REF;${ciclo};${op};${dt};${qtd};1,5;1,5;NORMAL\n`;
+  const fef = path.join(os.tmpdir(), 'corte-pro-ef.csv');
+  fs.writeFileSync(fef, CABEF + lef(211, 101, 100, '26/10/2026') + lef(211, 102, 30, '26/10/2026') + lef(211, 999, 50, '26/10/2026') + lef(211, 103, 60, '27/10/2026'));   // 103 saiu no dia ERRADO (terça)
+  await p.setInputFiles('#inputEfCostura', fef); await p.waitForTimeout(700);
+  const conf = await p.evaluate(() => { const r = compararPlanoCostura('2026-10-23'); return { estado: r.estado, st: r.itens.map(x => [x.op, x.status, x.saiu]).sort(), pct: r.pct, cump: r.pecasCumpridas, prog: r.pecasProgramadas, extras: r.extras.map(x => [x.chave, x.saiu]) }; });
+  igual('conferência: completo, parcial e não saiu (saída em outro dia não vale)', [conf.estado, conf.st], ['conferido', [['101', 'completa', 100], ['102', 'parcial', 30], ['103', 'nao', 0]]]);
+  igual('percentual cumprido (130 de 240)', [conf.cump, conf.prog, conf.pct], [130, 240, 54]);
+  igual('saiu sem estar no plano', conf.extras, [['211-999', 50]]);
+  igual('tela de conferência mostra o plano', await p.evaluate(() => /54% cumprido/.test(document.getElementById('planoCosturaConferencia').innerText)), true);
+
   // ---------- 11. Fumaça: todas as abas abrem sem erro ----------
   const abas = await p.evaluate(() => [...document.querySelectorAll('[id^=aba-]')].map(e => e.id));
   for (const a of abas) { try { await p.evaluate(id => abrirAba(null, id), a); } catch (e) { falhas.push('abrir aba ' + a + ': ' + e.message.slice(0, 100)); } }
