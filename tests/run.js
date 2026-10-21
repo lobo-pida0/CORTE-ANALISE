@@ -166,9 +166,15 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura();   // sexta-feira
   });
   igual('acabamento, enfesto e etiquetação ficam fora do plano', await p.evaluate(() => opsDisponiveisPlanoCostura().map(g => g.chave).filter(c => ['ACABAMENTO', 'ENFESTO', 'ETIQUETACAO'].includes(c))), []);
-  igual('lista as OPs da sequência para marcar', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista input[type=checkbox]').length), 3);
-  await p.evaluate(() => { document.querySelectorAll('#planoCosturaLista input[type=checkbox]').forEach(c => { c.checked = true; }); });
-  await p.evaluate(() => salvarPlanoCostura());
+  await p.evaluate(async () => { for (const o of ['101', '102', '103']) await alternarOPNoPlanoCostura(o, '211'); });
+  igual('botão da sequência: OP entra no plano de hoje', await p.evaluate(() => opEstaNoPlanoCostura('101', '211')), true);
+  await p.evaluate(async () => { await alternarOPNoPlanoCostura('102', '211'); });
+  igual('clicar de novo tira a OP do plano', await p.evaluate(() => opEstaNoPlanoCostura('102', '211')), false);
+  await p.evaluate(async () => { await alternarOPNoPlanoCostura('102', '211'); });
+  await p.evaluate(() => { abrirAba(null, 'aba-seq-costura'); renderizarSequenciamentoCostura(); });
+  igual('botão do plano aparece na sequência', await p.evaluate(() => document.querySelectorAll('#aba-seq-costura button[onclick^="alternarOPNoPlanoCostura"]').length > 0), true);
+  await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
+  igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
   await p.waitForTimeout(300);
   igual('plano salvo com 3 OPs / 240 peças', await p.evaluate(() => { const pl = obterPlanosCostura()['2026-10-23']; return pl && [pl.ops.length, pl.ops.reduce((t, o) => t + o.qtd, 0)]; }), [3, 240]);
   igual('próximo dia útil de sexta é segunda', await p.evaluate(() => proximoDiaUtilPlanoCostura('2026-10-23')), '2026-10-26');

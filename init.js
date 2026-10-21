@@ -146,7 +146,6 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); carregarEfCosturaDaNuvem(); });
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('abrirAba-aba-plano-costura', 'click', (event) => { abrirAba(event, 'aba-plano-costura'); renderizarPlanoCostura(); carregarPlanosCosturaDaNuvem(); carregarEfCosturaDaNuvem(); });
-        wireEvento('btnSalvarPlanoCostura', 'click', () => { salvarPlanoCostura(); });
         wireEvento('planoCosturaData', 'change', () => { renderizarPlanoCostura(); });
         wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); renderizarUrgencias(); atualizarInfoNuvemUrgencias(); carregarUrgenciasDaNuvem(); });
         wireEvento('inputImplantacao', 'change', () => { processarImplantacao(); });

@@ -82,41 +82,38 @@ function compararPlanoCostura(dia) {
     };
 }
 
-// ---- salvar
-async function salvarPlanoCostura() {
-    if (!exigirAdmin('salvar o plano da costura')) return;
-    const dia = ($('planoCosturaData') || {}).value; if (!dia) return alert('Escolha o dia do plano.');
-    const disponiveis = opsDisponiveisPlanoCostura().flatMap(g => g.ops);
-    const marcadas = new Set([...document.querySelectorAll('#planoCosturaLista input[type=checkbox]:checked')].map(c => c.value));
-    const ops = disponiveis.filter(o => marcadas.has(chaveOPPlanoCostura(o)));
+// ---- adicionar / tirar uma OP do plano (botão em cada OP da aba SEQUÊNCIA). Salva na hora (navegador + nuvem), no plano de HOJE.
+function opEstaNoPlanoCostura(op, ciclo, dia) {
+    const pl = obterPlanosCostura()[dia || hojeISOLocalPlanoCostura()];
+    const k = montarChaveOP(ciclo, op);
+    return !!(pl && pl.ops.some(o => chaveOPPlanoCostura(o) === k));
+}
+async function alternarOPNoPlanoCostura(op, ciclo) {
+    if (!exigirAdmin('montar o plano da costura')) return;
+    const dia = hojeISOLocalPlanoCostura();
+    const k = montarChaveOP(ciclo, op);
     const planos = obterPlanosCostura();
-    if (!ops.length) {
-        if (!planos[dia]) return alert('Marque ao menos uma OP.');
-        if (!confirm('Nenhuma OP marcada: isso APAGA o plano de ' + formatarChaveDataBR(dia) + '. Continuar?')) return;
-        delete planos[dia]; salvarPlanosCostura(planos);
-        if (supabaseClient && sessaoAdminAtual) { try { await supabaseClient.from('plano_costura').delete().eq('id', dia); } catch (e) { /* ignora */ } }
-        renderizarPlanoCostura(); showToast('<i class="fas fa-check"></i> Plano apagado.'); return;
+    const atual = planos[dia] ? planos[dia].ops : [];
+    let msg;
+    if (atual.some(o => chaveOPPlanoCostura(o) === k)) {
+        const restantes = atual.filter(o => chaveOPPlanoCostura(o) !== k);
+        if (restantes.length) planos[dia] = { ops: restantes, salvoEm: new Date().toISOString() }; else delete planos[dia];
+        msg = `OP ${op} saiu do plano de hoje.`;
+    } else {
+        const item = opsDisponiveisPlanoCostura().flatMap(g => g.ops).find(o => chaveOPPlanoCostura(o) === k);
+        if (!item) { showToast('<i class="fas fa-triangle-exclamation"></i> Essa OP não pode entrar no plano (grupo fora do plano).', true); return; }
+        planos[dia] = { ops: [...atual, item], salvoEm: new Date().toISOString() };
+        msg = `OP ${op} entrou no plano de hoje (${planos[dia].ops.length} OPs, ${planos[dia].ops.reduce((t, o) => t + o.qtd, 0).toLocaleString('pt-BR')} peças).`;
     }
-    // OPs que já estavam no plano e saíram da lista de agora (ex.: já saíram da costura) continuam no plano com os dados de antes
-    const antigas = (planos[dia] && planos[dia].ops || []).filter(o => marcadas.has(chaveOPPlanoCostura(o)) && !disponiveis.some(d => chaveOPPlanoCostura(d) === chaveOPPlanoCostura(o)));
-    planos[dia] = { ops: [...ops, ...antigas], salvoEm: new Date().toISOString() };
     salvarPlanosCostura(planos);
-    const ok = await publicarPlanoCosturaNuvem(dia);
+    if (typeof renderizarSequenciamentoCostura === 'function') renderizarSequenciamentoCostura();
     renderizarPlanoCostura();
-    showToast(`<i class="fas fa-check-double"></i> Plano de ${formatarChaveDataBR(dia)} salvo: ${planos[dia].ops.length} OPs, ${planos[dia].ops.reduce((t, o) => t + o.qtd, 0).toLocaleString('pt-BR')} peças.${ok ? ' Na nuvem também.' : ''} Será conferido com as saídas de ${formatarChaveDataBR(proximoDiaUtilPlanoCostura(dia))}.`, false, 6000);
+    showToast(`<i class="fas fa-clipboard-check"></i> ${msg}`, false, 2500);
+    if (planos[dia]) await publicarPlanoCosturaNuvem(dia);
+    else if (supabaseClient && sessaoAdminAtual) { try { await supabaseClient.from('plano_costura').delete().eq('id', dia); } catch (e) { /* ignora */ } }
 }
 
 // ---- tela
-function atualizarContadorPlanoCostura() {
-    const el = $('planoCosturaContador'); if (!el) return;
-    const marcadas = new Set([...document.querySelectorAll('#planoCosturaLista input[type=checkbox]:checked')].map(c => c.value));
-    const todas = opsDisponiveisPlanoCostura().flatMap(g => g.ops).filter(o => marcadas.has(chaveOPPlanoCostura(o)));
-    el.innerHTML = `<strong>${todas.length}</strong> OP(s) · <strong>${todas.reduce((t, o) => t + o.qtd, 0).toLocaleString('pt-BR')}</strong> peças marcadas`;
-}
-function alternarGrupoPlanoCostura(chave, marcar) {
-    document.querySelectorAll(`#planoCosturaLista input[data-grupo="${chave}"]`).forEach(c => { c.checked = marcar; });
-    atualizarContadorPlanoCostura();
-}
 function renderizarPlanoCostura() {
     const raiz = $('planoCosturaConteudo'); if (!raiz) return;
     const admin = !!(sessaoAdminAtual && papelUsuarioAtual === 'admin');
@@ -124,32 +121,25 @@ function renderizarPlanoCostura() {
     const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     const dia = ($('planoCosturaData') && $('planoCosturaData').value) || hojeISOLocalPlanoCostura();
     if ($('planoCosturaData') && !$('planoCosturaData').value) $('planoCosturaData').value = dia;
-    const planoDoDia = obterPlanosCostura()[dia];
-    const marcadasAntes = new Set(planoDoDia ? planoDoDia.ops.map(chaveOPPlanoCostura) : []);
-    // mantém o que o usuário já marcou na tela (sem salvar) se o dia não mudou
-    const jaMarcadas = [...document.querySelectorAll('#planoCosturaLista input[type=checkbox]:checked')].map(c => c.value);
-    const diaAnterior = raiz.dataset.dia;
-    const marcadas = (diaAnterior === dia && raiz.dataset.montado === '1') ? new Set(jaMarcadas) : marcadasAntes;
-    const grupos = opsDisponiveisPlanoCostura();
-    $('planoCosturaAviso').innerHTML = `<i class="fas fa-circle-info"></i> O plano de <strong>${formatarChaveDataBR(dia)}</strong> será conferido com o que saiu da costura em <strong>${formatarChaveDataBR(proximoDiaUtilPlanoCostura(dia))}</strong> (próximo dia útil), quando você importar o relatório de movimentação em KPI → Eficiência da costura. Vale a saída completa ou parcial.`;
-    if (!grupos.length) {
-        $('planoCosturaLista').innerHTML = '<div style="padding:16px; color:var(--texto-secundario);">Não há OPs na Sequência da costura. Importe a planilha POR_OP na aba SEQUÊNCIA.</div>';
+    const plano = obterPlanosCostura()[dia];
+    $('planoCosturaAviso').innerHTML = `<i class="fas fa-circle-info"></i> Para montar o plano, use o botão <i class="fas fa-clipboard-check"></i> de cada OP na aba <strong>SEQUÊNCIA</strong> (ele salva no plano de hoje). O plano de <strong>${formatarChaveDataBR(dia)}</strong> será conferido com o que saiu da costura em <strong>${formatarChaveDataBR(proximoDiaUtilPlanoCostura(dia))}</strong> (próximo dia útil), quando você importar o relatório de movimentação em KPI → Eficiência da costura. Vale a saída completa ou parcial.`;
+    $('planoCosturaContador').innerHTML = plano ? `<strong>${plano.ops.length}</strong> OP(s) · <strong>${fmt(plano.ops.reduce((t, o) => t + o.qtd, 0))}</strong> peças no plano` : '';
+    $('planoCosturaStatusDia').innerHTML = '';
+    if (!plano) {
+        $('planoCosturaLista').innerHTML = '<div style="padding:16px; color:var(--texto-secundario); font-size:12px;">Nenhuma OP no plano desse dia. Vá na aba SEQUÊNCIA e clique no botão do plano nas OPs que você programou.</div>';
     } else {
-        $('planoCosturaLista').innerHTML = grupos.map(g => `
-            <details open style="border:1px solid var(--borda-cor); border-radius:8px; margin-bottom:8px; background:var(--bg-painel);">
-                <summary style="cursor:pointer; padding:8px 12px; font-weight:700; font-size:13px; display:flex; gap:10px; align-items:center;">${esc(g.rotulo)} <span style="font-weight:400; font-size:11px; color:var(--texto-secundario);">${g.ops.length} OPs · ${fmt(g.ops.reduce((t, o) => t + o.qtd, 0))} peças</span>
-                    ${admin ? `<span style="margin-left:auto; display:flex; gap:6px;"><button type="button" class="btn" style="padding:3px 10px; font-size:11px; margin:0; background:var(--cor-despacho); color:white;" onclick="event.preventDefault(); event.stopPropagation(); alternarGrupoPlanoCostura('${g.chave}', true)"><i class="fas fa-check-double"></i> MARCAR TODAS</button><button type="button" class="btn" style="padding:3px 10px; font-size:11px; margin:0; background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor);" onclick="event.preventDefault(); event.stopPropagation(); alternarGrupoPlanoCostura('${g.chave}', false)"><i class="fas fa-eraser"></i> LIMPAR</button></span>` : ''}</summary>
-                <div style="padding:0 12px 10px;">${g.ops.map(o => `<label style="display:flex; gap:10px; align-items:center; padding:4px 0; border-top:1px solid var(--borda-cor); font-size:12px; cursor:${admin ? 'pointer' : 'default'};">
-                    <input type="checkbox" value="${esc(chaveOPPlanoCostura(o))}" data-grupo="${g.chave}" ${marcadas.has(chaveOPPlanoCostura(o)) ? 'checked' : ''} ${admin ? '' : 'disabled'} onchange="atualizarContadorPlanoCostura()">
+        const grupos = {};
+        plano.ops.forEach(o => { (grupos[o.grupo || 'Outros'] = grupos[o.grupo || 'Outros'] || []).push(o); });
+        $('planoCosturaLista').innerHTML = Object.entries(grupos).map(([g, ops]) => `
+            <div style="border:1px solid var(--borda-cor); border-radius:8px; margin-bottom:8px; background:var(--bg-painel);">
+                <div style="padding:8px 12px; font-weight:700; font-size:13px;">${esc(g)} <span style="font-weight:400; font-size:11px; color:var(--texto-secundario);">${ops.length} OPs · ${fmt(ops.reduce((t, o) => t + o.qtd, 0))} peças</span></div>
+                <div style="padding:0 12px 8px;">${ops.map(o => `<div style="display:flex; gap:10px; align-items:center; padding:4px 0; border-top:1px solid var(--borda-cor); font-size:12px;">
                     <strong style="min-width:70px;">${esc(o.op)}</strong><span style="color:var(--texto-secundario); min-width:70px;">ciclo ${esc(o.ciclo || '—')}</span>
                     <span style="flex:1; color:var(--texto-secundario); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(String(o.desc).slice(0, 60))}</span>
-                    <span style="font-size:11px; color:var(--texto-secundario);">${esc(o.local)}</span><strong style="min-width:60px; text-align:right;">${fmt(o.qtd)}</strong></label>`).join('')}</div>
-            </details>`).join('');
+                    <strong style="min-width:60px; text-align:right;">${fmt(o.qtd)}</strong>
+                    ${admin && dia === hojeISOLocalPlanoCostura() ? `<button type="button" class="btn" style="padding:2px 8px; font-size:11px; margin:0; background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor);" onclick="alternarOPNoPlanoCostura('${esc(o.op)}', '${esc(o.ciclo || '')}')" title="Tirar essa OP do plano"><i class="fas fa-xmark"></i> TIRAR</button>` : ''}</div>`).join('')}</div>
+            </div>`).join('');
     }
-    raiz.dataset.dia = dia; raiz.dataset.montado = '1';
-    atualizarContadorPlanoCostura();
-    if ($('btnSalvarPlanoCostura')) $('btnSalvarPlanoCostura').style.display = admin ? '' : 'none';
-    $('planoCosturaStatusDia').innerHTML = planoDoDia ? `<span class="pill pill-ok">PLANO SALVO: ${planoDoDia.ops.length} OPs</span>` : '<span style="font-size:11px; color:var(--texto-secundario);">Sem plano salvo para esse dia.</span>';
     renderizarConferenciaPlanoCostura();
 }
 function renderizarConferenciaPlanoCostura() {
