@@ -100,6 +100,15 @@ function opEstaNoPlanoCostura(op, ciclo, dia) {
     const k = montarChaveOP(ciclo, op);
     return !!(pl && pl.ops.some(o => chaveOPPlanoCostura(o) === k));
 }
+function capacidadeAtualPlanoCostura() {
+    const n = id => parseFloat(document.getElementById(id) && document.getElementById(id).value) || 0;
+    return { pessoas: n('seqCostPessoas'), horas: n('seqCostHoras'), ef: n('seqCostEficiencia') };
+}
+function htmlCapacidadePlanoCostura(plano) {
+    const c = plano && plano.cap; if (!c) return '';
+    const fmt = v => Number(v).toLocaleString('pt-BR');
+    return `<span title="Pessoas, horas por dia e eficiência usadas na SEQUÊNCIA quando o plano foi salvo">${fmt(c.pessoas)} pessoas · ${fmt(c.horas)}h/dia · <strong>${fmt(c.ef)}%</strong> de eficiência</span>`;
+}
 async function adicionarMarcadasAoPlanoCostura() {
     if (!exigirAdmin('montar o plano da costura')) return;
     const marcadas = [...document.querySelectorAll('.check-imprimir-seq:checked')].map(c => c.dataset.id);
@@ -118,7 +127,7 @@ async function adicionarMarcadasAoPlanoCostura() {
         if (item) { novas.push(item); jaTem.add(k); }
     });
     if (!novas.length) { showToast('<i class="fas fa-circle-info"></i> Essas OPs já estão no plano de hoje (ou o grupo não entra no plano).', false, 3000); return; }
-    planos[dia] = { ops: [...atual, ...novas], salvoEm: new Date().toISOString() };
+    planos[dia] = { ops: [...atual, ...novas], salvoEm: new Date().toISOString(), cap: capacidadeAtualPlanoCostura() };   // pessoas/horas/eficiência usadas nesse dia
     salvarPlanosCostura(planos);
     document.querySelectorAll('.check-imprimir-seq:checked').forEach(c => { c.checked = false; });
     const tg = document.getElementById('checkTudoSeqCostura'); if (tg) tg.checked = false;
@@ -132,7 +141,7 @@ async function tirarOPDoPlanoCostura(op, ciclo) {
     const k = montarChaveOP(ciclo, op);
     const planos = obterPlanosCostura();
     const restantes = (planos[dia] ? planos[dia].ops : []).filter(o => chaveOPPlanoCostura(o) !== k);
-    if (restantes.length) planos[dia] = { ops: restantes, salvoEm: new Date().toISOString() }; else delete planos[dia];
+    if (restantes.length) planos[dia] = { ...planos[dia], ops: restantes, salvoEm: new Date().toISOString() }; else delete planos[dia];
     salvarPlanosCostura(planos);
     renderizarPlanoCostura();
     showToast(`<i class="fas fa-clipboard-check"></i> OP ${op} saiu do plano de hoje.`, false, 2500);
@@ -151,7 +160,7 @@ function renderizarPlanoCostura() {
     const plano = obterPlanosCostura()[dia];
     const atuais = mapaFinAtualPlanoCostura();
     $('planoCosturaAviso').innerHTML = `<i class="fas fa-circle-info"></i> Para montar o plano, marque as OPs na aba <strong>SEQUÊNCIA</strong> e clique em <strong>SALVAR NO PLANO</strong> (ao lado de IMPRIMIR; salva no plano de hoje). O plano de <strong>${formatarChaveDataBR(dia)}</strong> será conferido com o que saiu da costura em <strong>${formatarChaveDataBR(proximoDiaUtilPlanoCostura(dia))}</strong> (próximo dia útil), quando você importar o relatório de movimentação em KPI → Eficiência da costura. Vale a saída completa ou parcial.`;
-    $('planoCosturaContador').innerHTML = plano ? `<strong>${plano.ops.length}</strong> OP(s) · <strong>${fmt(plano.ops.reduce((t, o) => t + o.qtd, 0))}</strong> peças no plano` : '';
+    $('planoCosturaContador').innerHTML = plano ? `<strong>${plano.ops.length}</strong> OP(s) · <strong>${fmt(plano.ops.reduce((t, o) => t + o.qtd, 0))}</strong> peças no plano` + (plano.cap ? ` · ${htmlCapacidadePlanoCostura(plano)}` : '') : '';
     $('planoCosturaStatusDia').innerHTML = '';
     if (!plano) {
         $('planoCosturaLista').innerHTML = '<div style="padding:16px; color:var(--texto-secundario); font-size:12px;">Nenhuma OP no plano desse dia. Vá na aba SEQUÊNCIA e marque as OPs que você programou e clique em SALVAR NO PLANO.</div>';
@@ -181,7 +190,7 @@ function renderizarConferenciaPlanoCostura() {
     const sel = { completa: ['SAIU POR COMPLETO', 'var(--cor-despacho)'], parcial: ['SAIU PARCIAL', 'var(--cor-sugestao)'], nao: ['NÃO SAIU', 'var(--cor-alerta)'] };
     el.innerHTML = dias.map((d, i) => {
         const r = compararPlanoCostura(d);
-        const cab = `<strong>${formatarChaveDataBR(d)}</strong> <span style="color:var(--texto-secundario); font-size:11px;">(${r.plano.ops.length} OPs, ${fmt(r.plano.ops.reduce((t, o) => t + o.qtd, 0))} peças)</span>`;
+        const cab = `<strong>${formatarChaveDataBR(d)}</strong> <span style="color:var(--texto-secundario); font-size:11px;">(${r.plano.ops.length} OPs, ${fmt(r.plano.ops.reduce((t, o) => t + o.qtd, 0))} peças${r.plano.cap ? ' · ' + htmlCapacidadePlanoCostura(r.plano) : ''})</span>`;
         if (r.estado !== 'conferido') {
             const msg = r.estado === 'aguardando' ? `aguardando o relatório de ${formatarChaveDataBR(r.dataConf)}` : `o relatório de ${formatarChaveDataBR(r.dataConf)} foi importado antes dessa versão (sem o detalhe por OP) — reimporte-o`;
             return `<div style="border:1px solid var(--borda-cor); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--bg-painel); font-size:12px;">${cab} <span class="pill" style="background:var(--borda-cor); color:var(--texto-cor); margin-left:8px;">${msg}</span></div>`;
@@ -196,6 +205,7 @@ function renderizarConferenciaPlanoCostura() {
             <div style="font-size:12px; line-height:1.8;">${r.extras.slice(0, 40).map(x => `<span class="pill" style="background:var(--bg-card); border:1px solid var(--borda-cor); color:var(--texto-cor);">${esc(x.chave)} · ${fmt(x.saiu)}</span>`).join(' ')}${r.extras.length > 40 ? ' …' : ''}</div>` : '';
         return `<details ${i === 0 ? 'open' : ''} style="border:1px solid var(--borda-cor); border-left:4px solid ${cor}; border-radius:8px; padding:8px 12px; margin-bottom:8px; background:var(--bg-painel);">
             <summary style="cursor:pointer; font-size:12px; display:flex; gap:14px; flex-wrap:wrap; align-items:center;">${cab}
+                ${r.plano.cap ? `<span style="color:var(--texto-secundario);">${htmlCapacidadePlanoCostura(r.plano)}</span>` : ''}
                 <span>conferido com <strong>${formatarChaveDataBR(r.dataConf)}</strong></span>
                 <span style="color:${cor}; font-weight:900; font-size:15px;">${r.pct}% cumprido</span>
                 <span>${fmt(r.pecasCumpridas)} de ${fmt(r.pecasProgramadas)} peças</span>
