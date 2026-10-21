@@ -165,7 +165,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     localStorage.setItem('porOPCosturaDetalhado', JSON.stringify([{ ...base, op: '101', ciclo: '211', qtd: 100 }, { ...base, op: '102', ciclo: '211', qtd: 80 }, { ...base, op: '103', ciclo: '211', qtd: 60 }]));
     abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura();   // sexta-feira
   });
-  igual('acabamento e enfesto ficam fora do plano', await p.evaluate(() => opsDisponiveisPlanoCostura().map(g => g.chave).filter(c => c === 'ACABAMENTO' || c === 'ENFESTO')), []);
+  igual('acabamento, enfesto e etiquetação ficam fora do plano', await p.evaluate(() => opsDisponiveisPlanoCostura().map(g => g.chave).filter(c => ['ACABAMENTO', 'ENFESTO', 'ETIQUETACAO'].includes(c))), []);
   igual('lista as OPs da sequência para marcar', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista input[type=checkbox]').length), 3);
   await p.evaluate(() => { document.querySelectorAll('#planoCosturaLista input[type=checkbox]').forEach(c => { c.checked = true; }); });
   await p.evaluate(() => salvarPlanoCostura());
