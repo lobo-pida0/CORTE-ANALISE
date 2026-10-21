@@ -166,13 +166,14 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura();   // sexta-feira
   });
   igual('acabamento, enfesto e etiquetação ficam fora do plano', await p.evaluate(() => opsDisponiveisPlanoCostura().map(g => g.chave).filter(c => ['ACABAMENTO', 'ENFESTO', 'ETIQUETACAO'].includes(c))), []);
-  await p.evaluate(async () => { for (const o of ['101', '102', '103']) await alternarOPNoPlanoCostura(o, '211'); });
-  igual('botão da sequência: OP entra no plano de hoje', await p.evaluate(() => opEstaNoPlanoCostura('101', '211')), true);
-  await p.evaluate(async () => { await alternarOPNoPlanoCostura('102', '211'); });
-  igual('clicar de novo tira a OP do plano', await p.evaluate(() => opEstaNoPlanoCostura('102', '211')), false);
-  await p.evaluate(async () => { await alternarOPNoPlanoCostura('102', '211'); });
-  await p.evaluate(() => { abrirAba(null, 'aba-seq-costura'); renderizarSequenciamentoCostura(); });
-  igual('botão do plano aparece na sequência', await p.evaluate(() => document.querySelectorAll('#aba-seq-costura button[onclick^="alternarOPNoPlanoCostura"]').length > 0), true);
+  await p.evaluate(() => { abrirAba(null, 'aba-seq-costura'); renderizarSequenciamentoCostura(); document.querySelectorAll('.check-imprimir-seq').forEach(c => { c.checked = true; }); });
+  igual('botão SALVAR NO PLANO existe', await p.evaluate(() => !!document.getElementById('btnPlanoSeqCostura')), true);
+  await p.evaluate(async () => { await adicionarMarcadasAoPlanoCostura(); });
+  igual('marcadas entram no plano de hoje', await p.evaluate(() => ['101', '102', '103'].every(o => opEstaNoPlanoCostura(o, '211'))), true);
+  await p.evaluate(async () => { await tirarOPDoPlanoCostura('102', '211'); });
+  igual('TIRAR remove a OP do plano', await p.evaluate(() => opEstaNoPlanoCostura('102', '211')), false);
+  await p.evaluate(async () => { renderizarSequenciamentoCostura(); document.querySelectorAll('.check-imprimir-seq').forEach(c => { c.checked = true; }); await adicionarMarcadasAoPlanoCostura(); });
+  igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
   await p.waitForTimeout(300);

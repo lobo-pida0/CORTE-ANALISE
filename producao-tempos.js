@@ -388,7 +388,7 @@ function renderizarSequenciamentoCostura() {
     renderizarResumoAtrasosPorGrupo();
 
     if (!filaComResultado.length) {
-        $('seqCostListaOPs').innerHTML = `<tr><td colspan="15" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
+        $('seqCostListaOPs').innerHTML = `<tr><td colspan="14" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhuma OP encontrada pra esse grupo.</td></tr>`;
         return;
     }
 
@@ -438,7 +438,7 @@ function renderizarSequenciamentoCostura() {
         // coluna Situação linha por linha.
         const linhaAnterior = filaComResultado[indice - 1];
         const separador = (indice > 0 && linhaAnterior.situacaoCostura === 'Em andamento' && op.situacaoCostura === 'Aguardando')
-            ? `<tr><td colspan="15" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
+            ? `<tr><td colspan="14" style="padding:0; border-top:3px solid var(--cor-historico);"></td></tr>`
             : '';
         // Sem previsão (Enfesto/Etiquetação, ou OP sem tempo) → nunca "começa hoje"; ficava apagada. Aqui não apaga.
         const semTempoNoGrupo = grupo === 'ENFESTO' || grupo === 'ETIQUETACAO' || !op.dataInicioProducao;   // sem previsão (OP sem tempo) também não apaga
@@ -456,9 +456,6 @@ function renderizarSequenciamentoCostura() {
             <td class="num" style="white-space:nowrap;" title="Tempo de costura por peça (coluna 'Tempo Peca Costura' do POR_OP)">${(op.tempoPecaCostura && grupo !== 'ENFESTO' && grupo !== 'ETIQUETACAO') ? op.tempoPecaCostura.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td class="col-tempo-total-seq num">${tempoTexto}</td>
             <td style="text-align:center; white-space:nowrap;">${previsaoTexto}</td>
-            <td style="text-align:center; white-space:nowrap;">
-                ${['ACABAMENTO', 'ENFESTO', 'ETIQUETACAO'].includes(grupo) ? '' : (() => { const noPlano = opEstaNoPlanoCostura(op.op, op.ciclo); return `<button class="btn somente-admin" style="padding:3px 7px; background:${noPlano ? 'var(--cor-despacho)' : 'var(--bg-card)'}; color:${noPlano ? 'white' : 'var(--texto-cor)'}; border:1px solid ${noPlano ? 'var(--cor-despacho)' : 'var(--borda-cor)'};" onclick="alternarOPNoPlanoCostura('${op.op}', '${op.ciclo || ''}')" title="${noPlano ? 'Está no plano de hoje — clique para tirar' : 'Adicionar ao plano de hoje'}"><i class="fas fa-clipboard-check"></i> ${noPlano ? 'NO PLANO' : '+ PLANO'}</button>`; })()}
-            </td>
             <td style="text-align:center; white-space:nowrap;">
                 <button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-historico);" onclick="ocultarOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Ocultar essa OP (continua existindo, só some da lista e do tempo — reversível na hora)"><i class="fas fa-eye-slash"></i></button>
                 <button class="btn somente-admin tambem-usuario" style="padding:3px 7px; background:var(--cor-alerta);" onclick="removerOPDaSequenciaCostura('${op.op}', '${op.ciclo || ''}')" title="Remover essa OP da sequência (não volta nem reimportando)"><i class="fas fa-trash"></i></button>

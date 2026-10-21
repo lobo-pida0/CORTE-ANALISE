@@ -175,6 +175,7 @@ function inicializarEventosUI() {
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });
         wireEvento('checkTudoSeqCostura', 'change', (e) => { $$('.check-imprimir-seq').forEach(cb => cb.checked = e.target.checked); });
+        wireEvento('btnPlanoSeqCostura', 'click', () => { adicionarMarcadasAoPlanoCostura(); });
         wireEvento('btnImprimirSeqCostura', 'click', () => { imprimirSecao('secaoImprimirSeqCostura'); });
         wireEvento('btnOrdemAutomaticaEnfesto', 'click', () => { resetarOrdemAutomaticaEnfesto(); });
         wireEvento('seqCostPessoas', 'input', () => { renderizarSequenciamentoCostura(); });
