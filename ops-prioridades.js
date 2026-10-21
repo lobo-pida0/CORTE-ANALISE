@@ -307,8 +307,14 @@ function detectarColunasProdutoELaser(rows) {
     // Laser sem cabeçalho achado: comportamento antigo (coluna AP), a não ser que a AP seja o produto
     if (idxLaser === -1 && idxProduto !== AP) idxLaser = AP;
 
+    // Colunas da matéria-prima e da referência: acha pelo título (a planilha já perdeu colunas e elas mudaram de lugar);
+    // se o título não for achado, usa as posições antigas (AM, AN, AO).
+    const achar = (fn, padrao) => { const i = cab.findIndex(fn); return i !== -1 ? i : padrao; };
+    const idxCodMP = achar(c => c.includes('CODIGO') && c.includes('M.P'), 38);
+    const idxDescMP = achar(c => c.includes('DESCRICAO') && c.includes('M.P'), 39);
+    const idxRefSinc = achar(c => c === 'REFERENCIA', 40);
     return {
-        idxLinhaCab, idxLaser, idxProduto,
+        idxLinhaCab, idxLaser, idxProduto, idxCodMP, idxDescMP, idxRefSinc,
         letraLaser: idxLaser !== -1 ? letra(idxLaser) : null,
         letraProduto: idxProduto !== -1 ? letra(idxProduto) : null,
     };
@@ -393,8 +399,8 @@ function processarExcel() {
                     opsAguardandoMP.push({
                         id: String(r[5]).trim(), ciclo: String(r[4] || ""), desc: String(r[3] || ""),
                         qtd: parseInt(r[6]) || 0, diasLocal: parseInt(r[25]) || 0,
-                        codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
-                        referencia: r[40] ? String(r[40]).trim().toUpperCase() : "",
+                        codigoMP: r[colunasSinc.idxCodMP] ? String(r[colunasSinc.idxCodMP]).trim().toUpperCase() : "SEM CÓDIGO",
+                        referencia: r[colunasSinc.idxRefSinc] ? String(r[colunasSinc.idxRefSinc]).trim().toUpperCase() : "",
                         produto: lerProduto(r),
                         sobMedida: mapaSBM.has(String(r[5]).trim()),
                         analiseMP: loc.includes("ANALISE")
@@ -423,9 +429,9 @@ function processarExcel() {
                         destaque: opsDestacadas.has(chaveOP), // "faça essa primeiro" — marcado na aba Prioridades
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
                         diasLocal: parseInt(r[25]) || 0,
-                        codigoMP: r[38] ? String(r[38]).trim().toUpperCase() : "SEM CÓDIGO",
-                        descMP: r[39] ? String(r[39]).trim().toUpperCase() : "🔍 COLUNA VAZIA",
-                        referencia: r[40] ? String(r[40]).trim().toUpperCase() : "", // coluna AO
+                        codigoMP: r[colunasSinc.idxCodMP] ? String(r[colunasSinc.idxCodMP]).trim().toUpperCase() : "SEM CÓDIGO",
+                        descMP: r[colunasSinc.idxDescMP] ? String(r[colunasSinc.idxDescMP]).trim().toUpperCase() : "🔍 COLUNA VAZIA",
+                        referencia: r[colunasSinc.idxRefSinc] ? String(r[colunasSinc.idxRefSinc]).trim().toUpperCase() : "", // coluna AO
                         sobMedida: mapaSBM.has(idOP), // aba BASE, coluna Y ("Descrição OP" contém "SBM")
                         laser: (colunasSinc.idxLaser !== -1 && r[colunasSinc.idxLaser]) ? String(r[colunasSinc.idxLaser]).trim().toUpperCase().includes('LASER') : false, // coluna do LASER (achada pelo cabeçalho)
                         produto: lerProduto(r), // camisa/calça/jaqueta... — só local (não vai pra nuvem), usado no filtro de Produto
