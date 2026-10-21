@@ -162,7 +162,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');
     const base = { local: 'PNP COST INF CALCA', ref: '', descRef: 'CALCA TESTE', cor: '', tempoPecaCostura: 1, diasLocal: 1, tipoProduto: '', prioridade: 99, minutosCostura: 10, minutosAcabamento: 0, dataFinalizacao: null };
-    localStorage.setItem('porOPCosturaDetalhado', JSON.stringify([{ ...base, op: '101', ciclo: '211', qtd: 100 }, { ...base, op: '102', ciclo: '211', qtd: 80 }, { ...base, op: '103', ciclo: '211', qtd: 60 }]));
+    localStorage.setItem('porOPCosturaDetalhado', JSON.stringify([{ ...base, op: '101', ciclo: '211', qtd: 100, dataFinalizacao: '2026-10-20T12:00:00.000Z' }, { ...base, op: '102', ciclo: '211', qtd: 80 }, { ...base, op: '103', ciclo: '211', qtd: 60 }]));
     abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura();   // sexta-feira
   });
   igual('acabamento, enfesto e etiquetação ficam fora do plano', await p.evaluate(() => opsDisponiveisPlanoCostura().map(g => g.chave).filter(c => ['ACABAMENTO', 'ENFESTO', 'ETIQUETACAO'].includes(c))), []);
@@ -173,6 +173,10 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   await p.evaluate(async () => { await tirarOPDoPlanoCostura('102', '211'); });
   igual('TIRAR remove a OP do plano', await p.evaluate(() => opEstaNoPlanoCostura('102', '211')), false);
   await p.evaluate(async () => { renderizarSequenciamentoCostura(); document.querySelectorAll('.check-imprimir-seq').forEach(c => { c.checked = true; }); await adicionarMarcadasAoPlanoCostura(); });
+  igual('plano guarda a data de finalização do dia em que foi salvo', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.every(o => 'fin' in o)), true);
+  igual('data de finalização salva aparece no plano', await p.evaluate(() => { renderizarPlanoCostura(); return obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.find(o => o.op === '101').fin.startsWith('2026-10-20'); }), true);
+  igual('se a data mudar na sequência, o plano avisa', await p.evaluate(() => { const l = JSON.parse(localStorage.getItem('porOPCosturaDetalhado')); l.find(x => x.op === '101').dataFinalizacao = '2026-10-25T12:00:00.000Z'; localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(l)); const o = obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.find(x => x.op === '101'); return /agora/.test(htmlFinalizacaoPlanoCostura(o, mapaFinAtualPlanoCostura()));
+  }), true);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
