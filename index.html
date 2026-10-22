@@ -1088,57 +1088,9 @@
     </div>
 
     <div id="aba-urgencias" class="aba-conteudo">
-        <div class="secao" style="margin-bottom:var(--espaco-md);">
-            <div class="secao-header" style="background:var(--cor-primaria);"><span>URGÊNCIAS</span><span id="urgenciasInfoNuvem" style="font-size:11px; font-weight:400; text-transform:none; letter-spacing:0;"></span></div>
-            <div style="display:flex; align-items:flex-end; gap:16px; padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
-                <label class="btn somente-admin tambem-usuario" style="background:var(--cor-primaria); color:white; cursor:pointer; margin:0;" title="Planilha com a aba 'Implantação' — é a base da lista desta aba"><i class="fas fa-file-import"></i> IMPORTAR IMPLANTAÇÃO
-                    <input id="inputImplantacao" type="file" accept=".xlsx, .xls" style="display:none;">
-                </label>
-                <label class="btn somente-admin tambem-usuario" style="background:var(--cor-historico); color:white; cursor:pointer; margin:0;" title="Planilha POR_OP — atualiza local e quantidade de cada OP já importada da Implantação"><i class="fas fa-file-import"></i> IMPORTAR POR_OP
-                    <input id="inputPorOPUrgencias" type="file" accept=".xlsx, .xls" style="display:none;">
-                </label>
-                <button id="btnExportarUrgencias" class="btn somente-admin tambem-usuario" style="background:var(--cor-despacho); color:white;" title="Baixa a lista INTEIRA em Excel, no formato da aba Implantação, com a chave já escrita e o local já atualizado pela POR_OP"><i class="fas fa-file-export"></i> EXPORTAR</button>
-                <div class="campo-meta" style="width:220px;"><label>LOCAL</label>
-                    <div id="toggleMultiSelectLocalUrgencias" class="multi-select-container">
-                        <div class="multi-select-trigger" id="textoFiltroLocalUrgencias">Todos</div>
-                        <div class="multi-select-options" id="listaFiltroLocalUrgencias"></div>
-                    </div>
-                </div>
-                <div class="campo-meta" style="width:140px;"><label>OP</label>
-                    <input type="text" id="filtroOPUrgencias" placeholder="Buscar OP...">
-                </div>
-                <div class="campo-meta" style="width:200px;"><label>REFERÊNCIA</label>
-                    <input type="text" id="filtroReferenciaUrgencias" placeholder="Buscar referência...">
-                </div>
-                <div class="campo-meta" style="width:190px;"><label>SITUAÇÃO NA POR_OP</label>
-                    <select id="filtroSituacaoUrgencias">
-                        <option value="">Todas</option>
-                        <option value="nao">Só não encontradas</option>
-                        <option value="sim">Só encontradas</option>
-                        <option value="multi">Só em mais de um local</option>
-                    </select>
-                </div>
-                <div class="campo-meta" id="wrapNaoEncontradasUrgencias" style="width:auto; display:none;">
-                    <label style="visibility:hidden;">.</label>
-                    <button id="btnNaoEncontradasUrgencias" class="btn" style="background:#E07B39; color:white;"></button>
-                </div>
-            </div>
-        </div>
-
         <div class="secao">
-            <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-triangle-exclamation"></i> URGÊNCIAS</span><span id="urgenciasCont">0 OP(s)</span></div>
-            <div class="secao-corpo" style="padding:0; overflow:auto;">
-                <table class="tabela-dados" style="width:100%;">
-                    <thead>
-                        <tr>
-                            <th>OP</th><th>CICLO</th><th>PEDIDO</th><th>GRADE</th><th>LOCAL</th><th>REFERÊNCIA</th>
-                            <th>DESCRIÇÃO REFERÊNCIA</th><th>COR</th><th style="text-align:right;">QTD</th>
-                            <th>TIPO PRODUTO</th><th>DATA FINALIZAÇÃO</th><th>REPROGRAMADO</th>
-                        </tr>
-                    </thead>
-                    <tbody id="urgenciasLista"></tbody>
-                </table>
-            </div>
+            <div class="secao-header" style="background:var(--cor-primaria);"><span>URGÊNCIAS</span></div>
+            <div class="secao-corpo" style="padding:24px; color:var(--texto-secundario); font-size:13px;">Aba em branco — em reformulação.</div>
         </div>
     </div>
 

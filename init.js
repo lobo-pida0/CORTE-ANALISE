@@ -147,30 +147,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('abrirAba-aba-plano-costura', 'click', (event) => { abrirAba(event, 'aba-plano-costura'); renderizarPlanoCostura(); carregarPlanosCosturaDaNuvem(); carregarEfCosturaDaNuvem(); });
         wireEvento('planoCosturaData', 'change', () => { renderizarPlanoCostura(); });
-        wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); renderizarUrgencias(); atualizarInfoNuvemUrgencias(); carregarUrgenciasDaNuvem(); });
-        wireEvento('inputImplantacao', 'change', () => { processarImplantacao(); });
-        wireEvento('inputPorOPUrgencias', 'change', () => { processarPorOPParaUrgencias(); });
-        wireEvento('toggleMultiSelectLocalUrgencias', 'click', (event) => { abrirFecharMultiSelect('toggleMultiSelectLocalUrgencias', 'listaFiltroLocalUrgencias', event); });
-        wireEvento('listaFiltroLocalUrgencias', 'click', (event) => { event.stopPropagation(); });
-        wireEvento('listaFiltroLocalUrgencias', 'change', (e) => {
-            if (e.target.id === 'chkTodosLocaisUrgencias') {
-                if (e.target.checked) locaisUrgenciasExcluidos.clear();
-                else $$('.chk-local-urgencias').forEach(c => locaisUrgenciasExcluidos.add(c.value));
-            } else if (e.target.classList.contains('chk-local-urgencias')) {
-                if (e.target.checked) locaisUrgenciasExcluidos.delete(e.target.value);
-                else locaisUrgenciasExcluidos.add(e.target.value);
-            } else return;
-            renderizarUrgencias();
-        });
-        wireEvento('filtroOPUrgencias', 'input', () => { renderizarUrgencias(); });
-        wireEvento('filtroReferenciaUrgencias', 'input', () => { renderizarUrgencias(); });
-        wireEvento('filtroSituacaoUrgencias', 'change', () => { renderizarUrgencias(); });
-        wireEvento('btnExportarUrgencias', 'click', () => { exportarUrgenciasExcel(); });
-        wireEvento('btnNaoEncontradasUrgencias', 'click', () => {
-            const sel = $('filtroSituacaoUrgencias');
-            sel.value = sel.value === 'nao' ? '' : 'nao';
-            renderizarUrgencias();
-        });
+        wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });
