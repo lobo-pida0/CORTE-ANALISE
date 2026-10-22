@@ -296,6 +296,7 @@
                 <button id="abrirAba-aba-sequenciamento" class="btn">SEQUENCIAMENTO</button>
                 <button id="abrirAba-aba-necessidade" class="btn">LEVANTAMENTO</button>
                 <button id="abrirAba-aba-plano-costura" class="btn somente-admin">PLANO DA COSTURA</button>
+                <button id="abrirAba-aba-producao-grupo" class="btn somente-admin tambem-usuario">PRODUÇÃO POR GRUPO</button>
             </div>
         </div>
     </div>
@@ -1068,6 +1069,13 @@
         </div>
     </div>
 
+    <div id="aba-producao-grupo" class="aba-conteudo">
+        <div class="secao">
+            <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-layer-group"></i> PRODUÇÃO POR GRUPO — COSTURA</span></div>
+            <div class="secao-corpo" style="padding:0;" id="producaoGrupoConteudo"></div>
+        </div>
+    </div>
+
     <div id="aba-plano-costura" class="aba-conteudo">
         <div class="secao" style="margin-bottom:var(--espaco-md);">
             <div class="secao-header" style="background:var(--cor-sugestao);"><span><i class="fas fa-clipboard-check"></i> PLANO DA COSTURA</span></div>
@@ -1117,6 +1125,7 @@
         <script src="ops-prioridades.js"></script>
         <script src="costura.js"></script>
         <script src="plano-costura.js"></script>
+        <script src="producao-grupo.js"></script>
         <script src="kpi.js"></script>
         <script src="eficiencia-costura.js"></script>
         <script src="kpi-detalhe.js"></script>

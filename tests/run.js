@@ -250,6 +250,12 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   const fef = path.join(os.tmpdir(), 'corte-pro-ef.csv');
   fs.writeFileSync(fef, CABEF + lef(211, 101, 100, '26/10/2026') + lef(211, 102, 30, '26/10/2026') + lef(211, 999, 50, '26/10/2026') + lef(211, 103, 60, '27/10/2026'));   // 103 saiu no dia ERRADO (terça)
   await p.setInputFiles('#inputEfCostura', fef); await p.waitForTimeout(700);
+  igual('costura guarda a produção por grupo de produto (pelo Tp Produto quando a descrição não diz)', await p.evaluate(() => { const g = obterEficienciaCostura()['2026-10-26'].grupos; return [g['CALÇA'].p, g['CALÇA'].o]; }), [180, 3]);
+  igual('aba produção por grupo: soma o período e mostra a tela', await p.evaluate(() => {
+    const r = somarGruposProducao(obterEficienciaCostura(), ['2026-10-26', '2026-10-27']);
+    visaoProducaoGrupo = 'semana'; ancoraProducaoGrupo = '2026-10-26'; abrirAba(null, 'aba-producao-grupo'); renderizarProducaoGrupo();
+    return [r.grupos['CALÇA'].p, /CALÇA/.test(document.getElementById('producaoGrupoConteudo').innerText), /TOTAL/.test(document.getElementById('producaoGrupoConteudo').innerText)];
+  }), [240, true, true]);
   const conf = await p.evaluate(() => { const r = compararPlanoCostura('2026-10-23'); return { estado: r.estado, st: r.itens.map(x => [x.op, x.status, x.saiu]).sort(), pct: r.pct, cump: r.pecasCumpridas, prog: r.pecasProgramadas, extras: r.extras.map(x => [x.chave, x.saiu]) }; });
   igual('conferência: completo, parcial e não saiu (saída em outro dia não vale)', [conf.estado, conf.st], ['conferido', [['101', 'completa', 100], ['102', 'parcial', 30], ['103', 'nao', 0]]]);
   igual('percentual cumprido (130 de 240)', [conf.cump, conf.prog, conf.pct], [130, 240, 54]);

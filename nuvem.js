@@ -125,7 +125,7 @@ function atualizarIndicadorLogin() {
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
 const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
-const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura', 'aba-urgencias'];
+const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura', 'aba-urgencias', 'aba-producao-grupo'];
 function abaLiberadaAgora(idAba) {
     if (papelUsuarioAtual === 'admin') return true;
     if (papelUsuarioAtual === 'usuario') return ABAS_LIBERADAS_PARA_USUARIO.includes(idAba);

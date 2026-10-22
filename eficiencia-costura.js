@@ -62,7 +62,7 @@ async function publicarDiasEfCostura(dias) {
         });
         if (mesclou) { salvarEficienciaCostura(todos); renderizarEficienciaCostura(); }
     } catch (e) { /* sem a mescla, segue com o dado local */ }
-    const linhas = dias.filter(d => todos[d]).map(d => ({ id: d, dados: { locais: todos[d].locais, opsTotal: todos[d].opsTotal ?? null, opsMov: todos[d].opsMov || null, pessoasLocal: todos[d].pessoasLocal || {} }, atualizado_por: por }));
+    const linhas = dias.filter(d => todos[d]).map(d => ({ id: d, dados: { locais: todos[d].locais, opsTotal: todos[d].opsTotal ?? null, opsMov: todos[d].opsMov || null, grupos: todos[d].grupos || null, pessoasLocal: todos[d].pessoasLocal || {} }, atualizado_por: por }));
     try {
         for (let i = 0; i < linhas.length; i += 200) {
             const { error } = await supabaseClient.from('eficiencia_costura_dias').upsert(linhas.slice(i, i + 200), { onConflict: 'id' });
@@ -91,7 +91,7 @@ async function carregarEfCosturaDaNuvem() {
         (data || []).forEach(l => {
             naNuvem.add(l.id);
             if (aindaPendentes.has(l.id) || !l.dados || !l.dados.locais) return;
-            const novo = { locais: l.dados.locais, opsTotal: l.dados.opsTotal ?? null, ...(l.dados.opsMov ? { opsMov: l.dados.opsMov } : {}), pessoasLocal: l.dados.pessoasLocal || {} };
+            const novo = { locais: l.dados.locais, opsTotal: l.dados.opsTotal ?? null, ...(l.dados.opsMov ? { opsMov: l.dados.opsMov } : {}), ...(l.dados.grupos ? { grupos: l.dados.grupos } : {}), pessoasLocal: l.dados.pessoasLocal || {} };
             if (JSON.stringify(todos[l.id] || null) !== JSON.stringify(novo)) { todos[l.id] = novo; mudou = true; }
         });
         if (mudou) salvarEficienciaCostura(todos);
@@ -125,6 +125,8 @@ function processarEficienciaCostura() {
             const idxData = cab.findIndex(c => c === 'DT MOVIMENTO');
             const idxQtd = cab.findIndex(c => c === 'QT MOVIMENTO');
             const idxTempo = cab.findIndex(c => c === 'COD TEMPOLOCAL');
+            const idxDescEf = cab.findIndex(c => c === 'DS DESCRICAO' || c === 'DS DESCRICAO OP' || c.startsWith('DS DESCRI'));   // descrição do produto → grupo (camisa, calça...)
+            const idxTpProdEf = cab.findIndex(c => c === 'TP PRODUTO' || c === 'TIPO PRODUTO');
             const idxTipoMov = cab.findIndex(c => c === 'TIPO MOV' || c === 'TIPO MOVIMENTACAO' || c === 'TIPO MOVIMENTO');   // NORMAL / PARTE — movimentação de PARTE não conta
             const faltando = [];
             if (idxLocal === -1) faltando.push('Ds Local');
@@ -148,9 +150,15 @@ function processarEficienciaCostura() {
                 linhasCostura++;
                 const nomeLocal = normalizarCabecalhoEf(local);
                 const cicloEf = idxCicloEf !== -1 ? (c[idxCicloEf] || '').trim() : '';
-                const reg = ((novosDias[dia] = novosDias[dia] || { locais: {}, ops: {}, opsMov: {} }).locais[nomeLocal] = novosDias[dia].locais[nomeLocal] || { pecas: 0, minutos: 0, ops: 0, semTempo: 0 });
+                const reg = ((novosDias[dia] = novosDias[dia] || { locais: {}, ops: {}, opsMov: {}, grupos: {} }).locais[nomeLocal] = novosDias[dia].locais[nomeLocal] || { pecas: 0, minutos: 0, ops: 0, semTempo: 0 });
                 reg.pecas += qtd; reg.ops++;
                 novosDias[dia].ops[op] = true;
+                // produção por GRUPO de produto (aba PRODUÇÃO POR GRUPO): peças e OPs distintas do dia
+                const descEf = idxDescEf !== -1 ? (c[idxDescEf] || '') : '';
+                let grupoEf = grupoProdutoKPI(descEf);
+                if ((grupoEf === 'SEM PRODUTO' || grupoEf === 'OUTROS') && idxTpProdEf !== -1 && (c[idxTpProdEf] || '').trim()) { const g2 = grupoProdutoKPI(c[idxTpProdEf]); if (g2 !== 'SEM PRODUTO') grupoEf = g2; }
+                const gr = novosDias[dia].grupos[grupoEf] = novosDias[dia].grupos[grupoEf] || { p: 0, ops: {} };
+                gr.p += qtd; gr.ops[montarChaveOP(cicloEf, op)] = true;
                 const chaveMov = montarChaveOP(cicloEf, op);   // peças que cada OP movimentou no dia (usado pelo PLANO DA COSTURA)
                 const mv = novosDias[dia].opsMov[chaveMov] = novosDias[dia].opsMov[chaveMov] || { q: 0, l: [] };
                 mv.q += qtd; if (!mv.l.includes(nomeLocal)) mv.l.push(nomeLocal);
@@ -161,7 +169,7 @@ function processarEficienciaCostura() {
             const todos = obterEficienciaCostura();
             Object.entries(novosDias).forEach(([dia, v]) => {
                 Object.values(v.locais).forEach(l => { l.minutos = Math.round(l.minutos * 100) / 100; });
-                todos[dia] = { locais: v.locais, opsTotal: Object.keys(v.ops).length, opsMov: v.opsMov, pessoasLocal: todos[dia] ? (todos[dia].pessoasLocal || {}) : {} };
+                todos[dia] = { locais: v.locais, opsTotal: Object.keys(v.ops).length, opsMov: v.opsMov, grupos: Object.fromEntries(Object.entries(v.grupos).map(([g, x]) => [g, { p: Math.round(x.p), o: Object.keys(x.ops).length }])), pessoasLocal: todos[dia] ? (todos[dia].pessoasLocal || {}) : {} };
             });
             salvarEficienciaCostura(todos);
             input.value = '';
