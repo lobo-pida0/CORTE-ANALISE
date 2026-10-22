@@ -213,6 +213,11 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     const rows = [cab, l('2', 'SLV COST CEL PALETO', 'A', 'BLAZER'), l('1', 'SLV COST CEL PALETO', 'B', 'BLAZER'), l('2', 'SLV COST CEL PALETO', 'C', 'CALCA'), l('2', 'SLV ACABAMENTO', 'D', 'PALETO'), l('2', 'SLV AGUARD DEFINICAO COST SOC PROF SU', 'E', 'PALETO'), ['Total']];
     return extrairOPsPaletoDasLinhas(rows).map(o => o.op + ':' + o.minutosCostura);
   }), ['A:100', 'E:100']);
+  igual('elaboração do paletó: peças ÷ média = dias', await p.evaluate(() => {
+    localStorage.setItem('porOPPaletoDetalhado', JSON.stringify([{ op: '1', ciclo: '1', local: 'SLV COST CEL PALETO', qtd: 100 }, { op: '2', ciclo: '1', local: 'SLV RECEB PENAPOLIS', qtd: 120 }]));
+    localStorage.setItem('mediaProducaoPaleto', '110');
+    const r = calcularResumoPaleto(); return [r.pecas, Math.round(r.dias * 10) / 10, !!r.dataPrevista];
+  }), [220, 2, true]);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);

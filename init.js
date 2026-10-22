@@ -151,7 +151,6 @@ function inicializarEventosUI() {
         try { ['implantacaoBase', 'implantacaoOPs', 'urgenciasAtualizadoEm', 'urgenciasMetaNuvem', 'urgenciasPendentePublicar'].forEach(k => localStorage.removeItem(k)); } catch (e) { /* ignora */ }
         wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); renderizarMetaCorte(); renderizarCosturaPaleto(); });
         wireEvento('inputPorOPPaleto', 'change', () => { processarPorOPPaleto(); });
-        ['paletoPessoas', 'paletoHoras', 'paletoEficiencia'].forEach(id => wireEvento(id, 'change', () => { salvarCapacidadePaleto(); }));
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });

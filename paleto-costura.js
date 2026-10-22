@@ -4,17 +4,15 @@
 // paletó/blazer da EMPRESA 02 que estão nos locais de costura abaixo, e monta a fila com previsão de
 // início/término — mesma lógica da SEQUÊNCIA, mas com pessoas/horas/eficiência PRÓPRIAS do paletó.
 // =========================================================================
-const LOCAIS_COSTURA_PALETO = {
-    emAndamento: 'SLV COST CEL PALETO',
-    aguardando: 'SLV AGUARD DEFINICAO COST SOC PROF SU',
-};
+// Locais da empresa 02 que contam como "na costura" do paletó/blazer, na ordem do fluxo.
+const LOCAIS_COSTURA_PALETO = [
+    { nome: 'SLV COST CEL PALETO', rotulo: 'Em costura' },
+    { nome: 'SLV AGUARD DEFINICAO COST SOC PROF SU', rotulo: 'Aguardando costura' },
+    { nome: 'SLV RECEB PENAPOLIS', rotulo: 'Recebido de Penápolis' },
+];
 function normalizarLocalPaleto(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase(); }
 function obterPorOPPaleto() { try { return JSON.parse(localStorage.getItem('porOPPaletoDetalhado') || '[]'); } catch (e) { return []; } }
-function obterCapacidadePaleto() {
-    try { const c = JSON.parse(localStorage.getItem('capacidadePaleto') || 'null'); if (c && c.pessoas > 0) return c; } catch (e) { /* padrão */ }
-    return { pessoas: 5, horas: 8, ef: 85 };
-}
-function minutosDisponiveisDiaPaleto() { const c = obterCapacidadePaleto(); return c.pessoas * c.horas * 60 * (c.ef / 100); }
+function obterMediaProducaoPaleto() { const v = parseFloat(localStorage.getItem('mediaProducaoPaleto')); return v > 0 ? v : 110; }
 
 // Parte pura (testável): transforma as linhas da planilha na lista de OPs do paletó.
 function extrairOPsPaletoDasLinhas(rows) {
@@ -32,7 +30,7 @@ function extrairOPsPaletoDasLinhas(rows) {
     };
     if (ix.local === -1 || ix.op === -1) throw new Error('Faltam as colunas "Descrição Local" e/ou "OP".');
     if (ix.emp === -1) throw new Error('Não achei a coluna da empresa (Emp).');
-    const locais = new Set([normalizarLocalPaleto(LOCAIS_COSTURA_PALETO.emAndamento), normalizarLocalPaleto(LOCAIS_COSTURA_PALETO.aguardando)]);
+    const locais = new Set(LOCAIS_COSTURA_PALETO.map(l => normalizarLocalPaleto(l.nome)));
     const num = v => (v === null || v === undefined || v === '') ? null : (parseFloat(v) || null);
     const lista = [];
     for (let i = iCab + 1; i < rows.length; i++) {
@@ -61,7 +59,7 @@ function processarPorOPPaleto() {
         try {
             const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
             const lista = extrairOPsPaletoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }));
-            if (!lista.length) throw new Error('Nenhuma OP de paletó/blazer da empresa 02 nos locais de costura (SLV COST CEL PALETO / SLV AGUARD DEFINICAO COST SOC PROF SU).');
+            if (!lista.length) throw new Error('Nenhuma OP de paletó/blazer da empresa 02 nos locais de costura (' + LOCAIS_COSTURA_PALETO.map(l => l.nome).join(' / ') + ').');
             localStorage.setItem('porOPPaletoDetalhado', JSON.stringify(lista));
             localStorage.setItem('porOPPaletoImportadoEm', new Date().toISOString());
             renderizarCosturaPaleto();
@@ -71,42 +69,52 @@ function processarPorOPPaleto() {
     };
     rd.readAsArrayBuffer(input.files[0]);
 }
-function montarFilaPaleto() {
+// Resumo por local + total (peças de paletó/blazer da empresa 02 na costura).
+function calcularResumoPaleto() {
     const todas = obterPorOPPaleto();
-    const nA = normalizarLocalPaleto(LOCAIS_COSTURA_PALETO.emAndamento);
-    const e = todas.filter(o => o.local === nA).map(o => ({ ...o, situacaoCostura: 'Em andamento', campoTempo: 'minutosCostura' })).sort(compararPrioridadeCostura);
-    const a = todas.filter(o => o.local !== nA).map(o => ({ ...o, situacaoCostura: 'Aguardando', campoTempo: 'minutosCostura' })).sort(compararPrioridadeCostura);
-    return calcularCronogramaCostura([...e, ...a], minutosDisponiveisDiaPaleto());
+    const porLocal = LOCAIS_COSTURA_PALETO.map(l => { const ops = todas.filter(o => o.local === normalizarLocalPaleto(l.nome)); return { ...l, ops: ops.length, pecas: ops.reduce((t, o) => t + (o.qtd || 0), 0) }; });
+    const pecas = porLocal.reduce((t, l) => t + l.pecas, 0), media = obterMediaProducaoPaleto(), dias = media > 0 ? pecas / media : null;
+    let dataPrevista = null;
+    if (dias !== null && pecas > 0) { const h = new Date(); h.setHours(0, 0, 0, 0); dataPrevista = somarDiasUteisCostura(h, Math.ceil(dias), new Set(obterFeriados())); }
+    return { porLocal, ops: todas.length, pecas, media, dias, dataPrevista };
 }
 function renderizarCosturaPaleto() {
     const raiz = document.getElementById('paletoCosturaLista'); if (!raiz) return;
     const fmt = v => Math.round(v).toLocaleString('pt-BR');
     const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const c = obterCapacidadePaleto();
-    ['paletoPessoas', 'paletoHoras', 'paletoEficiencia'].forEach((id, i) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = [c.pessoas, c.horas, c.ef][i]; });
-    const fila = montarFilaPaleto(), hoje = new Date(); hoje.setHours(0, 0, 0, 0);
     const imp = localStorage.getItem('porOPPaletoImportadoEm');
-    const info = document.getElementById('paletoCosturaInfo'); if (info) info.textContent = imp ? `importado em ${new Date(imp).toLocaleString('pt-BR')}` : 'nenhuma planilha importada';
-    if (!fila.length) { raiz.innerHTML = '<div style="padding:16px; color:var(--texto-secundario); font-size:12px;">Importe a POR_OP (botão acima) para ver a fila do paletó/blazer da empresa 02.</div>'; return; }
-    const totMin = fila.reduce((t, o) => t + (tempoCosturaOP(o) || 0), 0), pecas = fila.reduce((t, o) => t + (o.qtd || 0), 0), dispDia = minutosDisponiveisDiaPaleto();
-    const fim = fila.filter(o => o.dataTerminoProducao).map(o => o.dataTerminoProducao).sort((a, b) => b - a)[0];
-    const resumo = `<div style="display:flex; gap:18px; flex-wrap:wrap; padding:10px 14px; font-size:12px; background:var(--bg-painel);"><span><strong>${fila.length}</strong> OPs</span><span><strong>${fmt(pecas)}</strong> peças</span><span><strong>${fmt(totMin)}</strong> min de costura</span><span>capacidade <strong>${fmt(dispDia)}</strong> min/dia</span>${fim ? `<span>fila termina em <strong>${formatarDataBR(fim)}</strong></span>` : ''}</div>`;
-    const linhas = fila.map((o, i) => {
-        const atraso = classificarAtrasoOP(o, hoje), lim = calcularDataLimiteCostura(o);
-        const corPrev = atraso === 'vermelho' ? 'var(--cor-alerta)' : (atraso === 'laranja' ? 'var(--cor-selecao)' : 'inherit');
-        return `<tr style="${o.situacaoCostura === 'Em andamento' ? '' : ''}"><td class="num">${i + 1}</td><td><strong>${esc(o.op)}</strong>${o.ciclo ? ' · ' + esc(o.ciclo) : ''}</td>
-            <td><span class="pill" style="background:${o.situacaoCostura === 'Em andamento' ? 'var(--cor-despacho)' : 'var(--borda-cor)'}; color:${o.situacaoCostura === 'Em andamento' ? 'white' : 'var(--texto-cor)'};">${o.situacaoCostura}</span></td>
-            <td style="font-size:11px;">${esc(String(o.descRef).slice(0, 55))}</td><td>${esc(o.cor) || '—'}</td><td class="num">${fmt(o.qtd)}</td>
-            <td class="num">${o.minutosCostura != null ? fmt(o.minutosCostura) : '<span style="color:var(--texto-secundario);">sem tempo</span>'}</td>
-            <td style="white-space:nowrap;">${o.dataFinalizacao ? formatarDataBR(o.dataFinalizacao) : '—'}${lim ? `<br><span style="font-size:10px; color:var(--texto-secundario);">limite: ${formatarDataBR(lim)}</span>` : ''}</td>
-            <td style="white-space:nowrap; color:${corPrev}; ${atraso ? 'font-weight:700;' : ''}">${o.dataInicioProducao ? formatarDataBR(o.dataInicioProducao) + ' → ' + formatarDataBR(o.dataTerminoProducao) : '—'}</td></tr>`;
+    const info = document.getElementById('paletoCosturaInfo'); if (info) info.textContent = imp ? `POR_OP importada em ${new Date(imp).toLocaleString('pt-BR')}` : 'nenhuma planilha importada';
+    const todas = obterPorOPPaleto();
+    if (!todas.length) { raiz.innerHTML = '<div style="padding:16px; color:var(--texto-secundario); font-size:12px;">Importe a POR_OP (botão acima) para ver o que tem de paletó/blazer na costura da empresa 02.</div>'; return; }
+    const r = calcularResumoPaleto();
+    const corDias = r.dias === null ? 'inherit' : (r.dias >= 15 ? 'var(--cor-despacho)' : (r.dias >= 8 ? 'var(--cor-sugestao)' : 'var(--cor-alerta)'));
+    const quadro = `<div style="display:grid; grid-template-columns:minmax(0, 3fr) minmax(220px, 2fr); gap:12px; padding:14px; align-items:stretch;">
+        <table class="tabela-dados" style="width:100%;"><thead><tr><th>PRODUTO</th><th class="num">QTD. PÇ</th><th class="num">MÉDIA PRODUÇÃO/DIA</th><th class="num">QTD. DIAS</th></tr></thead><tbody>
+            <tr><td><strong>Paletós / Blazers</strong></td><td class="num"><strong>${fmt(r.pecas)}</strong></td>
+                <td class="num"><input type="number" id="inputMediaProducaoPaleto" min="1" step="5" value="${r.media}" style="width:80px; text-align:right;"></td>
+                <td class="num" style="font-weight:900; font-size:16px; color:${corDias};">${r.dias === null ? '—' : r.dias.toFixed(1).replace('.', ',')}</td></tr>
+            ${r.porLocal.map(l => `<tr style="font-size:12px; color:var(--texto-secundario);"><td>&nbsp;&nbsp;↳ ${esc(l.rotulo)} <span style="font-size:10px;">(${esc(l.nome)})</span></td><td class="num">${fmt(l.pecas)}</td><td></td><td class="num">${l.ops} OP(s)</td></tr>`).join('')}
+        </tbody></table>
+        <div style="border:1px solid var(--borda-cor); border-radius:8px; padding:12px; text-align:center; background:var(--bg-painel);">
+            <div style="font-size:12px; font-weight:700; color:var(--cor-alerta); text-transform:uppercase;">Necessidade de entrada de serviços</div>
+            <div style="font-size:11px; color:var(--texto-secundario); margin:4px 0 8px;">DATA PREVISTA (quando acaba o que tem na costura)</div>
+            <div style="font-size:26px; font-weight:900;">${r.dataPrevista ? formatarDataBR(r.dataPrevista) : '—'}</div>
+            <div style="font-size:11px; color:var(--texto-secundario); margin-top:6px;">hoje + ${r.dias === null ? '—' : Math.ceil(r.dias)} dia(s) útil(eis)</div>
+        </div></div>`;
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const ordemLocal = Object.fromEntries(LOCAIS_COSTURA_PALETO.map((l, i) => [normalizarLocalPaleto(l.nome), i]));
+    const rotLocal = Object.fromEntries(LOCAIS_COSTURA_PALETO.map(l => [normalizarLocalPaleto(l.nome), l.rotulo]));
+    const t = v => v ? new Date(v).getTime() : Infinity;
+    const lista = [...todas].sort((a, b) => (ordemLocal[a.local] - ordemLocal[b.local]) || (t(a.dataFinalizacao) - t(b.dataFinalizacao)) || (t(a.dataInclusao) - t(b.dataInclusao)));
+    const linhas = lista.map(o => {
+        const venc = o.dataFinalizacao && new Date(o.dataFinalizacao) < hoje;
+        return `<tr><td><strong>${esc(o.op)}</strong>${o.ciclo ? ' · ' + esc(o.ciclo) : ''}</td><td><span class="pill" style="background:var(--bg-card); border:1px solid var(--borda-cor); color:var(--texto-cor);">${esc(rotLocal[o.local] || o.local)}</span></td>
+            <td style="font-size:11px;">${esc(String(o.descRef).slice(0, 60))}</td><td>${esc(o.cor) || '—'}</td><td class="num">${fmt(o.qtd)}</td>
+            <td style="white-space:nowrap; ${venc ? 'color:var(--cor-alerta); font-weight:700;' : ''}">${o.dataFinalizacao ? formatarDataBR(o.dataFinalizacao) : '—'}</td>
+            <td style="white-space:nowrap;">${o.dataInclusao ? formatarDataBR(o.dataInclusao) : '—'}</td><td class="num">${o.diasLocal != null ? o.diasLocal + 'd' : '—'}</td></tr>`;
     }).join('');
-    raiz.innerHTML = resumo + `<div style="overflow:auto;"><table class="tabela-dados" style="width:100%;"><thead><tr><th class="num">#</th><th>OP</th><th>SITUAÇÃO</th><th>DESCRIÇÃO</th><th>COR</th><th class="num">PEÇAS</th><th class="num">TEMPO (MIN)</th><th>FINALIZAÇÃO</th><th>PREVISÃO</th></tr></thead><tbody>${linhas}</tbody></table></div>
-        <div style="padding:8px 14px; font-size:11px; color:var(--texto-secundario);">Só paletó/blazer da empresa 02 em ${esc(LOCAIS_COSTURA_PALETO.emAndamento)} (em andamento) e ${esc(LOCAIS_COSTURA_PALETO.aguardando)} (aguardando). Ordem e previsão seguem as mesmas regras da aba SEQUÊNCIA, com a capacidade acima.</div>`;
-}
-function salvarCapacidadePaleto() {
-    const n = id => parseFloat(document.getElementById(id) && document.getElementById(id).value) || 0;
-    const c = { pessoas: n('paletoPessoas'), horas: n('paletoHoras'), ef: n('paletoEficiencia') };
-    if (c.pessoas > 0 && c.horas > 0 && c.ef > 0) { try { localStorage.setItem('capacidadePaleto', JSON.stringify(c)); } catch (e) { /* ignora */ } }
-    renderizarCosturaPaleto();
+    raiz.innerHTML = quadro + `<div style="overflow:auto; max-height:460px;"><table class="tabela-dados" style="width:100%;"><thead><tr><th>OP</th><th>ONDE ESTÁ</th><th>DESCRIÇÃO</th><th>COR</th><th class="num">PEÇAS</th><th>FINALIZAÇÃO</th><th>INCLUSÃO</th><th class="num">NO LOCAL</th></tr></thead><tbody>${linhas}</tbody></table></div>
+        <div style="padding:8px 14px; font-size:11px; color:var(--texto-secundario);">Só paletó/blazer da empresa 02. Qtd. dias = peças ÷ média de produção por dia. Data prevista = hoje + esses dias úteis (pulando fins de semana e feriados cadastrados).</div>`;
+    const inp = document.getElementById('inputMediaProducaoPaleto');
+    if (inp) inp.onchange = () => { const v = parseFloat(inp.value); if (v > 0) { try { localStorage.setItem('mediaProducaoPaleto', String(v)); } catch (e) { /* ignora */ } } renderizarCosturaPaleto(); };
 }
