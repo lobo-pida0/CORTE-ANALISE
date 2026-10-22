@@ -476,7 +476,14 @@ async function baixarMesKPIExcel() {
             const wb = new ExcelJS.Workbook();
             const preencher = (nome, linhas, larguras, linhaCab) => {
                 const ws = wb.addWorksheet(nome);
-                linhas.forEach(l => ws.addRow(l));
+                linhas.forEach(l => {
+                    const row = ws.addRow(l);
+                    // linhas de total (TOTAL DO SETOR / TOTAL DO MÊS) em destaque, pra não se misturarem com as linhas normais
+                    if (['TOTAL DO SETOR', 'TOTAL DO MÊS', 'TOTAL DO DIA'].includes(l[1])) {
+                        row.font = { bold: true };
+                        row.eachCell({ includeEmpty: true }, (c, n) => { if (n <= larguras.length) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBDD7EE' } }; c.border = { top: { style: 'thin', color: { argb: 'FF5B9BD5' } }, bottom: { style: 'thin', color: { argb: 'FF5B9BD5' } } }; } });
+                    }
+                });
                 larguras.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
                 const cab = ws.getRow(linhaCab); cab.font = { bold: true }; cab.alignment = { wrapText: true, vertical: 'middle' };
                 cab.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8DFC8' } }; });

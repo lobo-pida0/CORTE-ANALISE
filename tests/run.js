@@ -153,6 +153,16 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   const plan = await p.evaluate(() => { definirVisaoKPI('juntos'); const d = montarPlanilhasMesKPI('2026-10'); return { produtos: d.produtos.filter(r => r[0] === 'ALMOX TECIDO').map(r => r.slice(0, 7)), cab: d.movimentacoes[0], tipo: d.movimentacoes.slice(1).map(r => r[5]).sort() }; });
   igual('aba PRODUTOS em fábrica+externo', plan.produtos, [['ALMOX TECIDO', 'CALÇA', 100, '71%', 1, 100, ''], ['ALMOX TECIDO', 'CAMISA POLO', 40, '29%', 1, 0, 40], ['ALMOX TECIDO', 'TOTAL DO SETOR', 140, '100%', 2, 100, 40]]);
   igual('MOVIMENTAÇÕES traz TIPO e grupo de produto', [plan.cab.includes('TIPO'), plan.cab.includes('GRUPO DE PRODUTO'), plan.tipo], [true, true, ['EXTERNO', 'FÁBRICA']]);
+  {   // Excel do mês do KPI: linhas de total em destaque
+    await p.evaluate(() => { definirVisaoKPI('fabrica'); const s = document.getElementById('seletorMesKPI') || document.querySelector('select[id*="MesKPI"]'); if (s) { s.innerHTML = '<option value="2026-10">x</option>'; s.value = '2026-10'; } });
+    const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 20000 }), p.evaluate(() => baixarMesKPIExcel('2026-10'))]);
+    const arq = path.join(os.tmpdir(), 'corte-pro-kpi.xlsx'); await dl.saveAs(arq);
+    const ExcelJSnode = require('exceljs'); const wb = new ExcelJSnode.Workbook(); await wb.xlsx.readFile(arq);
+    const destaque = [];
+    wb.eachSheet(ws => ws.eachRow(r => { if (['TOTAL DO SETOR', 'TOTAL DO MÊS'].includes(r.getCell(2).value)) destaque.push(r.getCell(1).fill && r.getCell(1).fill.fgColor && r.getCell(1).fill.fgColor.argb); }));
+    igual('Excel do mês (KPI): linhas de total em destaque azul', destaque.length > 0 && destaque.every(c => c === 'FFBDD7EE'), true);
+  }
+
 
   // ---------- 10. Backup na nuvem (compressão) ----------
   const bk = await p.evaluate(async () => { const txt = JSON.stringify({ a: Array.from({ length: 3000 }, (_, i) => ({ i, t: 'ÁÇÃO ' + i })) }); const c = await comprimirTextoBackup(txt); return [await descomprimirTextoBackup(c) === txt, c.length < txt.length]; });
