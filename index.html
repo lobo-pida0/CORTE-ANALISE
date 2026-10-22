@@ -285,7 +285,7 @@
         <button id="abrirAba-aba-prioridades" class="tab-btn">PRIORIDADES</button>
         <button id="abrirAba-aba-kpi" class="tab-btn">KPI</button>
         <button id="abrirAba-aba-seq-costura" class="tab-btn">SEQUÊNCIA</button>
-        <button id="abrirAba-aba-urgencias" class="tab-btn">URGÊNCIAS</button>
+        <button id="abrirAba-aba-urgencias" class="tab-btn">META CORTE</button>
         <div class="dropdown-container">
             <button id="btnMenuMaisAbas" class="tab-btn">MAIS <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
             <div id="menuMaisAbas" class="dropdown-menu">
@@ -1089,8 +1089,8 @@
 
     <div id="aba-urgencias" class="aba-conteudo">
         <div class="secao">
-            <div class="secao-header" style="background:var(--cor-primaria);"><span>URGÊNCIAS</span></div>
-            <div class="secao-corpo" style="padding:24px; color:var(--texto-secundario); font-size:13px;">Aba em branco — em reformulação.</div>
+            <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-scissors"></i> META DE CORTE — PALETÓ / BLAZER</span></div>
+            <div class="secao-corpo" style="padding:14px;" id="metaCorteConteudo"></div>
         </div>
     </div>
 
@@ -1106,6 +1106,7 @@
         <script src="prioridades-manual.js"></script>
         <script src="pedidos.js"></script>
         <script src="urgencias.js"></script>
+        <script src="meta-corte.js"></script>
         <script src="producao-tempos.js"></script>
         <script src="painel-grade.js"></script>
         <script src="enfesto.js"></script>

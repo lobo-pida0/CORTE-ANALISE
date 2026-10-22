@@ -188,6 +188,25 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('local externo (AGRUP CORTE EXTERNO) não vira etapa CORTE na sincronização', await p.evaluate(() => [bancoDadosOPs.some(o => o.id === '7001' && o.etapa === 7), bancoDadosOPs.some(o => o.id === '7002')]), [true, false]);
   }
   igual('sincronização lê referência e matéria-prima pelo título (colunas mudaram de lugar)', await p.evaluate(() => { const o = bancoDadosOPs.find(x => x.id === '7001'); return [o.referencia, o.codigoMP]; }), ['SEGP031', '1005989']);
+  {   // aba META CORTE (paletó/blazer)
+    const r = await p.evaluate(() => {
+      const dias = diasDaSemanaMetaCorte(0), seg = dias[0];
+      const mv = {}; mv[`211-8001|${seg}`] = { op: '8001', ciclo: '211', data: seg + 'T12:00:00Z', qtd: 300, ds: 'CORTE PALETO MASC TESTE', of: 'INT' };   // 300 do KPI = 100 reais (x3)
+      mv[`211-8002|${seg}`] = { op: '8002', ciclo: '211', data: seg + 'T12:00:00Z', qtd: 50, ds: 'CORTE CALCA TESTE', of: 'INT' };   // calça não conta
+      localStorage.setItem('movimentacoesPorSetorKPI', JSON.stringify({ CORTE: mv }));
+      const ant = bancoDadosOPs; bancoDadosOPs = [
+        { id: '9001', ciclo: '211', desc: 'CORTE BLAZER A', qtd: 20, etapa: 4, dataInclusao: '2026-09-01', diasLocal: 3 },
+        { id: '9002', ciclo: '211', desc: 'CORTE BLAZER B', qtd: 30, etapa: 7, dataInclusao: '2026-10-01', diasLocal: 1 },
+        { id: '9003', ciclo: '211', desc: 'CORTE BLAZER C', qtd: 25, etapa: 7, dataInclusao: '2026-09-15', diasLocal: 2 },
+        { id: '9004', ciclo: '211', desc: 'CORTE CALCA X', qtd: 99, etapa: 7, dataInclusao: '2026-08-01', diasLocal: 9 }];
+      const c = calcularCortadoMetaCorte(dias), ordem = sugerirOPsMetaCorte().map(o => o.id);
+      abrirAba(null, 'aba-urgencias'); renderizarMetaCorte(); bancoDadosOPs = ant;
+      return { total: c.total, ordem, txt: document.getElementById('metaCorteConteudo').innerText };
+    });
+    igual('meta corte: conta só paletó/blazer em peças reais', r.total, 100);
+    igual('meta corte: sugestão = etapa mais perto, depois mais antiga', r.ordem, ['9003', '9002', '9001']);
+    igual('meta corte: tela mostra progresso', /100\s+de\s+400/.test(r.txt.replace(/\n/g, ' ')) && /faltam 300/.test(r.txt), true);
+  }
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
