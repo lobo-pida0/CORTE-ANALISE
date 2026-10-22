@@ -473,7 +473,15 @@ function montarDadosMesEfCostura(anoMes) {
         ['EFICIÊNCIA DO MÊS (%)', arred(totDisp ? (totMinOk / totDisp) * 100 : null), 'PEÇAS NO MÊS', totPecas, 'MIN. PRODUZIDOS', Math.round(totMin), 'DIAS IMPORTADOS', dias.length], [],
         ['LOCAL', 'PEÇAS', 'MIN. PRODUZIDOS', 'DIAS COM PESSOAS', 'EFICIÊNCIA (%)'],
         ...nomes.map(n => [nomeLocalEfCostura(n), mes[n].pecas, Math.round(mes[n].min), `${mes[n].dias} de ${dias.length}`, arred(mes[n].disp ? (mes[n].minOk / mes[n].disp) * 100 : null)])];
-    return { rotuloMes: rotuloMesKPI(anoMes), dias, nomes, resumo, diaADia, pecasPorDia, serie, serieTotal, totPecas };
+    // ---- PRODUÇÃO POR GRUPO (camisa polo, calça, bermuda...): total do mês e peças de cada dia
+    const gMes = {}; let diasSemGrupo = 0;
+    dias.forEach(dia => { const g = todos[dia].grupos; if (!g) { diasSemGrupo++; return; } Object.entries(g).forEach(([nome, x]) => { const r = gMes[nome] = gMes[nome] || { p: 0, o: 0, dia: {} }; r.p += x.p; r.o += x.o; r.dia[dia] = x.p; }); });
+    const listaG = Object.entries(gMes).sort((x, y) => y[1].p - x[1].p), totG = listaG.reduce((t, [, x]) => t + x.p, 0);
+    const producaoGrupo = [['GRUPO', 'PEÇAS NO MÊS', '% DO MÊS', 'OPs (soma dos dias)', ...dias.map(d => formatarChaveDataBR(d).slice(0, 5))],
+        ...listaG.map(([nome, x]) => [nome, x.p, totG ? arred((x.p / totG) * 100) : '', x.o, ...dias.map(d => x.dia[d] || '')]),
+        ['TOTAL DO MÊS', totG, totG ? 100 : '', '', ...dias.map(d => listaG.reduce((t, [, x]) => t + (x.dia[d] || 0), 0) || '')]];
+    if (diasSemGrupo) producaoGrupo.push([], [`${diasSemGrupo} dia(s) importado(s) antes do detalhe por grupo não entram nessa aba — reimporte a movimentação deles.`]);
+    return { rotuloMes: rotuloMesKPI(anoMes), dias, nomes, resumo, diaADia, pecasPorDia, producaoGrupo, temGrupos: listaG.length > 0, serie, serieTotal, totPecas };
 }
 
 function gerarPngGraficoEfCostura(titulo, labels, series, largura, altura) {
@@ -505,6 +513,7 @@ async function baixarMesEfCosturaExcel() {
         ['RESUMO', dados.resumo, [26, 16, 22, 20, 20, 18, 18, 14], 6],
         ['DIA A DIA', dados.diaADia, [12, 22, 10, 8, 16, 10, 16, 16], 1],
         ['PEÇAS POR DIA', dados.pecasPorDia, [14, ...dados.nomes.map(() => 12), 12], 1],
+        ...(dados.temGrupos ? [['PRODUÇÃO POR GRUPO', dados.producaoGrupo, [26, 16, 12, 18, ...dados.dias.map(() => 8)], 1]] : []),
     ];
     if (typeof ExcelJS !== 'undefined' && typeof Chart !== 'undefined') {
         try {

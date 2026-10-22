@@ -251,6 +251,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   fs.writeFileSync(fef, CABEF + lef(211, 101, 100, '26/10/2026') + lef(211, 102, 30, '26/10/2026') + lef(211, 999, 50, '26/10/2026') + lef(211, 103, 60, '27/10/2026'));   // 103 saiu no dia ERRADO (terça)
   await p.setInputFiles('#inputEfCostura', fef); await p.waitForTimeout(700);
   igual('costura guarda a produção por grupo de produto (pelo Tp Produto quando a descrição não diz)', await p.evaluate(() => { const g = obterEficienciaCostura()['2026-10-26'].grupos; return [g['CALÇA'].p, g['CALÇA'].o]; }), [180, 3]);
+  igual('baixar mês da costura: aba PRODUÇÃO POR GRUPO com total do mês', await p.evaluate(() => { const d = montarDadosMesEfCostura('2026-10'); const lin = d.producaoGrupo.find(r => r[0] === 'CALÇA'); const tot = d.producaoGrupo.find(r => r[0] === 'TOTAL DO MÊS'); return [d.temGrupos, lin[1], tot[1] >= lin[1]]; }), [true, 240, true]);
   igual('aba produção por grupo: soma o período e mostra a tela', await p.evaluate(() => {
     const r = somarGruposProducao(obterEficienciaCostura(), ['2026-10-26', '2026-10-27']);
     visaoProducaoGrupo = 'semana'; ancoraProducaoGrupo = '2026-10-26'; abrirAba(null, 'aba-producao-grupo'); renderizarProducaoGrupo();
