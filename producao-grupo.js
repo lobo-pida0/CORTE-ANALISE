@@ -32,7 +32,7 @@ function mudarPeriodoProducaoGrupo(delta) {
 }
 function renderizarProducaoGrupo() {
     const raiz = document.getElementById('producaoGrupoConteudo'); if (!raiz) return;
-    const todos = obterEficienciaCostura(), diasImportados = Object.keys(todos).sort();
+    const todos = obterEficienciaCosturaComGrupos(), diasImportados = Object.keys(todos).sort();
     const fmt = v => Math.round(v).toLocaleString('pt-BR'), esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     if (!ancoraProducaoGrupo) ancoraProducaoGrupo = visaoProducaoGrupo === 'mes' ? (diasImportados.length ? diasImportados[diasImportados.length - 1].slice(0, 7) : isoLocalProdGrupo(new Date()).slice(0, 7)) : (diasImportados.length ? diasImportados[diasImportados.length - 1] : isoLocalProdGrupo(new Date()));
     const dias = diasPeriodoProducaoGrupo(visaoProducaoGrupo, visaoProducaoGrupo === 'mes' ? ancoraProducaoGrupo.slice(0, 7) : ancoraProducaoGrupo.slice(0, 10));

@@ -22,6 +22,23 @@ function ehLocalCosturaEficiencia(local) {
 function obterEficienciaCostura() {
     try { return JSON.parse(localStorage.getItem('eficienciaCostura') || '{}'); } catch (e) { return {}; }
 }
+// Dias importados ANTES do detalhe por grupo existir: se o dia tem as OPs que se movimentaram (opsMov), o grupo é deduzido na hora pela
+// descrição da OP (movimentações do KPI, sequência da costura e planilha de sincronização). Não grava nada; OP sem descrição vira "SEM PRODUTO".
+function obterEficienciaCosturaComGrupos() {
+    const todos = obterEficienciaCostura();
+    const faltando = Object.keys(todos).filter(d => !todos[d].grupos && todos[d].opsMov);
+    if (!faltando.length) return todos;
+    const desc = {};
+    try { Object.values(obterMovimentacoesPorSetorBruto()).forEach(porOP => Object.values(porOP).forEach(m => { if (m.ds) desc[montarChaveOP(m.ciclo, m.op)] = m.ds; })); } catch (e) { /* sem KPI */ }
+    try { obterPorOPCosturaDetalhado().forEach(o => { const k = montarChaveOP(o.ciclo, o.op); if (!desc[k] && o.descRef) desc[k] = o.descRef; }); } catch (e) { /* sem sequência */ }
+    try { (bancoDadosOPs || []).forEach(o => { const k = montarChaveOP(o.ciclo, o.id); if (!desc[k] && o.desc) desc[k] = o.desc; }); } catch (e) { /* sem sincronização */ }
+    faltando.forEach(d => {
+        const g = {};
+        Object.entries(todos[d].opsMov).forEach(([k, mv]) => { const nome = grupoProdutoKPI(desc[k] || ''); const r = g[nome] = g[nome] || { p: 0, o: 0 }; r.p += Math.round(mv.q); r.o++; });
+        todos[d] = { ...todos[d], grupos: g, gruposDeduzidos: true };
+    });
+    return todos;
+}
 function salvarEficienciaCostura(obj) {
     try { localStorage.setItem('eficienciaCostura', JSON.stringify(obj)); } catch (e) { showToast('<i class="fas fa-triangle-exclamation"></i> Não consegui salvar a eficiência (armazenamento cheio).', true, 6000); }
 }
@@ -437,7 +454,7 @@ function renderizarEficienciaCostura() {
 // LIMPAR só apaga o mês escolhido, só deste navegador (a nuvem não é mexida).
 // =========================================================================
 function montarDadosMesEfCostura(anoMes) {
-    const todos = obterEficienciaCostura();
+    const todos = obterEficienciaCosturaComGrupos();
     const minPessoa = parseFloat($('efCosturaMinPessoa') ? $('efCosturaMinPessoa').value : 528) || 528;
     const dias = Object.keys(todos).filter(d => d.startsWith(anoMes)).sort();
     const nomes = [...new Set(dias.flatMap(d => Object.keys(todos[d].locais || {}).filter(ehLocalCosturaEficiencia)))].sort();
@@ -480,6 +497,8 @@ function montarDadosMesEfCostura(anoMes) {
     const producaoGrupo = [['GRUPO', 'PEÇAS NO MÊS', '% DO MÊS', 'OPs (soma dos dias)', ...dias.map(d => formatarChaveDataBR(d).slice(0, 5))],
         ...listaG.map(([nome, x]) => [nome, x.p, totG ? arred((x.p / totG) * 100) : '', x.o, ...dias.map(d => x.dia[d] || '')]),
         ['TOTAL DO MÊS', totG, totG ? 100 : '', '', ...dias.map(d => listaG.reduce((t, [, x]) => t + (x.dia[d] || 0), 0) || '')]];
+    const diasDeduzidos = dias.filter(d => todos[d].gruposDeduzidos).length;
+    if (diasDeduzidos) producaoGrupo.push([], [`${diasDeduzidos} dia(s) tiveram o grupo deduzido pela descrição das OPs (importados antes do detalhe por grupo); OP sem descrição conhecida aparece em SEM PRODUTO. Reimportar a movimentação do dia deixa exato.`]);
     if (diasSemGrupo) producaoGrupo.push([], [`${diasSemGrupo} dia(s) importado(s) antes do detalhe por grupo não entram nessa aba — reimporte a movimentação deles.`]);
     return { rotuloMes: rotuloMesKPI(anoMes), dias, nomes, resumo, diaADia, pecasPorDia, producaoGrupo, temGrupos: listaG.length > 0, serie, serieTotal, totPecas };
 }

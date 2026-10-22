@@ -252,6 +252,14 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   await p.setInputFiles('#inputEfCostura', fef); await p.waitForTimeout(700);
   igual('costura guarda a produção por grupo de produto (pelo Tp Produto quando a descrição não diz)', await p.evaluate(() => { const g = obterEficienciaCostura()['2026-10-26'].grupos; return [g['CALÇA'].p, g['CALÇA'].o]; }), [180, 3]);
   igual('baixar mês da costura: aba PRODUÇÃO POR GRUPO com total do mês', await p.evaluate(() => { const d = montarDadosMesEfCostura('2026-10'); const lin = d.producaoGrupo.find(r => r[0] === 'CALÇA'); const tot = d.producaoGrupo.find(r => r[0] === 'TOTAL DO MÊS'); return [d.temGrupos, lin[1], tot[1] >= lin[1]]; }), [true, 240, true]);
+  igual('dia antigo (só opsMov) tem o grupo deduzido pela descrição da OP', await p.evaluate(() => {
+    const ef = obterEficienciaCostura(); ef['2026-09-01'] = { locais: {}, opsTotal: 2, opsMov: { '211-5001': { q: 40, l: [] }, '211-5002': { q: 10, l: [] } }, pessoasLocal: {} };
+    localStorage.setItem('eficienciaCostura', JSON.stringify(ef));
+    const ant = bancoDadosOPs; bancoDadosOPs = [{ id: '5001', ciclo: '211', desc: 'CORTE BERMUDA MASC TESTE', qtd: 40, etapa: 7 }];
+    const g = obterEficienciaCosturaComGrupos()['2026-09-01'].grupos; bancoDadosOPs = ant;
+    delete ef['2026-09-01']; localStorage.setItem('eficienciaCostura', JSON.stringify(ef));
+    return [g['BERMUDA'].p, g['SEM PRODUTO'].p];
+  }), [40, 10]);
   igual('aba produção por grupo: soma o período e mostra a tela', await p.evaluate(() => {
     const r = somarGruposProducao(obterEficienciaCostura(), ['2026-10-26', '2026-10-27']);
     visaoProducaoGrupo = 'semana'; ancoraProducaoGrupo = '2026-10-26'; abrirAba(null, 'aba-producao-grupo'); renderizarProducaoGrupo();
