@@ -217,6 +217,17 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     const pal = calcularResumoGrupoElab(GRUPOS_ELABORACAO_COSTURA[2], lista);
     return [lista.map(o => o.op).join(''), res, Math.round(pal.dias * 10) / 10, !!pal.dataPrevista];
   }), ['AEFGH', { CAMISAS: 30, MALHA: 0, PALETOS: 220, CALCA: 50 }, 2, true]);
+  igual('reposição do paletó: avisa quando a elaboração baixa e sugere o que mandar', await p.evaluate(() => {
+    localStorage.setItem('porOPElaboracaoCostura', JSON.stringify([{ op: '1', ciclo: '1', local: 'SLV COST CEL PALETO', qtd: 220, tipoProduto: 'BLAZER', descRef: 'BLAZER X' }]));   // 220 / 110 = 2 dias
+    localStorage.setItem('mediasElaboracaoCostura', JSON.stringify({ PALETOS: 110 })); localStorage.removeItem('configReposicaoPaleto');
+    localStorage.setItem('porOPPaletoEmp1', JSON.stringify([
+      { op: '10', ciclo: '1', local: 'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA', qtd: 600, descRef: 'BLAZER A', dataInclusao: '2026-09-01' },
+      { op: '11', ciclo: '1', local: 'PNP QUAL - INSPECAO EXT', qtd: 500, descRef: 'BLAZER B' }, { op: '12', ciclo: '1', local: 'EXT COSTURA FULANO', qtd: 400, descRef: 'BLAZER C' },
+      { op: '13', ciclo: '1', local: 'PNP BORDADO INTERNO', qtd: 900, descRef: 'BLAZER D', dataInclusao: '2026-09-10' }]));
+    renderizarElaboracaoCostura();
+    const rp = calcularReposicaoPaleto(obterPorOPElab()), bn = document.getElementById('alertaReposicaoPaleto');
+    return [rp.nivel, rp.faltam, rp.candidatos.filter(c => c.pegar).map(c => c.op), bn.style.display, /baixando|CRÍTICA/.test(bn.innerText)];
+  }), ['vermelho', 1430, ['10', '13'], 'block', true]);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);

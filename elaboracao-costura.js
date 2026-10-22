@@ -26,9 +26,9 @@ function obterMediasElab() { try { return JSON.parse(localStorage.getItem('media
 function mediaDoGrupoElab(g) { const v = parseFloat(obterMediasElab()[g.chave]); return v > 0 ? v : g.mediaPadrao; }
 const LOCAIS_ELAB = new Set(GRUPOS_ELABORACAO_COSTURA.flatMap(g => g.locais.map(l => normalizarLocalElab(l.nome))));
 
-// Parte pura (testável): linhas da planilha → OPs da empresa 02 nos locais da elaboração.
-function extrairOPsElaboracaoDasLinhas(rows) {
-    const semAc = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+// Leitura do cabeçalho (compartilhada pelas duas extrações).
+function lerCabecalhoElab(rows) {
+    const semAc = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
     const iCab = [0, 1, 2, 3].find(i => rows[i] && rows[i].some(c => semAc(c) === 'OP'));
     if (iCab === undefined) throw new Error('Não achei a linha de títulos (coluna OP).');
     const cab = rows[iCab].map(semAc), f = fn => cab.findIndex(fn);
@@ -40,21 +40,44 @@ function extrairOPsElaboracaoDasLinhas(rows) {
     };
     if (ix.local === -1 || ix.op === -1) throw new Error('Faltam as colunas "Descrição Local" e/ou "OP".');
     if (ix.emp === -1) throw new Error('Não achei a coluna da empresa (Emp).');
-    const lista = [];
+    return { iCab, ix, semAc };
+}
+function montarOPElab(r, ix, semAc, local) {
+    return {
+        op: String(r[ix.op]).trim(), ciclo: ix.ciclo !== -1 && r[ix.ciclo] != null ? String(r[ix.ciclo]).trim() : '', local,
+        descRef: ix.descRef !== -1 ? String(r[ix.descRef] || '').trim() : '', cor: ix.cor !== -1 && r[ix.cor] ? String(r[ix.cor]).trim().toUpperCase() : '',
+        qtd: ix.qtd !== -1 ? (parseFloat(r[ix.qtd]) || 0) : 0, tipoProduto: ix.tipo !== -1 ? semAc(r[ix.tipo]) : '',
+        dataFinalizacao: ix.dataFin !== -1 ? extrairDataExcel(r[ix.dataFin]) : null, dataInclusao: ix.inclusao !== -1 ? extrairDataExcel(r[ix.inclusao]) : null,
+        diasLocal: ix.dias !== -1 ? (parseInt(r[ix.dias]) || 0) : null,
+    };
+}
+// Parte pura (testável): linhas da planilha → OPs da empresa 02 nos locais da elaboração.
+function extrairOPsElaboracaoDasLinhas(rows) {
+    const { iCab, ix, semAc } = lerCabecalhoElab(rows), lista = [];
     for (let i = iCab + 1; i < rows.length; i++) {
         const r = rows[i]; if (!r || r[ix.op] === undefined || r[ix.op] === null || r[ix.op] === '') continue;
         if (!['2', '02'].includes(String(r[ix.emp]).trim())) continue;
         const local = normalizarLocalElab(r[ix.local]); if (!LOCAIS_ELAB.has(local)) continue;
-        lista.push({
-            op: String(r[ix.op]).trim(), ciclo: ix.ciclo !== -1 && r[ix.ciclo] != null ? String(r[ix.ciclo]).trim() : '', local,
-            descRef: ix.descRef !== -1 ? String(r[ix.descRef] || '').trim() : '', cor: ix.cor !== -1 && r[ix.cor] ? String(r[ix.cor]).trim().toUpperCase() : '',
-            qtd: ix.qtd !== -1 ? (parseFloat(r[ix.qtd]) || 0) : 0, tipoProduto: ix.tipo !== -1 ? semAc(r[ix.tipo]) : '',
-            dataFinalizacao: ix.dataFin !== -1 ? extrairDataExcel(r[ix.dataFin]) : null, dataInclusao: ix.inclusao !== -1 ? extrairDataExcel(r[ix.inclusao]) : null,
-            diasLocal: ix.dias !== -1 ? (parseInt(r[ix.dias]) || 0) : null,
-        });
+        lista.push(montarOPElab(r, ix, semAc, local));
     }
     return lista;
 }
+// Paletó/blazer da EMPRESA 01 (em qualquer local) — para sugerir o que mandar para a 02.
+function extrairOPsPaletoEmp1DasLinhas(rows) {
+    const { iCab, ix, semAc } = lerCabecalhoElab(rows), lista = [];
+    for (let i = iCab + 1; i < rows.length; i++) {
+        const r = rows[i]; if (!r || r[ix.op] === undefined || r[ix.op] === null || r[ix.op] === '') continue;
+        if (!['1', '01'].includes(String(r[ix.emp]).trim())) continue;
+        const o = montarOPElab(r, ix, semAc, normalizarLocalElab(r[ix.local]));
+        if (ehPaletoBlazer(o)) lista.push(o);
+    }
+    return lista;
+}
+// "Já cortado e pronto para a costura da 02": locais da empresa 01 depois do corte e antes da costura (etiquetação, bordado, distribuição interna).
+// Fora daqui ficam: costuras externas (EXT ...), inspeção/qualidade, aguardando finalização etc. (já passaram da costura). Ajuste a lista se precisar.
+const REGEX_PALETO_EMP1_CORTADO = /ETIQ|BORDADO|AGUARD\. DISTRIBUICAO/;
+function paletoEmp1JaCortado(o) { return REGEX_PALETO_EMP1_CORTADO.test(o.local); }
+
 function processarPorOPElaboracao() {
     if (!exigirAdminOuUsuario('importar a planilha da elaboração de costura')) return;
     if (!exigirBibliotecaExcel()) return;
@@ -63,7 +86,9 @@ function processarPorOPElaboracao() {
     rd.onload = e => {
         try {
             const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-            const lista = extrairOPsElaboracaoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }));
+            const linhasPlan = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            const lista = extrairOPsElaboracaoDasLinhas(linhasPlan);
+            localStorage.setItem('porOPPaletoEmp1', JSON.stringify(extrairOPsPaletoEmp1DasLinhas(linhasPlan)));
             if (!lista.length) throw new Error('Nenhuma OP da empresa 02 nos locais da elaboração de costura.');
             localStorage.setItem('porOPElaboracaoCostura', JSON.stringify(lista));
             localStorage.setItem('porOPElaboracaoImportadoEm', new Date().toISOString());
@@ -85,6 +110,49 @@ function calcularResumoGrupoElab(g, todas) {
     if (dias !== null && pecas > 0) { const h = new Date(); h.setHours(0, 0, 0, 0); dataPrevista = somarDiasUteisCostura(h, Math.ceil(dias), new Set(obterFeriados())); }
     return { grupo: g, porLocal, pecas, media, dias, dataPrevista };
 }
+// ---- Reposição do paletó/blazer na empresa 02: avisa quando a elaboração está baixando e sugere o que mandar.
+function obterConfigReposicaoPaleto() {
+    let c = {}; try { c = JSON.parse(localStorage.getItem('configReposicaoPaleto') || '{}') || {}; } catch (e) { /* padrão */ }
+    return { limite: c.limite > 0 ? c.limite : 7, metaDias: c.metaDias > 0 ? c.metaDias : 15 };
+}
+function calcularReposicaoPaleto(todas) {
+    const g = GRUPOS_ELABORACAO_COSTURA.find(x => x.chave === 'PALETOS'), r = calcularResumoGrupoElab(g, todas), cfg = obterConfigReposicaoPaleto();
+    const faltam = Math.max(0, Math.ceil(cfg.metaDias * r.media - r.pecas));
+    const nivel = r.dias === null ? null : (r.dias < Math.floor(cfg.limite / 2) ? 'vermelho' : (r.dias < cfg.limite ? 'amarelo' : 'verde'));
+    // candidatos: 1º já cortadas na empresa 01 (mais antiga primeiro), 2º as que ainda vão cortar (etapa mais perto do corte, depois a mais antiga)
+    const antig = o => o.dataInclusao ? new Date(o.dataInclusao).getTime() : Infinity;
+    let emp1 = []; try { emp1 = JSON.parse(localStorage.getItem('porOPPaletoEmp1') || '[]'); } catch (e) { /* sem dados */ }
+    const cortadas = emp1.filter(paletoEmp1JaCortado).sort((a, b) => antig(a) - antig(b)).map(o => ({ op: o.op, ciclo: o.ciclo, desc: o.descRef, qtd: o.qtd, onde: o.local, situacao: 'JÁ CORTADA' }));
+    const chaves = new Set(cortadas.map(o => `${o.ciclo}-${o.op}`));
+    const aCortar = (typeof sugerirOPsMetaCorte === 'function' ? sugerirOPsMetaCorte() : []).filter(o => !chaves.has(`${o.ciclo}-${o.id}`))
+        .map(o => ({ op: o.id, ciclo: o.ciclo, desc: o.desc, qtd: parseInt(o.qtd) || 0, onde: nomesEtapas[o.etapa] || '', situacao: 'AINDA VAI CORTAR' }));
+    let soma = 0, fechou = faltam <= 0;
+    const candidatos = [...cortadas, ...aCortar].map(o => { const pegar = !fechou; if (pegar) { soma += o.qtd; if (soma >= faltam) fechou = true; } return { ...o, pegar }; });
+    return { resumo: r, cfg, faltam, nivel, candidatos, somaSugerida: soma };
+}
+function renderizarReposicaoPaleto(todas) {
+    const raiz = document.getElementById('reposicaoPaletoConteudo'), banner = document.getElementById('alertaReposicaoPaleto');
+    const fmt = v => Math.round(v).toLocaleString('pt-BR'), esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const rp = calcularReposicaoPaleto(todas), r = rp.resumo;
+    const cor = { vermelho: 'var(--cor-alerta)', amarelo: 'var(--cor-sugestao)', verde: 'var(--cor-despacho)' }[rp.nivel] || 'var(--borda-cor)';
+    const dias = r.dias === null ? '—' : r.dias.toFixed(1).replace('.', ',');
+    const msg = rp.nivel === 'verde'
+        ? `<strong>Paletó/blazer na empresa 02: elaboração OK</strong> — ${dias} dias de serviço (${fmt(r.pecas)} peças).`
+        : `<strong>⚠ Paletó/blazer: a elaboração da empresa 02 está ${rp.nivel === 'vermelho' ? 'CRÍTICA' : 'baixando'}</strong> — só ${dias} dias de serviço (${fmt(r.pecas)} peças). Para chegar a ${rp.cfg.metaDias} dias, precisa mandar <strong>${fmt(rp.faltam)} peças</strong>.`;
+    if (banner) { banner.style.display = rp.nivel && rp.nivel !== 'verde' ? 'block' : 'none'; banner.style.borderLeft = `5px solid ${cor}`; banner.innerHTML = msg; }
+    if (!raiz) return;
+    const linhas = rp.candidatos.map((o, i) => `<tr style="${o.pegar ? '' : 'opacity:0.5;'}"><td class="num">${i + 1}</td><td><strong>${esc(o.op)}</strong>${o.ciclo ? ' · ' + esc(o.ciclo) : ''}</td>
+        <td><span class="pill" style="background:${o.situacao === 'JÁ CORTADA' ? 'var(--cor-despacho)' : 'var(--borda-cor)'}; color:${o.situacao === 'JÁ CORTADA' ? 'white' : 'var(--texto-cor)'};">${o.situacao}</span></td>
+        <td style="font-size:11px;">${esc(String(o.desc).slice(0, 55))}</td><td style="font-size:11px;">${esc(o.onde)}</td><td class="num">${fmt(o.qtd)}</td><td>${o.pegar ? '<span class="pill" style="background:var(--cor-despacho); color:white;">MANDAR</span>' : ''}</td></tr>`).join('');
+    raiz.innerHTML = `<div style="padding:12px 16px; border-left:5px solid ${cor}; background:var(--bg-painel); font-size:13px;">${msg}</div>
+        <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center; padding:8px 16px; font-size:12px;">
+            <span>Avisar abaixo de <input type="number" id="inputLimiteReposicaoPaleto" min="1" step="1" value="${rp.cfg.limite}" style="width:60px;"> dias</span>
+            <span>Meta de serviço na 02 <input type="number" id="inputMetaDiasReposicaoPaleto" min="1" step="1" value="${rp.cfg.metaDias}" style="width:60px;"> dias</span></div>
+        ${rp.faltam > 0 ? (rp.nivel === 'verde' ? '<details style="padding:6px 16px 10px;"><summary style="cursor:pointer; font-size:12px;">Ver o que mandar para chegar a ' + rp.cfg.metaDias + ' dias</summary>' : '') + (rp.candidatos.length ? `<div style="overflow:auto; max-height:380px;"><table class="tabela-dados" style="width:100%;"><thead><tr><th class="num">#</th><th>OP</th><th>SITUAÇÃO NA EMPRESA 01</th><th>DESCRIÇÃO</th><th>ONDE ESTÁ</th><th class="num">PEÇAS</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div>
+            <div style="padding:6px 16px; font-size:11px; color:var(--texto-secundario);">Ordem: primeiro as já cortadas (mais antiga primeiro), depois as que ainda vão cortar (etapa mais perto do corte, depois a mais antiga). "MANDAR" marca o que cobre a necessidade (${fmt(rp.somaSugerida)} peças). Já cortada = paletó/blazer da empresa 01 em etiquetação, bordado ou aguardando distribuição (depois do corte, antes da costura).</div>` : '<div style="padding:12px 16px; font-size:12px; color:var(--texto-secundario);">Nenhum paletó/blazer da empresa 01 encontrado para sugerir (importe a POR_OP e sincronize a planilha).</div>') + (rp.nivel === 'verde' ? '</details>' : '') : '<div style="padding:10px 16px; font-size:12px; color:var(--texto-secundario);">Elaboração acima da meta de dias — nada a mandar por enquanto.</div>'}`;
+    const salvar = () => { const l = parseFloat(document.getElementById('inputLimiteReposicaoPaleto').value), m = parseFloat(document.getElementById('inputMetaDiasReposicaoPaleto').value); if (l > 0 && m > 0) { try { localStorage.setItem('configReposicaoPaleto', JSON.stringify({ limite: l, metaDias: m })); } catch (e) { /* ignora */ } } renderizarElaboracaoCostura(); };
+    ['inputLimiteReposicaoPaleto', 'inputMetaDiasReposicaoPaleto'].forEach(id => { const e = document.getElementById(id); if (e) e.onchange = salvar; });
+}
 function renderizarElaboracaoCostura() {
     const raiz = document.getElementById('elaboracaoCosturaLista'); if (!raiz) return;
     const fmt = v => Math.round(v).toLocaleString('pt-BR');
@@ -92,7 +160,7 @@ function renderizarElaboracaoCostura() {
     const imp = localStorage.getItem('porOPElaboracaoImportadoEm');
     const info = document.getElementById('elaboracaoCosturaInfo'); if (info) info.textContent = imp ? `POR_OP importada em ${new Date(imp).toLocaleString('pt-BR')}` : 'nenhuma planilha importada';
     const todas = obterPorOPElab();
-    if (!todas.length) { raiz.innerHTML = '<div style="padding:16px; color:var(--texto-secundario); font-size:12px;">Importe a POR_OP (botão acima) para ver a elaboração de costura da empresa 02.</div>'; return; }
+    if (!todas.length) { const bn = document.getElementById('alertaReposicaoPaleto'); if (bn) bn.style.display = 'none'; raiz.innerHTML = '<div style="padding:16px; color:var(--texto-secundario); font-size:12px;">Importe a POR_OP (botão acima) para ver a elaboração de costura da empresa 02.</div>'; return; }
     const resumos = GRUPOS_ELABORACAO_COSTURA.map(g => calcularResumoGrupoElab(g, todas));
     const corDias = d => d === null ? 'inherit' : (d >= 15 ? 'var(--cor-despacho)' : (d >= 8 ? 'var(--cor-sugestao)' : 'var(--cor-alerta)'));
     const linhasQuadro = resumos.map(r => `<tr>
@@ -121,6 +189,7 @@ function renderizarElaboracaoCostura() {
         </details>`;
     }).join('');
     raiz.innerHTML = quadro + detalhes;
+    renderizarReposicaoPaleto(todas);
     raiz.querySelectorAll('.input-media-elab').forEach(inp => {
         inp.onchange = () => { const v = parseFloat(inp.value); if (v > 0) { const m = obterMediasElab(); m[inp.dataset.grupo] = v; try { localStorage.setItem('mediasElaboracaoCostura', JSON.stringify(m)); } catch (e) { /* ignora */ } } renderizarElaboracaoCostura(); };
     });
