@@ -313,8 +313,17 @@ function detectarColunasProdutoELaser(rows) {
     const idxCodMP = achar(c => c.includes('CODIGO') && c.includes('M.P'), 38);
     const idxDescMP = achar(c => c.includes('DESCRICAO') && c.includes('M.P'), 39);
     const idxRefSinc = achar(c => c === 'REFERENCIA', 40);
+    // Demais colunas, também pelo TÍTULO (a planilha já perdeu e trocou colunas de lugar). Título normalizado: sem acento, pontuação/quebra de linha viram espaço.
+    const nz = t => semAc(t).replace(/[^A-Z0-9]+/g, ' ').trim();
+    const cabNz = Array.from(rows[idxLinhaCab] || [], nz);
+    const col = (...nomes) => { for (const n of nomes) { const i = cabNz.indexOf(n); if (i !== -1) return i; } return -1; };
+    const cols = {
+        desc: col('DESCRICAO'), ciclo: col('CICLO'), op: col('NUM OP', 'OP'), qtd: (i => i !== -1 ? i : cabNz.findIndex(c => c.startsWith('QTDE')))(col('QTDE PECAS')),
+        tempoCorte: col('T E MIN'), dataInclusao: col('DATA DE INCLUSAO OP'), localDestino: col('LOCAL'), temDublado: col('DUBLADO'),
+        localAtual: col('LOCAL ATUAL'), dataCorte: col('DT CORTE PROGRAMADA'), diasLocal: col('DIAS LOCAL'),
+    };
     return {
-        idxLinhaCab, idxLaser, idxProduto, idxCodMP, idxDescMP, idxRefSinc,
+        idxLinhaCab, idxLaser, idxProduto, idxCodMP, idxDescMP, idxRefSinc, cols,
         letraLaser: idxLaser !== -1 ? letra(idxLaser) : null,
         letraProduto: idxProduto !== -1 ? letra(idxProduto) : null,
     };
@@ -387,22 +396,28 @@ function processarExcel() {
         // Referência.
         const opsAguardandoMP = [];
 
-        for (let i = 1; i < rows.length; i++) {
+        let C = colunasSinc.cols;
+        // Cabeçalho sem os títulos conhecidos (planilha muito antiga/CSV simples): usa as posições do layout original.
+        if (C.op === -1 && C.localAtual === -1) C = { desc: 3, ciclo: 4, op: 5, qtd: 6, tempoCorte: 7, dataInclusao: 16, localDestino: 17, temDublado: 18, localAtual: 21, dataCorte: 23, diasLocal: 25 };
+        const faltamCols = [['Num. Op', C.op], ['Local atual', C.localAtual], ['Qtde Peças', C.qtd]].filter(([, i]) => i === -1).map(([n]) => n);
+        if (faltamCols.length) throw new Error('Não encontrei na planilha de sincronização a(s) coluna(s): ' + faltamCols.join(', ') + '. Confira os títulos da linha de cabeçalho.');
+        const dado = (r, i) => i === -1 ? undefined : r[i];
+        for (let i = colunasSinc.idxLinhaCab + 1; i < rows.length; i++) {
             const r = rows[i]; if (!r) continue;
 
             // LÓGICA DE CRIAÇÃO DO BANCO DE DADOS (Mantida igual a sua original)
-            if (r[5] && !['OP', 'ORDEM'].includes(String(r[5]).trim().toUpperCase())) {
-                const loc = (r[21] ? String(r[21]).toUpperCase() : "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+            if (dado(r, C.op) && !['OP', 'ORDEM'].includes(String(dado(r, C.op)).trim().toUpperCase())) {
+                const loc = (dado(r, C.localAtual) ? String(dado(r, C.localAtual)).toUpperCase() : "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
                 // "PNP ANALISE DE MATERIA PRIMA" também cai aqui (antes caía em ANALISE DE MEDIDAS por causa da palavra ANALISE)
                 if ((loc.includes("AGUARD") || loc.includes("ANALISE")) && loc.includes("MATERIA") && loc.includes("PRIMA")) {
                     opsAguardandoMP.push({
-                        id: String(r[5]).trim(), ciclo: String(r[4] || ""), desc: String(r[3] || ""),
-                        qtd: parseInt(r[6]) || 0, diasLocal: parseInt(r[25]) || 0,
+                        id: String(dado(r, C.op)).trim(), ciclo: String(dado(r, C.ciclo) || ""), desc: String(dado(r, C.desc) || ""),
+                        qtd: parseInt(dado(r, C.qtd)) || 0, diasLocal: parseInt(dado(r, C.diasLocal)) || 0,
                         codigoMP: r[colunasSinc.idxCodMP] ? String(r[colunasSinc.idxCodMP]).trim().toUpperCase() : "SEM CÓDIGO",
                         referencia: r[colunasSinc.idxRefSinc] ? String(r[colunasSinc.idxRefSinc]).trim().toUpperCase() : "",
                         produto: lerProduto(r),
-                        sobMedida: mapaSBM.has(String(r[5]).trim()),
+                        sobMedida: mapaSBM.has(String(dado(r, C.op)).trim()),
                         analiseMP: loc.includes("ANALISE")
                     });
                     continue; // não passa pela lógica de etapa 0-7 abaixo
@@ -413,22 +428,22 @@ function processarExcel() {
                 else if (loc.includes("CORTE") && !loc.includes("PROG") && !loc.includes("ENFESTO")) idxE = 7; else if (loc.includes("ENFESTO")) idxE = 6; else if (loc.includes("DUBLA")) idxE = 5; else if (loc.includes("ALMOX") && loc.includes("TECIDO")) idxE = 4; else if (loc.includes("PROG") && loc.includes("CORTE")) idxE = 3; else if (loc.includes("CAD")) idxE = 2; else if (loc.includes("ANALISE") || loc.includes("MEDIDA")) idxE = 1; else if (loc.includes("PROGRAMACAO")) idxE = 0;
 
                 if (idxE !== -1) {
-                    const idOP = String(r[5]).trim(), cicloOP = String(r[4] || ""), chaveOP = montarChaveOP(cicloOP, idOP), old = mapA[chaveOP];
-                    if (old && old.etapa !== idxE) movimentacoes.push({ id: idOP, ciclo: String(r[4] || ""), deIdx: old.etapa, paraIdx: idxE });
+                    const idOP = String(dado(r, C.op)).trim(), cicloOP = String(dado(r, C.ciclo) || ""), chaveOP = montarChaveOP(cicloOP, idOP), old = mapA[chaveOP];
+                    if (old && old.etapa !== idxE) movimentacoes.push({ id: idOP, ciclo: String(dado(r, C.ciclo) || ""), deIdx: old.etapa, paraIdx: idxE });
                     bancoDadosOPs.push({
-                        id: idOP, ciclo: String(r[4] || ""), desc: String(r[3] || ""),
-                        qtd: parseInt(r[6]) || 0, tempoCorte: parseFloat(r[7]) || 0,
-                        etapa: idxE, dataCorte: extrairDataExcel(r[23]), // coluna X (antes era P/15)
-                        localDestino: r[17] ? String(r[17]).trim().toUpperCase() : "N/D",
-                        localExcel: r[21] ? String(r[21]).trim().toUpperCase() : "",
-                        temDublado: r[18] ? String(r[18]).toUpperCase().includes("SIM") : false,
+                        id: idOP, ciclo: String(dado(r, C.ciclo) || ""), desc: String(dado(r, C.desc) || ""),
+                        qtd: parseInt(dado(r, C.qtd)) || 0, tempoCorte: parseFloat(dado(r, C.tempoCorte)) || 0,
+                        etapa: idxE, dataCorte: extrairDataExcel(dado(r, C.dataCorte)), // coluna X (antes era P/15)
+                        localDestino: dado(r, C.localDestino) ? String(dado(r, C.localDestino)).trim().toUpperCase() : "N/D",
+                        localExcel: dado(r, C.localAtual) ? String(dado(r, C.localAtual)).trim().toUpperCase() : "",
+                        temDublado: dado(r, C.temDublado) ? String(dado(r, C.temDublado)).toUpperCase().includes("SIM") : false,
                         prioridade: prioridadesDestino.has(chaveOP) || prioridadesManuais.has(chaveOP), // fonte: importação "Destino de Produção" OU marcação manual — antes vinha da aba URGENCIAS
                         mesDestino: mesesDestino[chaveOP] || null, // "AAAA-MM" informado na importação de Destino — planilha não tem data que sirva pra isso
                         numeroPrioridade: numerosPrioridade[chaveOP] || null, // valor bruto da coluna Prioridade — só exibição
                         localDestinoDetalhado: locaisDestinoPorOP[chaveOP] || null, // "Descrição Local" do Destino — cobre etapas fora das 8 rastreadas
                         destaque: opsDestacadas.has(chaveOP), // "faça essa primeiro" — marcado na aba Prioridades
                         dataEntradaEtapa: (old && old.etapa === idxE && old.dataEntradaEtapa) ? old.dataEntradaEtapa : new Date(),
-                        diasLocal: parseInt(r[25]) || 0,
+                        diasLocal: parseInt(dado(r, C.diasLocal)) || 0,
                         codigoMP: r[colunasSinc.idxCodMP] ? String(r[colunasSinc.idxCodMP]).trim().toUpperCase() : "SEM CÓDIGO",
                         descMP: r[colunasSinc.idxDescMP] ? String(r[colunasSinc.idxDescMP]).trim().toUpperCase() : "🔍 COLUNA VAZIA",
                         referencia: r[colunasSinc.idxRefSinc] ? String(r[colunasSinc.idxRefSinc]).trim().toUpperCase() : "", // coluna AO
@@ -437,7 +452,7 @@ function processarExcel() {
                         produto: lerProduto(r), // camisa/calça/jaqueta... — só local (não vai pra nuvem), usado no filtro de Produto
                         dataFinalizacao: mapaFinalizacao.get(idOP) || null, // aba BASE, coluna P
                         dataCorteSuposta: calcularDataCorteSuposta(mapaFinalizacao.get(idOP)),
-                        dataInclusao: extrairDataExcel(r[16]) || null, // quando a OP foi criada — base do cálculo de lead time por setor
+                        dataInclusao: extrairDataExcel(dado(r, C.dataInclusao)) || null, // quando a OP foi criada — base do cálculo de lead time por setor
                     });
                 }
             }

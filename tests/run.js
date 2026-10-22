@@ -198,6 +198,15 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('local externo (AGRUP CORTE EXTERNO) não vira etapa CORTE na sincronização', await p.evaluate(() => [bancoDadosOPs.some(o => o.id === '7001' && o.etapa === 7), bancoDadosOPs.some(o => o.id === '7002')]), [true, false]);
   }
   igual('sincronização lê referência e matéria-prima pelo título (colunas mudaram de lugar)', await p.evaluate(() => { const o = bancoDadosOPs.find(x => x.id === '7001'); return [o.referencia, o.codigoMP]; }), ['SEGP031', '1005989']);
+  {   // sincronização no layout novo (sem T.E./Dublado; colunas deslocadas) — tudo lido pelo título
+    const cab = ['CHAVE','Sequencia','DT.REVIS.','DESCRIÇÃO','Ciclo','Num. Op','Qtde Peças','Liberação pcp','Local','Local atual','Dt corte Programada','Dias local','CODIGO M.P','DESCRIÇÃO M.P','REFERENCIA','PRODUTO'];
+    const lin = (op, loc) => ['x','1','','CORTE CALCA NOVA','211', op, '33','2026-01-01','GILBERTO CORTE/ INT', loc,'','4','1005990','TECIDO Y','HSTC031','CALCA'].join(';');
+    const f3 = path.join(os.tmpdir(), 'corte-pro-sinc-novo.csv');
+    fs.writeFileSync(f3, 'BANDA;;;;;;;;;;\n' + cab.join(';') + '\n' + lin('7101', 'PNP ENFESTO') + '\n');
+    await p.setInputFiles('#inputExcel', f3);
+    await p.evaluate(() => { processarExcel(); }); await p.waitForTimeout(800);
+    igual('sincronização lê o layout novo pelo título (sem T.E./Dublado)', await p.evaluate(() => { const o = bancoDadosOPs.find(x => x.id === '7101'); return o ? [o.ciclo, o.qtd, o.etapa, o.localDestino, o.diasLocal, o.referencia, o.tempoCorte, o.temDublado] : null; }), ['211', 33, 6, 'GILBERTO CORTE/ INT', 4, 'HSTC031', 0, false]);
+  }
   {   // aba META CORTE (paletó/blazer)
     const r = await p.evaluate(() => {
       const dias = diasDaSemanaMetaCorte(0), seg = dias[0];
