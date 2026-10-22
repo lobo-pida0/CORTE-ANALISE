@@ -207,17 +207,16 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('meta corte: sugestão = etapa mais perto, depois mais antiga', r.ordem, ['9003', '9002', '9001']);
     igual('meta corte: tela mostra progresso', /100\s+de\s+400/.test(r.txt.replace(/\n/g, ' ')) && /faltam 300/.test(r.txt), true);
   }
-  igual('costura do paletó: só empresa 02, paletó/blazer, nos locais certos', await p.evaluate(() => {
-    const cab = ['Emp', 'Local', 'Descrição Local', 'Referência', 'Descrição Referência', 'Cor', 'Ciclo', 'OP', 'Qt OP Local', 'Tipo Produto', 'Prioridade', 'Minutos Costura'];
-    const l = (emp, loc, op, tipo) => [emp, '1', loc, 'R', 'DESC ' + tipo, 'AZ', '111', op, 10, tipo, 99, 100];
-    const rows = [cab, l('2', 'SLV COST CEL PALETO', 'A', 'BLAZER'), l('1', 'SLV COST CEL PALETO', 'B', 'BLAZER'), l('2', 'SLV COST CEL PALETO', 'C', 'CALCA'), l('2', 'SLV ACABAMENTO', 'D', 'PALETO'), l('2', 'SLV AGUARD DEFINICAO COST SOC PROF SU', 'E', 'PALETO'), ['Total']];
-    return extrairOPsPaletoDasLinhas(rows).map(o => o.op + ':' + o.minutosCostura);
-  }), ['A:100', 'E:100']);
-  igual('elaboração do paletó: peças ÷ média = dias', await p.evaluate(() => {
-    localStorage.setItem('porOPPaletoDetalhado', JSON.stringify([{ op: '1', ciclo: '1', local: 'SLV COST CEL PALETO', qtd: 100 }, { op: '2', ciclo: '1', local: 'SLV RECEB PENAPOLIS', qtd: 120 }]));
-    localStorage.setItem('mediaProducaoPaleto', '110');
-    const r = calcularResumoPaleto(); return [r.pecas, Math.round(r.dias * 10) / 10, !!r.dataPrevista];
-  }), [220, 2, true]);
+  igual('elaboração: só empresa 02 nos locais certos', await p.evaluate(() => {
+    const cab = ['Emp', 'Local', 'Descrição Local', 'Referência', 'Descrição Referência', 'Cor', 'Ciclo', 'OP', 'Qt OP Local', 'Tipo Produto'];
+    const l = (emp, loc, op, tipo, q) => [emp, '1', loc, 'R', 'DESC ' + tipo, 'AZ', '111', op, q || 10, tipo];
+    const rows = [cab, l('2', 'SLV COST CEL PALETO', 'A', 'BLAZER', 100), l('1', 'SLV COST CEL PALETO', 'B', 'BLAZER'), l('2', 'SLV ACABAMENTO', 'D', 'PALETO'), l('2', 'SLV RECEB PENAPOLIS', 'E', 'PALETO', 120), l('2', 'SLV RECEB PENAPOLIS', 'F', 'CALCA', 50), l('2', 'SLV RECEB PENAPOLIS', 'G', 'CAMISA POLO', 70), l('2', 'SLV COST SUP CEL 1', 'H', 'JALECO', 30), ['Total']];
+    const lista = extrairOPsElaboracaoDasLinhas(rows);
+    const res = Object.fromEntries(GRUPOS_ELABORACAO_COSTURA.map(g => [g.chave, calcularResumoGrupoElab(g, lista).pecas]));
+    localStorage.setItem('mediasElaboracaoCostura', JSON.stringify({ PALETOS: 110 }));
+    const pal = calcularResumoGrupoElab(GRUPOS_ELABORACAO_COSTURA[2], lista);
+    return [lista.map(o => o.op).join(''), res, Math.round(pal.dias * 10) / 10, !!pal.dataPrevista];
+  }), ['AEFGH', { CAMISAS: 30, MALHA: 0, PALETOS: 220, CALCA: 50 }, 2, true]);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
