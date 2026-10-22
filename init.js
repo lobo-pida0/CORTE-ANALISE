@@ -147,6 +147,8 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('abrirAba-aba-plano-costura', 'click', (event) => { abrirAba(event, 'aba-plano-costura'); renderizarPlanoCostura(); carregarPlanosCosturaDaNuvem(); carregarEfCosturaDaNuvem(); });
         wireEvento('planoCosturaData', 'change', () => { renderizarPlanoCostura(); });
+        // limpeza única dos dados da antiga aba URGÊNCIAS (a aba foi esvaziada)
+        try { ['implantacaoBase', 'implantacaoOPs', 'urgenciasAtualizadoEm', 'urgenciasMetaNuvem', 'urgenciasPendentePublicar'].forEach(k => localStorage.removeItem(k)); } catch (e) { /* ignora */ }
         wireEvento('abrirAba-aba-urgencias', 'click', (event) => { abrirAba(event, 'aba-urgencias'); });
         wireEvento('inputPorOPCostura', 'change', () => { processarPorOPCostura(); });
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
