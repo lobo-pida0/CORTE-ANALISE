@@ -212,7 +212,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('plano da preparação salva as marcadas', await p.evaluate(() => obterPlanosPreparacao()[hojePreparacao()].ops.map(o => o.op).sort()), ['2', '3']);
     await p.evaluate(() => abrirSubabaPreparacao('LOGO'));
     igual('sub-aba mostra só o grupo escolhido', await p.evaluate(() => [/Silk/.test(document.getElementById('preparacaoConteudo').innerText), document.querySelectorAll('.check-prep').length]), [true, 1]);
-    igual('coluna de prioridade marca OP prioritária', await p.evaluate(() => { localStorage.setItem('prioridadesDestino', JSON.stringify(['211-4'])); renderizarPreparacao(); return !!document.querySelector('#preparacaoConteudo .fa-star'); }), true);
+    igual('coluna mês destino mostra o mês da OP', await p.evaluate(() => { localStorage.setItem('opsMesDestino', JSON.stringify({ '211-4': '2026-11' })); renderizarPreparacao(); return /NOV\/2026/.test(document.getElementById('preparacaoConteudo').innerText); }), true);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
     igual('plano mostra grupo e janela', await p.evaluate(() => /Gola e punho/.test(document.getElementById('preparacaoConteudo').innerText)), true);
     await p.evaluate(() => tirarOPDoPlanoPreparacao('211-3'));
