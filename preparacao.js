@@ -17,6 +17,7 @@ const GRUPOS_PREPARACAO = [
     { chave: 'DIST', rotulo: 'Distribuição', janelas: [
         { local: 'PNP AGUARD BIP DISTRIBUICAO', rotulo: 'Aguardando bipagem' }, { local: 'PNP DISTRIBUICAO INT', rotulo: 'Distribuição interna' }] },
 ];
+const CORES_JANELAS_PREPARACAO = ['#2E86AB', '#E07A1F', '#2E9E6B', '#8E5BB5', '#C2415C', '#B8941F'];   // uma cor por janela (só quando o grupo tem mais de uma)
 const normLocalPrep = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
 const LOCAIS_PREPARACAO = new Set(GRUPOS_PREPARACAO.flatMap(g => g.janelas.map(j => normLocalPrep(j.local))));
 const escPrep = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -100,15 +101,16 @@ function renderizarPreparacao() {
     const gSel = GRUPOS_PREPARACAO.find(g => g.chave === subabaPreparacao) || GRUPOS_PREPARACAO[0];
     const htmlSubabas = `<div class="subabas-programacao">${GRUPOS_PREPARACAO.map(g => { const q = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local)).length; return `<button class="subaba-btn${g === gSel ? ' ativo' : ''}" onclick="abrirSubabaPreparacao('${g.chave}')">${escPrep(g.rotulo)} (${q})</button>`; }).join('')}</div>`;
     const htmlGrupos = [gSel].map(g => {
-        const janelas = g.janelas.map(j => {
+        const janelas = g.janelas.map((j, ij) => {
+            const cor = g.janelas.length > 1 ? CORES_JANELAS_PREPARACAO[ij % CORES_JANELAS_PREPARACAO.length] : 'var(--cor-primaria)';
             const lista = ops.filter(o => o.local === normLocalPrep(j.local)).sort(ordenarPreparacao);
             const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0);
             const linhas = lista.map(o => `<tr${noPlano.has(chaveOPPrep(o)) ? ' style="opacity:.55;"' : ''}>
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
                 <td><strong>${escPrep(o.op)}</strong></td><td>${escPrep(o.ciclo)}</td><td>${escPrep(o.descRef)} <span style="color:var(--texto-secundario);">${escPrep(o.ref)}</span></td>
                 <td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td style="text-align:right; font-weight:bold;">${o.qtd}</td></tr>`).join('');
-            return `<div style="border:1px solid var(--borda-cor); border-radius:6px; overflow:hidden; min-width:0;">
-                <div style="padding:8px 12px; background:rgba(128,128,128,.14); border-bottom:2px solid var(--cor-primaria); display:flex; justify-content:space-between; font-size:13px;"><strong>${escPrep(j.rotulo)}</strong><span>${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças</span></div>
+            return `<div style="border:1px solid ${cor}; border-left:6px solid ${cor}; border-radius:6px; overflow:hidden; min-width:0;">
+                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças</span></div>
                 ${lista.length ? `<div style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th>OP</th><th>Ciclo</th><th>Produto</th><th>Mês destino</th><th>Final.</th><th>No local</th><th style="text-align:right;">Qtd</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
         }).join('');
         const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local));
