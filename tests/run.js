@@ -248,7 +248,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     return [rp.nivel, rp.faltam, rp.candidatos.filter(c => c.pegar).map(c => c.op), bn.style.display, /baixando|CRÍTICA/.test(bn.innerText)];
   }), ['vermelho', 1430, ['10', '13'], 'block', true]);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
-  await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); pl['2026-10-23'] = pl[h]; delete pl[h]; salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
+  await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); if (h !== '2026-10-23') { pl['2026-10-23'] = pl[h]; delete pl[h]; } salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
   await p.waitForTimeout(300);
   igual('plano salvo com 3 OPs / 240 peças', await p.evaluate(() => { const pl = obterPlanosCostura()['2026-10-23']; return pl && [pl.ops.length, pl.ops.reduce((t, o) => t + o.qtd, 0)]; }), [3, 240]);

@@ -366,7 +366,6 @@ function renderizarTudoImediato() {
     renderizarHistorico();
     calcularSomaLoteImediato();
     renderizarOPsVinculadas(pendentesPorReferencia);
-    renderizarCapacidade();
     renderizarResumoGeral(pendentesPorReferencia);
 }
 const renderizarTudo = debounce(renderizarTudoImediato, 250);

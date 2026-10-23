@@ -292,7 +292,6 @@
                 <button id="abrirAba-aba-fila" class="btn">FILA GERAL</button>
                 <button id="abrirAba-aba-pedidos" class="btn">PEDIDOS PENDENTES</button>
                 <button id="abrirAba-aba-filacorte" class="btn">FILA DE CORTE</button>
-                <button id="abrirAba-aba-capacidade" class="btn">MONTAR PRODUÇÃO</button>
                 <button id="abrirAba-aba-sequenciamento" class="btn">SEQUENCIAMENTO</button>
                 <button id="abrirAba-aba-necessidade" class="btn">LEVANTAMENTO</button>
                 <button id="abrirAba-aba-plano-costura" class="btn somente-admin">PLANO DA COSTURA</button>
@@ -684,65 +683,6 @@
                         </tr>
                     </thead>
                     <tbody id="listaOPsFilaCorte"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <div id="aba-capacidade" class="aba-conteudo">
-        <div class="secao" style="margin-bottom:var(--espaco-md);">
-            <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-gauge-high"></i> CAPACIDADE DO DIA</span><span id="capacidadeResumoTopo"></span></div>
-            <div style="display:flex; align-items:flex-end; gap:var(--espaco-md); padding:14px 20px; background:var(--bg-painel); flex-wrap:wrap;">
-                <div class="campo-meta" style="width:135px;"><label>Nº DE MÁQUINAS</label><input type="number" id="capMaquinas" min="1" step="1" value="2"></div>
-                <div class="campo-meta" style="width:110px;"><label>HORAS POR DIA</label><input type="number" id="capHoras" min="0.5" step="0.5" value="8"></div>
-                <div class="campo-meta" style="width:110px;"><label>EFICIÊNCIA (%)</label><input type="number" id="capEficiencia" min="1" max="100" step="1" value="85"></div>
-                <div style="flex:1; min-width:260px; background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:8px; padding:12px 16px;">
-                    <div style="font-size:11px; color:var(--texto-secundario); text-transform:uppercase; font-weight:700;">Minutos disponíveis no dia</div>
-                    <div id="capDisponivel" style="font-size:26px; font-weight:700; font-family:var(--fonte-display);">—</div>
-                    <div id="capDisponivelDetalhe" style="font-size:10px; color:var(--texto-secundario);"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="secao" style="margin-bottom:var(--espaco-md);">
-            <div id="capBarraResultado" style="padding:16px 20px; background:var(--bg-card); border-left:6px solid var(--borda-cor);">
-                <div id="capVeredito" style="font-size:15px; font-weight:700;">Marque as OPs abaixo pra montar a produção do dia.</div>
-                <div id="capDetalhe" style="font-size:12px; color:var(--texto-secundario); margin-top:6px;"></div>
-                <div style="margin-top:10px; height:14px; background:var(--bg-painel); border-radius:7px; overflow:hidden; border:1px solid var(--borda-cor);">
-                    <div id="capBarra" style="height:100%; width:0%; background:var(--cor-despacho); transition:width 0.4s ease;"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="secao">
-            <div class="secao-header" style="background:var(--cor-fila);"><span><i class="fas fa-list-check"></i> OPs DISPONÍVEIS</span><span id="capContOPs">0 OPs</span></div>
-            <div style="display:flex; align-items:center; gap:var(--espaco-sm); padding:10px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
-                <label style="font-size:11px; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">Etapa:</label>
-                <select id="capFiltroEtapa" style="font-size:11px; padding:4px;"></select>
-                <input type="text" id="capBusca" placeholder="Buscar OP, ciclo ou descrição..." style="width:220px; font-size:11px; padding:4px;">
-                <label style="font-size:11px; display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
-                    <input type="checkbox" id="capSoSemTempo"> só as sem tempo
-                </label>
-                <button id="capLimparSelecao" class="btn" style="padding:3px 10px; font-size:10px; background:transparent; color:var(--texto-secundario); border:1px dashed var(--borda-cor);">LIMPAR SELEÇÃO</button>
-                <label class="btn somente-admin" style="background:#35505C; color:white; cursor:pointer; margin:0; padding:5px 10px; font-size:10px;" title="Tempo por peça de cada referência (Corte e Etiquetação) — usado no lugar do tempo que vinha da Sincronização"><i class="fas fa-clock"></i> IMPORTAR TEMPOS
-                    <input id="inputTemposPorOperacao" type="file" accept=".xlsx, .xls" style="display:none;">
-                </label>
-                <span style="font-size:11px; color:var(--texto-secundario);">OPs sem tempo aparecem com o campo editável — o valor digitado fica salvo.</span>
-            </div>
-            <div class="secao-corpo">
-                <table class="tabela-dados">
-                    <thead>
-                        <tr>
-                            <th>SEL.</th>
-                            <th>OP</th>
-                            <th>CICLO</th>
-                            <th>ETAPA</th>
-                            <th>DESCRIÇÃO</th>
-                            <th style="text-align:right;">PEÇAS</th>
-                            <th style="text-align:right;">TEMPO (MIN)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="capListaOPs"></tbody>
                 </table>
             </div>
         </div>

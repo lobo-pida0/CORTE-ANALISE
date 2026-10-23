@@ -74,43 +74,11 @@ function inicializarEventosUI() {
         wireEvento('cardResumoGargalo', 'click', () => { analisarGargalo(); });
         wireEvento('abrirAba-aba-pedidos', 'click', (event) => { abrirAba(event, 'aba-pedidos'); });
         wireEvento('abrirAba-aba-filacorte', 'click', (event) => { abrirAba(event, 'aba-filacorte'); });
-        wireEvento('abrirAba-aba-capacidade', 'click', (event) => { abrirAba(event, 'aba-capacidade'); renderizarCapacidade(); });
         wireEvento('abrirAba-aba-sequenciamento', 'click', (event) => { abrirAba(event, 'aba-sequenciamento'); });
         wireEvento('btnSequenciamentoPedido', 'click', () => { pesquisarSequenciamentoPedido(); });
         wireEvento('inputSequenciamentoPedido', 'keyup', (e) => { if (e.key === 'Enter') pesquisarSequenciamentoPedido(); });
         wireEvento('btnSequenciamentoOP', 'click', () => { pesquisarSequenciamentoOP(); });
         wireEvento('inputSequenciamentoOP', 'keyup', (e) => { if (e.key === 'Enter') pesquisarSequenciamentoOP(); });
-        ['capMaquinas', 'capHoras', 'capEficiencia'].forEach(id => {
-            wireEvento(id, 'input', () => { salvarParametrosCapacidade(); renderizarCapacidade(); });
-        });
-        wireEvento('capFiltroEtapa', 'change', () => { renderizarCapacidade(); });
-        wireEvento('capBusca', 'input', () => { renderizarCapacidade(); });
-        wireEvento('capSoSemTempo', 'change', () => { renderizarCapacidade(); });
-        wireEvento('capLimparSelecao', 'click', () => { capSelecionadas.clear(); renderizarCapacidade(); });
-        wireEvento('inputTemposPorOperacao', 'change', () => { processarTemposPorOperacao(); });
-        wireEvento('capListaOPs', 'change', (e) => {
-            if (e.target.classList.contains('cap-check')) {
-                const id = e.target.dataset.id;
-                if (e.target.checked) capSelecionadas.add(id); else capSelecionadas.delete(id);
-                renderizarCapacidade();
-            }
-        });
-        wireEvento('capListaOPs', 'input', (e) => {
-            if (!e.target.classList.contains('cap-tempo-manual')) return;
-            const id = e.target.dataset.id;
-            const v = parseFloat(e.target.value);
-            if (!isNaN(v) && v > 0) capTemposManuais[id] = v; else delete capTemposManuais[id];
-            salvarTemposManuais();
-            // só recalcula o resumo — redesenhar a tabela faria o campo perder o foco
-            const disponivel = minutosDisponiveisDia();
-            let total = 0, qtd = 0, semTempo = 0, pecas = 0;
-            bancoDadosOPs.forEach(op => {
-                if (!capSelecionadas.has(op.id)) return;
-                qtd++; const t = tempoEfetivoOP(op); total += t;
-                pecas += parseInt(op.qtd) || 0; if (t <= 0) semTempo++;
-            });
-            atualizarVereditoCapacidade(total, disponivel, qtd, semTempo, pecas);
-        });
         wireEvento('inputFilaCorte', 'change', () => { processarFilaCorte(); });
         wireEvento('baixarImagemFilaCorte', 'click', () => { baixarImagemFilaCorte(); });
         wireEvento('inputMediaCorteManual', 'change', (e) => {
@@ -328,7 +296,6 @@ window.onload = function () {
     reconstruirFiltrosPrioridades();
 
     carregarFiltrosFilaCorte();
-    carregarCapacidade();
     verificarBibliotecas();
     setTimeout(renderizarTudoImediato, 200);
     renderizarPedidosPendentes();
