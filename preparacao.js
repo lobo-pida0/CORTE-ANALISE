@@ -26,6 +26,8 @@ function obterOPsPreparacao() { try { return JSON.parse(localStorage.getItem('po
 function obterPlanosPreparacao() { try { return JSON.parse(localStorage.getItem('planoPreparacao') || '{}') || {}; } catch (e) { return {}; } }
 function salvarPlanosPreparacao(p) { try { localStorage.setItem('planoPreparacao', JSON.stringify(p)); } catch (e) { /* ignora */ } }
 function hojePreparacao() { return isoLocalPrep(new Date()); }
+let subabaPreparacao = GRUPOS_PREPARACAO[0].chave;
+function abrirSubabaPreparacao(chave) { subabaPreparacao = chave; renderizarPreparacao(); }
 const chaveOPPrep = o => `${o.ciclo || ''}-${o.op}`;
 
 // Parte pura (testável): linhas da planilha → OPs nos locais da preparação.
@@ -89,26 +91,31 @@ function renderizarPreparacao() {
     const info = $('preparacaoInfo'); if (info) info.innerText = em ? `Planilha importada em ${new Date(em).toLocaleString('pt-BR')} · ${ops.length} OPs` : 'Nenhuma planilha importada ainda.';
     if (!ops.length) { alvo.innerHTML = '<div style="padding:30px; text-align:center; color:var(--texto-secundario);">Importe a planilha POR_OP para ver as OPs da preparação.</div>'; return; }
 
+    // Prioridade (mesma da aba Prioridades): marcada pelo Destino de Produção ou manualmente; mostra o número do Destino quando houver.
+    const prioDestino = obterPrioridadesDestino(), prioManual = obterPrioridadesManuais(), prioNumero = obterNumerosPrioridade();
+    const htmlPrioridade = o => { const k = montarChaveOP(o.ciclo, o.op); if (!prioDestino.has(k) && !prioManual.has(k)) return '<span style="color:var(--texto-secundario);">—</span>'; const n = prioNumero[k]; return `<i class="fas fa-star" style="color:var(--cor-selecao);"></i>${n ? ' ' + escPrep(n) : ''}`; };
     const htmlPlano = plano.length ? `<div class="secao" style="margin-bottom:12px;"><div class="secao-header" style="background:var(--cor-despacho);"><span><i class="fas fa-clipboard-check"></i> PLANO DE HOJE (${dataBRPrep(hoje)})</span><span>${plano.length} OP(s) · ${plano.reduce((t, o) => t + (o.qtd || 0), 0).toLocaleString('pt-BR')} peças</span></div>
         <div class="secao-corpo" style="padding:0;"><table class="tabela-dados"><tbody>${plano.map(o => `<tr><td><strong>${escPrep(o.op)}</strong></td><td>ciclo ${escPrep(o.ciclo)}</td><td>${escPrep(o.grupoRotulo)} · ${escPrep(o.janelaRotulo)}</td><td>${escPrep(o.descRef)}</td><td>final.: ${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.qtd}</td><td><button class="btn btn-perigo" style="padding:2px 8px;" onclick="tirarOPDoPlanoPreparacao('${escPrep(chaveOPPrep(o))}')" title="Tirar do plano"><i class="fas fa-xmark"></i></button></td></tr>`).join('')}</tbody></table></div></div>` : '';
 
-    const htmlGrupos = GRUPOS_PREPARACAO.map(g => {
+    const gSel = GRUPOS_PREPARACAO.find(g => g.chave === subabaPreparacao) || GRUPOS_PREPARACAO[0];
+    const htmlSubabas = `<div class="subabas-programacao">${GRUPOS_PREPARACAO.map(g => { const q = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local)).length; return `<button class="subaba-btn${g === gSel ? ' ativo' : ''}" onclick="abrirSubabaPreparacao('${g.chave}')">${escPrep(g.rotulo)} (${q})</button>`; }).join('')}</div>`;
+    const htmlGrupos = [gSel].map(g => {
         const janelas = g.janelas.map(j => {
             const lista = ops.filter(o => o.local === normLocalPrep(j.local)).sort(ordenarPreparacao);
             const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0);
             const linhas = lista.map(o => `<tr${noPlano.has(chaveOPPrep(o)) ? ' style="opacity:.55;"' : ''}>
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
                 <td><strong>${escPrep(o.op)}</strong></td><td>${escPrep(o.ciclo)}</td><td>${escPrep(o.descRef)} <span style="color:var(--texto-secundario);">${escPrep(o.ref)}</span></td>
-                <td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td style="text-align:right; font-weight:bold;">${o.qtd}</td></tr>`).join('');
+                <td style="white-space:nowrap;">${htmlPrioridade(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td style="text-align:right; font-weight:bold;">${o.qtd}</td></tr>`).join('');
             return `<div style="flex:1; min-width:360px; border:1px solid var(--borda-cor); border-radius:6px; overflow:hidden;">
                 <div style="padding:6px 10px; background:rgba(128,128,128,.12); display:flex; justify-content:space-between; font-size:12px;"><strong>${escPrep(j.rotulo)}</strong><span>${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças</span></div>
-                ${lista.length ? `<div style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th>OP</th><th>Ciclo</th><th>Produto</th><th>Final.</th><th>No local</th><th style="text-align:right;">Qtd</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
+                ${lista.length ? `<div style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th>OP</th><th>Ciclo</th><th>Produto</th><th>Prior.</th><th>Final.</th><th>No local</th><th style="text-align:right;">Qtd</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
         }).join('');
         const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local));
         return `<div class="secao" style="margin-bottom:12px;"><div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-layer-group"></i> ${escPrep(g.rotulo)}</span><span>${todas.length} OP(s) · ${todas.reduce((t, o) => t + (o.qtd || 0), 0).toLocaleString('pt-BR')} peças</span></div>
             <div class="secao-corpo" style="display:flex; gap:10px; flex-wrap:wrap;">${janelas}</div></div>`;
     }).join('');
-    alvo.innerHTML = htmlPlano + htmlGrupos;
+    alvo.innerHTML = htmlSubabas + htmlPlano + htmlGrupos;
 }
 
 function salvarMarcadasNoPlanoPreparacao() {

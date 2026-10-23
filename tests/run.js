@@ -210,6 +210,10 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('janela ordena pela finalização mais próxima', await p.evaluate(() => Array.from(document.querySelectorAll('.check-prep')).slice(0, 2).map(c => c.dataset.chave)), ['211-2', '211-1']);
     await p.evaluate(() => { document.querySelectorAll('.check-prep').forEach(c => { if (['211-2', '211-3'].includes(c.dataset.chave)) c.checked = true; }); salvarMarcadasNoPlanoPreparacao(); });
     igual('plano da preparação salva as marcadas', await p.evaluate(() => obterPlanosPreparacao()[hojePreparacao()].ops.map(o => o.op).sort()), ['2', '3']);
+    await p.evaluate(() => abrirSubabaPreparacao('LOGO'));
+    igual('sub-aba mostra só o grupo escolhido', await p.evaluate(() => [/Silk/.test(document.getElementById('preparacaoConteudo').innerText), document.querySelectorAll('.check-prep').length]), [true, 1]);
+    igual('coluna de prioridade marca OP prioritária', await p.evaluate(() => { localStorage.setItem('prioridadesDestino', JSON.stringify(['211-4'])); renderizarPreparacao(); return !!document.querySelector('#preparacaoConteudo .fa-star'); }), true);
+    await p.evaluate(() => abrirSubabaPreparacao('SUP'));
     igual('plano mostra grupo e janela', await p.evaluate(() => /Gola e punho/.test(document.getElementById('preparacaoConteudo').innerText)), true);
     await p.evaluate(() => tirarOPDoPlanoPreparacao('211-3'));
     igual('tirar do plano remove só a OP', await p.evaluate(() => obterPlanosPreparacao()[hojePreparacao()].ops.map(o => o.op)), ['2']);
