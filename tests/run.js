@@ -198,6 +198,22 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('local externo (AGRUP CORTE EXTERNO) não vira etapa CORTE na sincronização', await p.evaluate(() => [bancoDadosOPs.some(o => o.id === '7001' && o.etapa === 7), bancoDadosOPs.some(o => o.id === '7002')]), [true, false]);
   }
   igual('sincronização lê referência e matéria-prima pelo título (colunas mudaram de lugar)', await p.evaluate(() => { const o = bancoDadosOPs.find(x => x.id === '7001'); return [o.referencia, o.codigoMP]; }), ['SEGP031', '1005989']);
+  {   // aba PREPARAÇÃO: janelas por local, ordem por finalização, plano do dia
+    const cab = 'Emp;Descrição Local;Ciclo;OP;Descrição Referência;Qt OP Local;Data Finalização;Dias Local\n';
+    const lin = (loc, op, qtd, fin, dias) => `1;${loc};211;${op};CORTE CALCA X;${qtd};${fin};${dias}\n`;
+    const fp = path.join(os.tmpdir(), 'corte-pro-prep.csv');
+    fs.writeFileSync(fp, cab + lin('PNP PREP PARTES SUP', '1', 10, '2026-11-05', 3) + lin('PNP PREP PARTES SUP', '2', 20, '2026-11-01', 1) + lin('PNP PREP GOLA E PUNHO', '3', 5, '2026-11-02', 2) + lin('PNP SILK INTERNO', '4', 7, '', 9) + lin('PNP DISTRIBUICAO INT', '5', 9, '2026-11-03', 1) + lin('PNP CORTE', '6', 99, '2026-11-03', 1));
+    await p.setInputFiles('#inputPorOPPreparacao', fp);
+    await p.evaluate(() => { processarPorOPPreparacao(); }); await p.waitForTimeout(800);
+    igual('preparação guarda só as OPs dos locais da preparação', await p.evaluate(() => obterOPsPreparacao().map(o => o.op).sort()), ['1', '2', '3', '4', '5']);
+    await p.evaluate(() => { abrirAba(null, 'aba-preparacao'); renderizarPreparacao(); });
+    igual('janela ordena pela finalização mais próxima', await p.evaluate(() => Array.from(document.querySelectorAll('.check-prep')).slice(0, 2).map(c => c.dataset.chave)), ['211-2', '211-1']);
+    await p.evaluate(() => { document.querySelectorAll('.check-prep').forEach(c => { if (['211-2', '211-3'].includes(c.dataset.chave)) c.checked = true; }); salvarMarcadasNoPlanoPreparacao(); });
+    igual('plano da preparação salva as marcadas', await p.evaluate(() => obterPlanosPreparacao()[hojePreparacao()].ops.map(o => o.op).sort()), ['2', '3']);
+    igual('plano mostra grupo e janela', await p.evaluate(() => /Gola e punho/.test(document.getElementById('preparacaoConteudo').innerText)), true);
+    await p.evaluate(() => tirarOPDoPlanoPreparacao('211-3'));
+    igual('tirar do plano remove só a OP', await p.evaluate(() => obterPlanosPreparacao()[hojePreparacao()].ops.map(o => o.op)), ['2']);
+  }
   {   // sincronização no layout novo (sem T.E./Dublado; colunas deslocadas) — tudo lido pelo título
     const cab = ['CHAVE','Sequencia','DT.REVIS.','DESCRIÇÃO','Ciclo','Num. Op','Qtde Peças','Liberação pcp','Local','Local atual','Dt corte Programada','Dias local','CODIGO M.P','DESCRIÇÃO M.P','REFERENCIA','PRODUTO'];
     const lin = (op, loc) => ['x','1','','CORTE CALCA NOVA','211', op, '33','2026-01-01','GILBERTO CORTE/ INT', loc,'','4','1005990','TECIDO Y','HSTC031','CALCA'].join(';');

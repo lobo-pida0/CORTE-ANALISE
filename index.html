@@ -286,6 +286,7 @@
         <button id="abrirAba-aba-kpi" class="tab-btn">KPI</button>
         <button id="abrirAba-aba-seq-costura" class="tab-btn">SEQUÊNCIA</button>
         <button id="abrirAba-aba-urgencias" class="tab-btn">META CORTE</button>
+        <button id="abrirAba-aba-preparacao" class="tab-btn somente-admin tambem-usuario">PREPARAÇÃO</button>
         <div class="dropdown-container">
             <button id="btnMenuMaisAbas" class="tab-btn">MAIS <i class="fas fa-caret-down" style="font-size:10px; margin-left:4px;"></i></button>
             <div id="menuMaisAbas" class="dropdown-menu">
@@ -1009,6 +1010,19 @@
         </div>
     </div>
 
+    <div id="aba-preparacao" class="aba-conteudo">
+        <div class="secao" style="margin-bottom:12px;">
+            <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-boxes-packing"></i> PREPARAÇÃO</span><span id="preparacaoInfo"></span></div>
+            <div class="secao-corpo" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <label class="btn somente-admin tambem-usuario" style="background:#35505C; color:white; cursor:pointer; margin:0;"><i class="fas fa-file-excel"></i> IMPORTAR POR_OP
+                    <input id="inputPorOPPreparacao" type="file" accept=".xlsx, .xls" style="display:none;"></label>
+                <button id="btnSalvarPlanoPreparacao" class="btn somente-admin tambem-usuario"><i class="fas fa-clipboard-check"></i> SALVAR NO PLANO</button>
+                <span style="font-size:11px; color:var(--texto-secundario);">Marque as OPs de cada janela e salve: elas entram no plano de hoje. Ordem: finalização mais próxima primeiro.</span>
+            </div>
+        </div>
+        <div id="preparacaoConteudo"></div>
+    </div>
+
     <div id="aba-producao-grupo" class="aba-conteudo">
         <div class="secao">
             <div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-layer-group"></i> PRODUÇÃO POR GRUPO — COSTURA</span></div>
@@ -1066,6 +1080,7 @@
         <script src="costura.js"></script>
         <script src="plano-costura.js"></script>
         <script src="producao-grupo.js"></script>
+        <script src="preparacao.js"></script>
         <script src="kpi.js"></script>
         <script src="eficiencia-costura.js"></script>
         <script src="kpi-detalhe.js"></script>
