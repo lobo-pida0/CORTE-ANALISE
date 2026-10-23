@@ -1344,3 +1344,7 @@ body.dark-mode #efCosturaCorpo tr.ef-dia-total td {
     border-bottom-color: #6B5A2E;
 }
 body.dark-mode #efCosturaCorpo tr.ef-dia-total td:first-child { box-shadow: inset 5px 0 0 #D4A537; }
+
+/* Preparação: na impressão a janela sai inteira (sem a rolagem interna da tela) */
+.prep-sem-limite { max-height: none !important; overflow: visible !important; }
+@media print { #areaImpressaoGenerica table th.prep-qtd:last-child, #areaImpressaoGenerica table td.prep-qtd:last-child { display: table-cell !important; } }

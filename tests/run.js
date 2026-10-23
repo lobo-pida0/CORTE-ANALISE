@@ -214,6 +214,11 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('sub-aba mostra só o grupo escolhido', await p.evaluate(() => [/Silk/.test(document.getElementById('preparacaoConteudo').innerText), document.querySelectorAll('.check-prep').length]), [true, 1]);
     igual('coluna mês destino mostra o mês da OP', await p.evaluate(() => { localStorage.setItem('opsMesDestino', JSON.stringify({ '211-4': '2026-11' })); renderizarPreparacao(); return /NOV\/2026/.test(document.getElementById('preparacaoConteudo').innerText); }), true);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
+    {   // impressão de uma janela só, só com as marcadas
+      await p.evaluate(() => { abrirSubabaPreparacao('SUP'); window.print = () => { window.dispatchEvent(new Event('beforeprint')); }; });
+      const r = await p.evaluate(() => { const j = document.getElementById('prepJanela-SUP-0'); j.querySelectorAll('.check-prep').forEach(c => { c.checked = c.dataset.chave === '211-1'; }); imprimirJanelaPreparacao('prepJanela-SUP-0'); const a = document.getElementById('areaImpressaoGenerica'); const tr = [...a.querySelectorAll('tbody tr')]; const out = { janela: /Partes superiores/.test(a.innerText), outra: /Gola e punho/.test(a.innerText), escondidas: tr.filter(x => x.classList.contains('imprimir-esconder')).length, total: tr.length }; window.dispatchEvent(new Event('afterprint')); return out; });
+      igual('imprimir janela: só a janela escolhida, só as marcadas', r, { janela: true, outra: false, escondidas: 1, total: 2 });
+    }
     igual('plano mostra grupo e janela', await p.evaluate(() => /Gola e punho/.test(document.getElementById('preparacaoConteudo').innerText)), true);
     await p.evaluate(() => tirarOPDoPlanoPreparacao('211-3'));
     igual('tirar do plano remove só a OP', await p.evaluate(() => obterPlanosPreparacao()[hojePreparacao()].ops.map(o => o.op)), ['2']);

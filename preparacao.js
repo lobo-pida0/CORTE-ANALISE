@@ -108,10 +108,10 @@ function renderizarPreparacao() {
             const linhas = lista.map(o => `<tr${noPlano.has(chaveOPPrep(o)) ? ' style="opacity:.55;"' : ''}>
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
                 <td><strong>${escPrep(o.op)}</strong></td><td>${escPrep(o.ciclo)}</td><td>${escPrep(o.descRef)} <span style="color:var(--texto-secundario);">${escPrep(o.ref)}</span></td>
-                <td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td style="text-align:right; font-weight:bold;">${o.qtd}</td></tr>`).join('');
-            return `<div style="border:1px solid ${cor}; border-left:6px solid ${cor}; border-radius:6px; overflow:hidden; min-width:0;">
-                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças</span></div>
-                ${lista.length ? `<div style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th>OP</th><th>Ciclo</th><th>Produto</th><th>Mês destino</th><th>Final.</th><th>No local</th><th style="text-align:right;">Qtd</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
+                <td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td></tr>`).join('');
+            return `<div id="prepJanela-${g.chave}-${ij}" style="border:1px solid ${cor}; border-left:6px solid ${cor}; border-radius:6px; overflow:hidden; min-width:0;">
+                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
+                ${lista.length ? `<div class="prep-rolagem" style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th>OP</th><th>Ciclo</th><th>Produto</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
         }).join('');
         const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local));
         return `<div class="secao" style="margin-bottom:12px;"><div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-layer-group"></i> ${escPrep(g.rotulo)}</span><span>${todas.length} OP(s) · ${todas.reduce((t, o) => t + (o.qtd || 0), 0).toLocaleString('pt-BR')} peças</span></div>
@@ -140,3 +140,16 @@ function tirarOPDoPlanoPreparacao(chave) {
     if (planos[hoje]) { planos[hoje].ops = planos[hoje].ops.filter(o => chaveOPPrep(o) !== chave); if (!planos[hoje].ops.length) delete planos[hoje]; }
     salvarPlanosPreparacao(planos); renderizarPreparacao();
 }
+
+// Imprime só UMA janela: esconde as OPs não marcadas (se alguma estiver marcada), o botão e a coluna dos checkboxes, e usa o
+// mesmo mecanismo de impressão das outras abas (imprimirSecao → área de impressão isolada).
+function imprimirJanelaPreparacao(idJanela) {
+    const el = document.getElementById(idJanela); if (!el) return;
+    const checks = [...el.querySelectorAll('.check-prep')], tem = checks.some(c => c.checked);
+    checks.forEach(c => { const tr = c.closest('tr'); if (tr && tem && !c.checked) tr.classList.add('imprimir-esconder'); });
+    el.querySelectorAll('button').forEach(b => b.classList.add('imprimir-esconder'));
+    el.querySelectorAll('tr').forEach(tr => { const c = tr.firstElementChild; if (c) c.classList.add('imprimir-esconder'); });   // coluna dos checkboxes
+    el.querySelectorAll('.prep-rolagem').forEach(d => d.classList.add('prep-sem-limite'));
+    imprimirSecao(idJanela);
+}
+window.addEventListener('afterprint', () => { document.querySelectorAll('.prep-sem-limite').forEach(d => d.classList.remove('prep-sem-limite')); });
