@@ -239,12 +239,13 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   }
   {   // sincronização no layout novo (sem T.E./Dublado; colunas deslocadas) — tudo lido pelo título
     const cab = ['CHAVE','Sequencia','DT.REVIS.','DESCRIÇÃO','Ciclo','Num. Op','Qtde Peças','Liberação pcp','Local','Local atual','Dt corte Programada','Dias local','CODIGO M.P','DESCRIÇÃO M.P','REFERENCIA','PRODUTO','Tipo'];
-    const lin = (op, loc) => ['x','1','','CORTE CALCA NOVA','211', op, '33','2026-01-01','GILBERTO CORTE/ INT', loc,'','4','1005990','TECIDO Y','HSTC031','CALCA','PEDIDO'].join(';');
+    const lin = (op, loc, tp = 'PEDIDO') => ['x','1','','CORTE CALCA NOVA','211', op, '33','2026-01-01','GILBERTO CORTE/ INT', loc,'','4','1005990','TECIDO Y','HSTC031','CALCA', tp].join(';');
     const f3 = path.join(os.tmpdir(), 'corte-pro-sinc-novo.csv');
-    fs.writeFileSync(f3, 'BANDA;;;;;;;;;;\n' + cab.join(';') + '\n' + lin('7101', 'PNP ENFESTO') + '\n');
+    fs.writeFileSync(f3, 'BANDA;;;;;;;;;;\n' + cab.join(';') + '\n' + lin('7101', 'PNP ENFESTO') + '\n' + lin('7102', 'PNP PPCP - PROGRAMACAO') + '\n' + lin('7103', 'PNP AGUARD MATERIA PRIMA', 'REPOSICAO') + '\n');
     await p.setInputFiles('#inputExcel', f3);
     await p.evaluate(() => { processarExcel(); }); await p.waitForTimeout(800);
     igual('sincronização lê o layout novo pelo título (sem T.E./Dublado)', await p.evaluate(() => { const o = bancoDadosOPs.find(x => x.id === '7101'); return o ? [o.ciclo, o.qtd, o.etapa, o.localDestino, o.diasLocal, o.referencia, o.tempoCorte, o.temDublado] : null; }), ['211', 33, 6, 'GILBERTO CORTE/ INT', 4, 'HSTC031', 0, false]);
+    igual('agrupar OPs por referência mostra o tipo (inclui aguardando matéria-prima)', await p.evaluate(() => { cacheGruposPorReferencia = null; abrirAgrupamentoReferencia(); const txt = document.body.innerText; return [/REPOSICAO/.test(txt), /PEDIDO/.test(txt)]; }), [true, true]);
     igual('sincronização guarda o tipo (reposição/pedido) e a Programação mostra', await p.evaluate(() => { const o = bancoDadosOPs.find(x => x.id === '7101'); etapasSelecionadas = [6]; renderizarTudoImediato(); return [o.tipoOP, /PEDIDO/.test(document.getElementById('listaDespacho').innerText)]; }), ['PEDIDO', true]);
   }
   {   // aba META CORTE (paletó/blazer)

@@ -422,6 +422,7 @@ function processarExcel() {
                         referencia: r[colunasSinc.idxRefSinc] ? String(r[colunasSinc.idxRefSinc]).trim().toUpperCase() : "",
                         produto: lerProduto(r),
                         sobMedida: mapaSBM.has(String(dado(r, C.op)).trim()),
+                        tipoOP: normalizarTipoOP(dado(r, C.tipoOP)),
                         analiseMP: loc.includes("ANALISE")
                     });
                     continue; // não passa pela lógica de etapa 0-7 abaixo

@@ -50,6 +50,7 @@ function renderizarAgrupamentoReferencia(grupos) {
                 <td><strong>${op.id}</strong></td>
                 <td>${op.ciclo}</td>
                 <td><span class="pill" style="background:${op.etapaRotulo ? op.etapaCor : (op.etapa === 0 ? 'var(--cor-fila)' : 'var(--cor-sugestao)')};">${op.etapaRotulo || nomesEtapas[op.etapa]}</span></td>
+                <td>${op.tipoOP ? `<span class="pill" style="background:${/REPOS/.test(op.tipoOP) ? 'var(--cor-alerta)' : 'var(--cor-primaria)'}; color:white;">${op.tipoOP}</span>` : '-'}</td>
                 <td style="text-align:right;">${op.qtd}</td>
                 <td>${op.codigoMP || '-'}</td>
                 <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
@@ -62,7 +63,7 @@ function renderizarAgrupamentoReferencia(grupos) {
                     <span style="font-size:11px; color:var(--texto-secundario);">${ops.length} OPs · ${totalPecas} peças no total</span>
                 </div>
                 <table class="tabela-dados">
-                    <thead><tr><th>OP</th><th>CICLO</th><th>ETAPA</th><th style="text-align:right;">PEÇAS</th><th>MATÉRIA-PRIMA</th><th style="text-align:right;">DIAS PARADO</th></tr></thead>
+                    <thead><tr><th>OP</th><th>CICLO</th><th>ETAPA</th><th>TIPO</th><th style="text-align:right;">PEÇAS</th><th>MATÉRIA-PRIMA</th><th style="text-align:right;">DIAS PARADO</th></tr></thead>
                     <tbody>${linhas}</tbody>
                 </table>
             </div>
@@ -91,7 +92,7 @@ function renderizarAgrupamentoReferencia(grupos) {
 function copiarAgrupamentoReferencia() {
     if (!ultimoAgrupamentoReferenciaGerado || !ultimoAgrupamentoReferenciaGerado.length) return;
     const texto = ultimoAgrupamentoReferenciaGerado.map(([ref, ops]) =>
-        `${ref} (${ops.length} OPs):\n` + ops.map(op => `  - OP ${op.id} | Ciclo ${op.ciclo} | ${op.etapaRotulo || nomesEtapas[op.etapa]} | ${op.qtd} pçs | MP ${op.codigoMP || '-'} | ${op.diasLocal || 0}d parado`).join('\n')
+        `${ref} (${ops.length} OPs):\n` + ops.map(op => `  - OP ${op.id} | Ciclo ${op.ciclo} | ${op.etapaRotulo || nomesEtapas[op.etapa]} | ${op.tipoOP ? op.tipoOP + ' | ' : ''}${op.qtd} pçs | MP ${op.codigoMP || '-'} | ${op.diasLocal || 0}d parado`).join('\n')
     ).join('\n\n');
     navigator.clipboard.writeText(texto).then(() => showToast("<i class='fas fa-check'></i> Agrupamento copiado!"));
 }
