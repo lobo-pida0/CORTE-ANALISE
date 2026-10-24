@@ -881,6 +881,7 @@ function processarDestino() {
             reconstruirFiltrosPrioridades();
             renderizarTudoImediato();
             registrarAtualizacao('destino'); atualizarIndicadoresDeAtualizacao();
+            publicarDestinoNuvem().then(ok => { if (!ok && supabaseClient && sessaoAdminAtual) showToast('<i class="fas fa-triangle-exclamation"></i> O Destino foi importado aqui, mas não consegui publicar na nuvem — os outros usuários não vão ver ainda.', true, 6000); });
             showToast(`<i class="fas fa-check-double"></i> Destino de ${mes} importado! ${prioritarias.size} OP(s) com prioridade${mudou > 0 ? ` — ${mudou} OP(s) já na tela foram atualizadas agora` : ''}.${linhasAmbiguasSemCiclo ? ` ⚠ ${linhasAmbiguasSemCiclo} linha(s) sem ciclo foram puladas: o número existe em mais de um ciclo.` : ''}${idxCiclo === -1 ? ' ⚠ A planilha não tem a coluna Ciclo.' : ''}`);
         } catch (err) {
             console.error('Erro ao processar destino:', err);
@@ -946,6 +947,48 @@ function migrarPrioridadesParaChaveComposta() {
     if (convertidas.size || descartadas.size) {
         showToast(`<i class="fas fa-key"></i> Prioridades atualizadas pro novo formato (OP + ciclo): ${convertidas.size} OP(s) mantida(s)${descartadas.size ? `, ${descartadas.size} descartada(s) (já saíram da Sincronização ou o número existe em 2 ciclos — reimporte o Destino se faltar alguma)` : ''}.`, false, 9000);
     }
+}
+
+// =========================================================================
+// ☁️ DESTINO NA NUVEM — o que a importação do Destino de Produção grava (estrelas, mês, número, local) fica numa linha só
+// ('global' da tabela destino_producao), pra TODOS verem o mesmo (a aba Preparação lê o mês daqui). Quem importa publica; quem abre
+// o sistema baixa se a nuvem estiver mais nova que a cópia local. Se a publicação falhar (sem internet), fica "pendente" e a cópia
+// local não é sobrescrita até conseguir publicar.
+// =========================================================================
+function dadosDestinoLocal() { return { prioridades: [...obterPrioridadesDestino()], meses: obterOpsMesDestino(), numeros: obterNumerosPrioridade(), locais: obterLocaisDestinoPorOP() }; }
+async function publicarDestinoNuvem() {
+    if (!supabaseClient || !sessaoAdminAtual) return false;
+    try {
+        const agora = new Date().toISOString(), por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase();
+        localStorage.setItem('destinoPendentePublicar', '1');
+        const { error } = await supabaseClient.from('destino_producao').upsert({ id: 'global', dados: dadosDestinoLocal(), atualizado_em: agora, atualizado_por: por }, { onConflict: 'id' });
+        if (error) throw error;
+        localStorage.setItem('destinoNuvemEm', agora); localStorage.removeItem('destinoPendentePublicar');
+        return true;
+    } catch (e) { registrarLogDebug('error', ['Falha ao publicar o Destino na nuvem: ' + e.message]); return false; }
+}
+async function carregarDestinoDaNuvem() {
+    if (!supabaseClient) return;
+    try {
+        if (localStorage.getItem('destinoPendentePublicar') === '1') { if (sessaoAdminAtual) await publicarDestinoNuvem(); return; }
+        const { data, error } = await supabaseClient.from('destino_producao').select('dados, atualizado_em').eq('id', 'global').maybeSingle();
+        if (error) throw error;
+        if (!data) { if (sessaoAdminAtual && Object.keys(obterOpsMesDestino()).length) await publicarDestinoNuvem(); return; }   // nuvem vazia: sobe o que já existe aqui
+        if (data.atualizado_em === localStorage.getItem('destinoNuvemEm')) return;                                                  // já está igual
+        const d = data.dados || {};
+        localStorage.setItem('prioridadesDestino', JSON.stringify(d.prioridades || []));
+        localStorage.setItem('opsMesDestino', JSON.stringify(d.meses || {}));
+        localStorage.setItem('numerosPrioridade', JSON.stringify(d.numeros || {}));
+        localStorage.setItem('locaisDestinoPorOP', JSON.stringify(d.locais || {}));
+        localStorage.setItem('destinoNuvemEm', data.atualizado_em);
+        if (papelUsuarioAtual === 'admin') {   // admin trabalha com a Sincronização local: reaplica nas OPs da tela (visitante/usuário já recebem tudo pronto das OPs da nuvem)
+            const pri = obterPrioridadesDestino(), man = obterPrioridadesManuais(); let mudou = 0;
+            bancoDadosOPs.forEach(op => { const k = chaveDaOP(op), p = pri.has(k) || man.has(k), m = (d.meses || {})[k] || null, n = (d.numeros || {})[k] || null, l = (d.locais || {})[k] || null;
+                if (op.prioridade !== p || op.mesDestino !== m || op.numeroPrioridade !== n || op.localDestinoDetalhado !== l) { op.prioridade = p; op.mesDestino = m; op.numeroPrioridade = n; op.localDestinoDetalhado = l; mudou++; } });
+            if (mudou) localStorage.setItem('bancoOPs', JSON.stringify(bancoDadosOPs));
+        }
+        try { renderizarFiltroMesDestino(); reconstruirFiltrosPrioridades(); renderizarTudoImediato(); renderizarPreparacao(); } catch (e2) { /* tela ainda não montada */ }
+    } catch (e) { registrarLogDebug('error', ['Falha ao carregar o Destino da nuvem: ' + e.message]); }
 }
 
 function obterPrioridadesDestino() {

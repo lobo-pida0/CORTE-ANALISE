@@ -219,6 +219,20 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       const r = await p.evaluate(() => { const j = document.getElementById('prepJanela-SUP-0'); j.querySelectorAll('.check-prep').forEach(c => { c.checked = c.dataset.chave === '211-1'; }); imprimirJanelaPreparacao('prepJanela-SUP-0'); const a = document.getElementById('areaImpressaoGenerica'); const tr = [...a.querySelectorAll('tbody tr')]; const out = { janela: /Partes superiores/.test(a.innerText), outra: /Gola e punho/.test(a.innerText), escondidas: tr.filter(x => x.classList.contains('imprimir-esconder')).length, total: tr.length }; window.dispatchEvent(new Event('afterprint')); return out; });
       igual('imprimir janela: só a janela escolhida, só as marcadas', r, { janela: true, outra: false, escondidas: 1, total: 2 });
     }
+    {   // Destino compartilhado: quem importa publica, os outros baixam
+      const r = await p.evaluate(async () => {
+        let linha = null; const velho = supabaseClient, velhaSessao = sessaoAdminAtual, velhoPapel = papelUsuarioAtual;
+        supabaseClient = { from: () => ({ upsert: row => { linha = row; return Promise.resolve({ error: null }); }, select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: linha, error: null }) }) }) }) };
+        sessaoAdminAtual = { user: { email: 'admin@x.com' } }; papelUsuarioAtual = 'admin';
+        localStorage.setItem('opsMesDestino', JSON.stringify({ '211-4': '2026-12' })); localStorage.setItem('prioridadesDestino', JSON.stringify(['211-4']));
+        const pub = await publicarDestinoNuvem();
+        localStorage.removeItem('opsMesDestino'); localStorage.removeItem('prioridadesDestino'); localStorage.removeItem('destinoNuvemEm');   // "outro computador"
+        papelUsuarioAtual = 'usuario'; await carregarDestinoDaNuvem();
+        const out = { pub, linha: linha && linha.id, mes: obterOpsMesDestino()['211-4'], prio: obterPrioridadesDestino().has('211-4') };
+        supabaseClient = velho; sessaoAdminAtual = velhaSessao; papelUsuarioAtual = velhoPapel; return out;
+      });
+      igual('Destino publicado na nuvem aparece para outro usuário', r, { pub: true, linha: 'global', mes: '2026-12', prio: true });
+    }
     igual('plano mostra grupo e janela', await p.evaluate(() => /Gola e punho/.test(document.getElementById('preparacaoConteudo').innerText)), true);
     await p.evaluate(() => tirarOPDoPlanoPreparacao('211-3'));
     igual('tirar do plano remove só a OP', await p.evaluate(() => obterPlanosPreparacao()[hojePreparacao()].ops.map(o => o.op)), ['2']);

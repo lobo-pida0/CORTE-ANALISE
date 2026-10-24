@@ -8,7 +8,7 @@
 // =========================================================================
 const TABELAS_BACKUP_NUVEM = ['ops', 'pedidos', 'grade', 'prioridade_clientes', 'localizacao_completa', 'pedidos_todos', 'movimentacoes_kpi',
     'ops_manuais_prioridade', 'por_op_costura_detalhado', 'urgencias_estado', 'local_producao_por_op', 'metadados_sistema',
-    'eficiencia_costura_dias', 'ops_removidas_seq_costura', 'ordem_manual_enfesto'];
+    'eficiencia_costura_dias', 'ops_removidas_seq_costura', 'ordem_manual_enfesto', 'destino_producao'];
 const DIAS_ENTRE_BACKUPS_NUVEM = 7;
 const QTD_BACKUPS_NUVEM_GUARDADOS = 8;
 
