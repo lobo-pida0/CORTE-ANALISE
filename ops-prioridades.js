@@ -331,7 +331,7 @@ function detectarColunasProdutoELaser(rows) {
 }
 
 // "REPOSIÇÃO" ou "PEDIDO" (coluna Z da Sincronização) — qualquer outro texto é guardado como veio, em maiúsculas.
-function normalizarTipoOP(v) { return v === undefined || v === null ? '' : String(v).trim().toUpperCase(); }
+function normalizarTipoOP(v) { const t = v === undefined || v === null ? '' : String(v).trim().toUpperCase(); return t === '0' || t === '#N/D' || t === '#N/A' ? '' : t; }
 
 function processarExcel() {
     if (!exigirAdmin('sincronizar a planilha')) return;
