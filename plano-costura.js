@@ -75,7 +75,7 @@ function htmlFinalizacaoPlanoCostura(o, atuais) {
 
 function compararPlanoCostura(dia) {
     const plano = obterPlanosCostura()[dia]; if (!plano) return null;
-    const dataConf = proximoDiaUtilPlanoCostura(dia);
+    const dataConf = dia;   // conferido com a saída do PRÓPRIO dia do plano (antes era o próximo dia útil)
     const ef = obterEficienciaCostura()[dataConf];
     if (!ef) return { estado: 'aguardando', dataConf, plano };
     if (!ef.opsMov) return { estado: 'semDetalhe', dataConf, plano };
@@ -159,7 +159,7 @@ function renderizarPlanoCostura() {
     if ($('planoCosturaData') && !$('planoCosturaData').value) $('planoCosturaData').value = dia;
     const plano = obterPlanosCostura()[dia];
     const atuais = mapaFinAtualPlanoCostura();
-    $('planoCosturaAviso').innerHTML = `<i class="fas fa-circle-info"></i> Para montar o plano, marque as OPs na aba <strong>SEQUÊNCIA</strong> e clique em <strong>SALVAR NO PLANO</strong> (ao lado de IMPRIMIR; salva no plano de hoje). O plano de <strong>${formatarChaveDataBR(dia)}</strong> será conferido com o que saiu da costura em <strong>${formatarChaveDataBR(proximoDiaUtilPlanoCostura(dia))}</strong> (próximo dia útil), quando você importar o relatório de movimentação em KPI → Eficiência da costura. Vale a saída completa ou parcial.`;
+    $('planoCosturaAviso').innerHTML = `<i class="fas fa-circle-info"></i> Para montar o plano, marque as OPs na aba <strong>SEQUÊNCIA</strong> e clique em <strong>SALVAR NO PLANO</strong> (ao lado de IMPRIMIR; salva no plano de hoje). O plano de <strong>${formatarChaveDataBR(dia)}</strong> será conferido com o que saiu da costura <strong>nesse mesmo dia</strong>, quando você importar o relatório de movimentação em KPI → Eficiência da costura. Vale a saída completa ou parcial.`;
     $('planoCosturaContador').innerHTML = plano ? `<strong>${plano.ops.length}</strong> OP(s) · <strong>${fmt(plano.ops.reduce((t, o) => t + o.qtd, 0))}</strong> peças no plano` + (plano.cap ? ` · ${htmlCapacidadePlanoCostura(plano)}` : '') : '';
     $('planoCosturaStatusDia').innerHTML = '';
     if (!plano) {

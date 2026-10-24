@@ -287,12 +287,12 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     return [rp.nivel, rp.faltam, rp.candidatos.filter(c => c.pegar).map(c => c.op), bn.style.display, /baixando|CRÍTICA/.test(bn.innerText)];
   }), ['vermelho', 1430, ['10', '13'], 'block', true]);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
-  await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); if (h !== '2026-10-23') { pl['2026-10-23'] = pl[h]; delete pl[h]; } salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-23'; renderizarPlanoCostura(); });
+  await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); if (h !== '2026-10-26') { pl['2026-10-26'] = pl[h]; delete pl[h]; } salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-26'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
   await p.waitForTimeout(300);
-  igual('plano salvo com 3 OPs / 240 peças', await p.evaluate(() => { const pl = obterPlanosCostura()['2026-10-23']; return pl && [pl.ops.length, pl.ops.reduce((t, o) => t + o.qtd, 0)]; }), [3, 240]);
-  igual('próximo dia útil de sexta é segunda', await p.evaluate(() => proximoDiaUtilPlanoCostura('2026-10-23')), '2026-10-26');
-  igual('sem relatório do dia, fica aguardando', await p.evaluate(() => compararPlanoCostura('2026-10-23').estado), 'aguardando');
+  igual('plano salvo com 3 OPs / 240 peças', await p.evaluate(() => { const pl = obterPlanosCostura()['2026-10-26']; return pl && [pl.ops.length, pl.ops.reduce((t, o) => t + o.qtd, 0)]; }), [3, 240]);
+  igual('plano é conferido com a saída do próprio dia', await p.evaluate(() => compararPlanoCostura('2026-10-26').dataConf), '2026-10-26');
+  igual('sem relatório do dia, fica aguardando', await p.evaluate(() => compararPlanoCostura('2026-10-26').estado), 'aguardando');
   const CABEF = 'Empresa;Grupo Local;Ds. Descricao;Tp Produto;Cd Local;Ds Local;Ref.;Ciclo;Op;Dt. Movimento;Qt. Movimento;Cod. Tempo;Cod. Tempolocal;Tipo Mov\n';
   const lef = (ciclo, op, qtd, dt) => `1;x;desc;CALCA;1;PNP COST INF CALCA;REF;${ciclo};${op};${dt};${qtd};1,5;1,5;NORMAL\n`;
   const fef = path.join(os.tmpdir(), 'corte-pro-ef.csv');
@@ -313,7 +313,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     visaoProducaoGrupo = 'semana'; ancoraProducaoGrupo = '2026-10-26'; abrirAba(null, 'aba-producao-grupo'); renderizarProducaoGrupo();
     return [r.grupos['CALÇA'].p, /CALÇA/.test(document.getElementById('producaoGrupoConteudo').innerText), /TOTAL/.test(document.getElementById('producaoGrupoConteudo').innerText)];
   }), [240, true, true]);
-  const conf = await p.evaluate(() => { const r = compararPlanoCostura('2026-10-23'); return { estado: r.estado, st: r.itens.map(x => [x.op, x.status, x.saiu]).sort(), pct: r.pct, cump: r.pecasCumpridas, prog: r.pecasProgramadas, extras: r.extras.map(x => [x.chave, x.saiu]) }; });
+  const conf = await p.evaluate(() => { const r = compararPlanoCostura('2026-10-26'); return { estado: r.estado, st: r.itens.map(x => [x.op, x.status, x.saiu]).sort(), pct: r.pct, cump: r.pecasCumpridas, prog: r.pecasProgramadas, extras: r.extras.map(x => [x.chave, x.saiu]) }; });
   igual('conferência: completo, parcial e não saiu (saída em outro dia não vale)', [conf.estado, conf.st], ['conferido', [['101', 'completa', 100], ['102', 'parcial', 30], ['103', 'nao', 0]]]);
   igual('percentual cumprido (130 de 240)', [conf.cump, conf.prog, conf.pct], [130, 240, 54]);
   igual('saiu sem estar no plano', conf.extras, [['211-999', 50]]);
