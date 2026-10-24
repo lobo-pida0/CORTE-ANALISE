@@ -318,6 +318,7 @@ function detectarColunasProdutoELaser(rows) {
     const cabNz = Array.from(rows[idxLinhaCab] || [], nz);
     const col = (...nomes) => { for (const n of nomes) { const i = cabNz.indexOf(n); if (i !== -1) return i; } return -1; };
     const cols = {
+        tipoOP: (() => { let i = cabNz.findIndex(c => c.includes('REPOS') || c === 'TIPO' || c === 'TIPO OP' || c.includes('REPOSICAO OU PEDIDO')); if (i === -1 && cabNz.includes('CHAVE')) i = 25; return i; })(),   // reposição x pedido: pelo título; senão a coluna Z
         desc: col('DESCRICAO'), ciclo: col('CICLO'), op: col('NUM OP', 'OP'), qtd: (i => i !== -1 ? i : cabNz.findIndex(c => c.startsWith('QTDE')))(col('QTDE PECAS')),
         tempoCorte: col('T E MIN'), dataInclusao: col('DATA DE INCLUSAO OP'), localDestino: col('LOCAL'), temDublado: col('DUBLADO'),
         localAtual: col('LOCAL ATUAL'), dataCorte: col('DT CORTE PROGRAMADA'), diasLocal: col('DIAS LOCAL'),
@@ -328,6 +329,9 @@ function detectarColunasProdutoELaser(rows) {
         letraProduto: idxProduto !== -1 ? letra(idxProduto) : null,
     };
 }
+
+// "REPOSIÇÃO" ou "PEDIDO" (coluna Z da Sincronização) — qualquer outro texto é guardado como veio, em maiúsculas.
+function normalizarTipoOP(v) { return v === undefined || v === null ? '' : String(v).trim().toUpperCase(); }
 
 function processarExcel() {
     if (!exigirAdmin('sincronizar a planilha')) return;
@@ -433,7 +437,7 @@ function processarExcel() {
                     bancoDadosOPs.push({
                         id: idOP, ciclo: String(dado(r, C.ciclo) || ""), desc: String(dado(r, C.desc) || ""),
                         qtd: parseInt(dado(r, C.qtd)) || 0, tempoCorte: parseFloat(dado(r, C.tempoCorte)) || 0,
-                        etapa: idxE, dataCorte: extrairDataExcel(dado(r, C.dataCorte)), // coluna X (antes era P/15)
+                        etapa: idxE, tipoOP: normalizarTipoOP(dado(r, C.tipoOP)), dataCorte: extrairDataExcel(dado(r, C.dataCorte)), // coluna X (antes era P/15)
                         localDestino: dado(r, C.localDestino) ? String(dado(r, C.localDestino)).trim().toUpperCase() : "N/D",
                         localExcel: dado(r, C.localAtual) ? String(dado(r, C.localAtual)).trim().toUpperCase() : "",
                         temDublado: dado(r, C.temDublado) ? String(dado(r, C.temDublado)).toUpperCase().includes("SIM") : false,

@@ -306,7 +306,7 @@ function renderizarTudoImediato() {
         if (mpOP !== loteAtual) {
             htmlTabela += `
                 <tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;">
-                    <td colspan="14" style="text-align: left; font-weight: bold; padding: 10px 15px; border-radius: 4px;">
+                    <td colspan="15" style="text-align: left; font-weight: bold; padding: 10px 15px; border-radius: 4px;">
                         <i class="fas fa-layer-group" style="margin-right: 8px;"></i> LOTE MATÉRIA-PRIMA: ${mpOP} <span style="font-weight: normal; font-size: 0.9em; opacity: 0.9;">${descTexto}</span>
                     </td>
                 </tr>
@@ -337,7 +337,7 @@ function renderizarTudoImediato() {
                 <td>${o.ciclo}</td>
                 <td><strong>${o.id}</strong>${badgePedido}${badgeMP}${badgeAgrupamento}</td>
                 <td><span class="pill selo-etapa">${nomesEtapas[o.etapa]}</span>${o.laser ? ' <span class="pill selo-laser" title="Vai pra máquina de corte a laser"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
-                
+                <td>${o.tipoOP ? `<span class="pill" style="background:${/REPOS/.test(o.tipoOP) ? 'var(--cor-alerta)' : 'var(--cor-primaria)'}; color:white;">${o.tipoOP}</span>` : '—'}</td>
                 <td title="${o.descMP}"><span style="background: #eee; color: #333; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: help;">${mpOP}</span></td>
                 
                 <td>${o.localDestino}</td>
@@ -352,7 +352,7 @@ function renderizarTudoImediato() {
     });
 
     if ($('listaDespacho')) $('listaDespacho').innerHTML = dDados.length === 0
-        ? `<tr><td colspan="14" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
+        ? `<tr><td colspan="15" class="tabela-vazia"><i class="fas fa-inbox tabela-vazia-icone"></i>Nenhuma OP encontrada com os filtros atuais.</td></tr>`
         : htmlTabela;
     // =========================================================================
     filaGeralDadosGlobais = fDados; renderizarTabelaFilaGeral();
