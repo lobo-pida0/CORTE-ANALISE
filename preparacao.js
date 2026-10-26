@@ -58,6 +58,12 @@ function extrairOPsPreparacaoDasLinhas(rows) {
     return lista;
 }
 
+// Nome curto do local no balanço: a janela (ex.: "Gola e punho", "Silk").
+function nomeLocalPreparacao(local) {
+    for (const g of GRUPOS_PREPARACAO) { const j = g.janelas.find(x => normLocalPrep(x.local) === normLocalPrep(local)); if (j) return j.rotulo; }
+    return local;
+}
+
 function processarPorOPPreparacao() {
     if (!exigirAdminOuUsuario('importar a planilha da preparação')) return;
     if (!exigirBibliotecaExcel()) return;
@@ -68,10 +74,12 @@ function processarPorOPPreparacao() {
             const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
             const lista = extrairOPsPreparacaoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }));
             if (!lista.length) throw new Error('Nenhuma OP nos locais da preparação foi encontrada.');
+            const antes = obterOPsPreparacao();   // foto anterior, pro balanço
             localStorage.setItem('porOPPreparacao', JSON.stringify(lista));
             localStorage.setItem('porOPPreparacaoEm', new Date().toISOString());
             input.value = ''; renderizarPreparacao();
             showToast(`<i class="fas fa-check-double"></i> ${lista.length} OPs da preparação importadas!`);
+            if (antes.length) exibirBalancoSeqCostura(antes, lista, { titulo: 'BALANÇO DA PREPARAÇÃO', icone: 'fa-boxes-packing', setor: 'PREPARAÇÃO', nomeLocal: nomeLocalPreparacao, semHistorico: true });
         } catch (err) { alert('❌ Não foi possível processar a planilha.\n\n' + err.message); input.value = ''; }
     };
     r.readAsArrayBuffer(input.files[0]);

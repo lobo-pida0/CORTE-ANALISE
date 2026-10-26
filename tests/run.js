@@ -206,6 +206,13 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     await p.setInputFiles('#inputPorOPPreparacao', fp);
     await p.evaluate(() => { processarPorOPPreparacao(); }); await p.waitForTimeout(800);
     igual('preparação guarda só as OPs dos locais da preparação', await p.evaluate(() => obterOPsPreparacao().map(o => o.op).sort()), ['1', '2', '3', '4', '5']);
+    {   // balanço da preparação: reimporta com mudanças (1 saiu, 4 mudou de janela, 6 nova)
+      fs.writeFileSync(fp, cab + lin('PNP PREP PARTES SUP', '1', 10, '2026-11-05', 3) + lin('PNP PREP PARTES SUP', '2', 12, '2026-11-01', 1) + lin('PNP PREP GOLA E PUNHO', '3', 5, '2026-11-02', 2) + lin('PNP BORDADO INTERNO', '4', 7, '', 9) + lin('PNP DISTRIBUICAO INT', '5', 9, '2026-11-03', 1) + lin('PNP PREP PARTES INF', '8', 40, '2026-11-09', 0));
+      await p.setInputFiles('#inputPorOPPreparacao', fp); await p.waitForTimeout(800);   // o próprio evento 'change' importa
+      const b = await p.evaluate(() => { const t = document.getElementById('modalBalancoSincronizacao').innerText; return { titulo: /BALANÇO DA PREPARAÇÃO/.test(t), parcial: /saiu 8 de 20/i.test(t), novas: /NOVAS NA PREPARAÇÃO/i.test(t), local: /Silk[^\n]*Bordado/i.test(t) }; });
+      igual('reimportar a preparação mostra o balanço (parcial, nova, mudou de janela)', b, { titulo: true, parcial: true, novas: true, local: true });
+      await p.evaluate(() => fecharModais());
+    }
     await p.evaluate(() => { abrirAba(null, 'aba-preparacao'); renderizarPreparacao(); });
     igual('janela ordena pela finalização mais próxima', await p.evaluate(() => Array.from(document.querySelectorAll('.check-prep')).slice(0, 2).map(c => c.dataset.chave)), ['211-2', '211-1']);
     await p.evaluate(() => { document.querySelectorAll('.check-prep').forEach(c => { if (['211-2', '211-3'].includes(c.dataset.chave)) c.checked = true; }); salvarMarcadasNoPlanoPreparacao(); });
