@@ -298,18 +298,19 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     localStorage.setItem('porOPPaletoEmp1', JSON.stringify([
       { op: '10', ciclo: '1', local: 'PNP SEPARAR PECAS / UNIR CORPO E PTS', qtd: 600, descRef: 'BLAZER A', dataInclusao: '2026-09-01' },
       { op: '11', ciclo: '1', local: 'PNP QUAL - INSPECAO EXT', qtd: 500, descRef: 'BLAZER B' }, { op: '12', ciclo: '1', local: 'EXT COSTURA FULANO', qtd: 400, descRef: 'BLAZER C' },
-      { op: '13', ciclo: '1', local: 'PNP AGUARD BIP DISTRIBUICAO', qtd: 900, descRef: 'BLAZER D', dataInclusao: '2026-09-10' },
+      { op: '13', ciclo: '1', local: 'PNP AGUARD BIP DISTRIBUICAO', qtd: 900, descRef: 'BLAZER D', dataInclusao: '2026-09-10', localProd: 'MS' },
       { op: '14', ciclo: '1', local: 'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA', qtd: 700, descRef: 'BLAZER E' }, { op: '15', ciclo: '1', local: 'PNP BORDADO INTERNO', qtd: 300, descRef: 'BLAZER F' }]));
     renderizarElaboracaoCostura();
     const rp = calcularReposicaoPaleto(obterPorOPElab()), bn = document.getElementById('alertaReposicaoPaleto');
     return [rp.nivel, rp.faltam, rp.candidatos.filter(c => c.pegar).map(c => c.op), bn.style.display, /baixando|CRÍTICA/.test(bn.innerText)];
-  }), ['vermelho', 1430, ['10', '13'], 'block', true]);
+  }), ['vermelho', 1430, ['13', '10'], 'block', true]);
+  igual('reposição: OPs com MS no local de produção vêm primeiro e a coluna aparece', await p.evaluate(() => { const rp = calcularReposicaoPaleto(obterPorOPElab()); return [rp.candidatos[0].op, rp.candidatos[0].prod, /LOCAL DE PRODUÇÃO/.test(document.getElementById('reposicaoPaletoConteudo').innerHTML)]; }), ['13', 'MS', true]);
   igual('reposição do paletó: lê tudo que está nos locais de "já cortada" (qualquer produto) da empresa 01', await p.evaluate(() => {
-    const rows = [['Emp', 'Descrição Local', 'OP', 'Ciclo', 'Descrição Referência', 'Qt OP Local', 'Tipo Produto'],
-      [1, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 20, 211, 'CALCA X', 10, 'CALCA'], [1, 'PNP AGUARD BIP DISTRIBUICAO', 21, 211, 'BLAZER Y', 5, 'PALETO'],
+    const rows = [['Emp', 'Descrição Local', 'OP', 'Ciclo', 'Descrição Referência', 'Qt OP Local', 'Tipo Produto', 'Local Obs.'],
+      [1, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 20, 211, 'CALCA X', 10, 'CALCA', 'ms'], [1, 'PNP AGUARD BIP DISTRIBUICAO', 21, 211, 'BLAZER Y', 5, 'PALETO'],
       [1, 'PNP BORDADO INTERNO', 22, 211, 'BLAZER Z', 5, 'PALETO'], [2, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 23, 211, 'CALCA W', 5, 'CALCA']];
-    return extrairOPsPaletoEmp1DasLinhas(rows).map(o => o.op).sort();
-  }), ['20', '21']);
+    const l = extrairOPsPaletoEmp1DasLinhas(rows); return [l.map(o => o.op).sort(), l.find(o => o.op === '20').localProd];
+  }), [['20', '21'], 'MS']);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); if (h !== '2026-10-26') { pl['2026-10-26'] = pl[h]; delete pl[h]; } salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-26'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
