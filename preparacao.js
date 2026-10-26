@@ -8,7 +8,8 @@
 const GRUPOS_PREPARACAO = [
     { chave: 'SUP', rotulo: 'Preparação parte superior', janelas: [
         { local: 'PNP PREP PARTES SUP', rotulo: 'Partes superiores' }, { local: 'PNP PREP GOLA E PUNHO', rotulo: 'Gola e punho' },
-        { local: 'PNP COSTURA PROGRAMADA', rotulo: 'Costura programada' }] },
+        // (no sistema o local está escrito "PROGAMADA", sem o R — aceita as duas grafias)
+        { local: 'PNP COSTURA PROGAMADA', alias: ['PNP COSTURA PROGRAMADA'], rotulo: 'Costura programada' }] },
     { chave: 'INF', rotulo: 'Preparação parte inferior', janelas: [{ local: 'PNP PREP PARTES INF', rotulo: 'Partes inferiores' }] },
     { chave: 'LOGO', rotulo: 'Fusionadeira / logo / silk / bordado', janelas: [
         { local: 'PNP FUSIONADEIRA LOGO', rotulo: 'Fusionadeira logo' }, { local: 'PNP INSPECAO LOGO/MARCA INDIRETO', rotulo: 'Inspeção logo/marca' },
@@ -20,7 +21,8 @@ const GRUPOS_PREPARACAO = [
 ];
 const CORES_JANELAS_PREPARACAO = ['#2E86AB', '#E07A1F', '#2E9E6B', '#8E5BB5', '#C2415C', '#B8941F'];   // uma cor por janela (só quando o grupo tem mais de uma)
 const normLocalPrep = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
-const LOCAIS_PREPARACAO = new Set(GRUPOS_PREPARACAO.flatMap(g => g.janelas.map(j => normLocalPrep(j.local))));
+const LOCAIS_PREPARACAO = new Set(GRUPOS_PREPARACAO.flatMap(g => g.janelas.flatMap(j => [j.local, ...(j.alias || [])].map(normLocalPrep))));
+const CANONICO_LOCAL_PREP = new Map(GRUPOS_PREPARACAO.flatMap(g => g.janelas.flatMap(j => [j.local, ...(j.alias || [])].map(l => [normLocalPrep(l), normLocalPrep(j.local)]))));
 const escPrep = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const isoLocalPrep = d => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : null;
 
@@ -47,7 +49,8 @@ function extrairOPsPreparacaoDasLinhas(rows) {
     const lista = [];
     for (let i = iCab + 1; i < rows.length; i++) {
         const r = rows[i]; if (!r || r[ix.op] === undefined || r[ix.op] === null || r[ix.op] === '') continue;
-        const local = normLocalPrep(r[ix.local]); if (!LOCAIS_PREPARACAO.has(local)) continue;
+        const localBruto = normLocalPrep(r[ix.local]); if (!LOCAIS_PREPARACAO.has(localBruto)) continue;
+        const local = CANONICO_LOCAL_PREP.get(localBruto);   // grafia única (PROGAMADA/PROGRAMADA → a mesma janela)
         lista.push({
             op: String(r[ix.op]).trim(), ciclo: ix.ciclo !== -1 && r[ix.ciclo] != null ? String(r[ix.ciclo]).trim() : '', local,
             ref: ix.ref !== -1 && r[ix.ref] ? String(r[ix.ref]).trim().toUpperCase() : '', descRef: ix.descRef !== -1 ? String(r[ix.descRef] || '').trim() : '',
