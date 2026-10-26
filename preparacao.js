@@ -7,7 +7,8 @@
 // =========================================================================
 const GRUPOS_PREPARACAO = [
     { chave: 'SUP', rotulo: 'Preparação parte superior', janelas: [
-        { local: 'PNP PREP PARTES SUP', rotulo: 'Partes superiores' }, { local: 'PNP PREP GOLA E PUNHO', rotulo: 'Gola e punho' }] },
+        { local: 'PNP PREP PARTES SUP', rotulo: 'Partes superiores' }, { local: 'PNP PREP GOLA E PUNHO', rotulo: 'Gola e punho' },
+        { local: 'PNP COSTURA PROGRAMADA', rotulo: 'Costura programada' }] },
     { chave: 'INF', rotulo: 'Preparação parte inferior', janelas: [{ local: 'PNP PREP PARTES INF', rotulo: 'Partes inferiores' }] },
     { chave: 'LOGO', rotulo: 'Fusionadeira / logo / silk / bordado', janelas: [
         { local: 'PNP FUSIONADEIRA LOGO', rotulo: 'Fusionadeira logo' }, { local: 'PNP INSPECAO LOGO/MARCA INDIRETO', rotulo: 'Inspeção logo/marca' },
@@ -40,7 +41,7 @@ function extrairOPsPreparacaoDasLinhas(rows) {
     const ix = {
         local: f(c => c === 'DESCRICAO LOCAL' || (c.startsWith('DESCRI') && c.endsWith(' LOCAL') && !c.includes('REFER'))), op: f(c => c === 'OP'), ciclo: f(c => c === 'CICLO'), ref: f(c => c.startsWith('REFERENCIA') && !c.includes('DESCRICAO')),
         descRef: f(c => c.includes('DESCRICAO') && c.includes('REFER')), cor: f(c => c === 'COR'), qtd: f(c => c.startsWith('QT') && c.includes('LOCAL')),
-        tipo: f(c => c.includes('TIPO') && c.includes('PRODUTO')), dataFin: f(c => c.includes('DATA') && c.includes('FINALIZ')), dias: f(c => c === 'DIAS LOCAL'),
+        tipo: f(c => c.includes('TIPO') && c.includes('PRODUTO')), localProd: f(c => c === 'LOCAL OBS' || c === 'LOCAL OBS.' || c.startsWith('LOCAL OBS')), dataFin: f(c => c.includes('DATA') && c.includes('FINALIZ')), dias: f(c => c === 'DIAS LOCAL'),
     };
     if (ix.local === -1 || ix.op === -1) throw new Error('Faltam as colunas "Descrição Local" e/ou "OP".');
     const lista = [];
@@ -51,7 +52,7 @@ function extrairOPsPreparacaoDasLinhas(rows) {
             op: String(r[ix.op]).trim(), ciclo: ix.ciclo !== -1 && r[ix.ciclo] != null ? String(r[ix.ciclo]).trim() : '', local,
             ref: ix.ref !== -1 && r[ix.ref] ? String(r[ix.ref]).trim().toUpperCase() : '', descRef: ix.descRef !== -1 ? String(r[ix.descRef] || '').trim() : '',
             cor: ix.cor !== -1 && r[ix.cor] ? String(r[ix.cor]).trim().toUpperCase() : '', qtd: ix.qtd !== -1 ? (parseFloat(r[ix.qtd]) || 0) : 0,
-            tipo: ix.tipo !== -1 ? semAc(r[ix.tipo]) : '', fin: ix.dataFin !== -1 ? isoLocalPrep(extrairDataExcel(r[ix.dataFin])) : null,
+            tipo: ix.tipo !== -1 ? semAc(r[ix.tipo]) : '', localProd: ix.localProd !== -1 && r[ix.localProd] ? String(r[ix.localProd]).trim().toUpperCase() : '', fin: ix.dataFin !== -1 ? isoLocalPrep(extrairDataExcel(r[ix.dataFin])) : null,
             dias: ix.dias !== -1 && r[ix.dias] !== '' && r[ix.dias] != null ? (parseInt(r[ix.dias]) || 0) : null,
         });
     }
@@ -85,7 +86,42 @@ function processarPorOPPreparacao() {
     r.readAsArrayBuffer(input.files[0]);
 }
 
+// ---- URGENTE: marcação compartilhada (linha 'urgentes_preparacao' da tabela destino_producao), igual ao Destino ----
+function obterUrgentesPreparacao() { try { return new Set(JSON.parse(localStorage.getItem('urgentesPreparacao') || '[]')); } catch (e) { return new Set(); } }
+async function publicarUrgentesPreparacao() {
+    if (!supabaseClient || !sessaoAdminAtual) return false;
+    try {
+        const agora = new Date().toISOString(), por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase();
+        localStorage.setItem('urgentesPendentePublicar', '1');
+        const { error } = await supabaseClient.from('destino_producao').upsert({ id: 'urgentes_preparacao', dados: { chaves: [...obterUrgentesPreparacao()] }, atualizado_em: agora, atualizado_por: por }, { onConflict: 'id' });
+        if (error) throw error;
+        localStorage.setItem('urgentesNuvemEm', agora); localStorage.removeItem('urgentesPendentePublicar');
+        return true;
+    } catch (e) { registrarLogDebug('error', ['Falha ao publicar as urgências da preparação: ' + e.message]); return false; }
+}
+async function carregarUrgentesPreparacaoDaNuvem() {
+    if (!supabaseClient) return;
+    try {
+        if (localStorage.getItem('urgentesPendentePublicar') === '1') { if (sessaoAdminAtual) await publicarUrgentesPreparacao(); return; }
+        const { data, error } = await supabaseClient.from('destino_producao').select('dados, atualizado_em').eq('id', 'urgentes_preparacao').maybeSingle();
+        if (error) throw error;
+        if (!data || data.atualizado_em === localStorage.getItem('urgentesNuvemEm')) return;
+        localStorage.setItem('urgentesPreparacao', JSON.stringify((data.dados && data.dados.chaves) || []));
+        localStorage.setItem('urgentesNuvemEm', data.atualizado_em);
+        renderizarPreparacao();
+    } catch (e) { registrarLogDebug('error', ['Falha ao carregar as urgências da preparação: ' + e.message]); }
+}
+async function alternarUrgentePreparacao(chave) {
+    if (!exigirAdminOuUsuario('marcar OP como urgente')) return;
+    const u = obterUrgentesPreparacao(); if (u.has(chave)) u.delete(chave); else u.add(chave);
+    localStorage.setItem('urgentesPreparacao', JSON.stringify([...u]));
+    renderizarPreparacao();
+    publicarUrgentesPreparacao();
+}
+
 function ordenarPreparacao(a, b) {
+    const ua = obterUrgentesPreparacao().has(chaveOPPrep(a)), ub = obterUrgentesPreparacao().has(chaveOPPrep(b));
+    if (ua !== ub) return ua ? -1 : 1;   // urgentes primeiro
     if (!!a.fin !== !!b.fin) return a.fin ? -1 : 1;
     if (a.fin !== b.fin) return a.fin < b.fin ? -1 : 1;
     return (b.dias || 0) - (a.dias || 0);
@@ -101,6 +137,8 @@ function renderizarPreparacao() {
     if (!ops.length) { alvo.innerHTML = '<div style="padding:30px; text-align:center; color:var(--texto-secundario);">Importe a planilha POR_OP para ver as OPs da preparação.</div>'; return; }
 
     // Mês de destino (o mesmo da aba Prioridades / importação de Destino de Produção), ex.: "2026-11" → NOV/2026.
+    const urgentes = obterUrgentesPreparacao(), localProdFila = obterLocalProducaoPorOP();
+    const htmlLocalProd = o => { const v = o.localProd || localProdFila.get(o.op) || ''; return v ? `<span style="font-size:11px;">${escPrep(v)}</span>` : '<span style="color:var(--texto-secundario);">—</span>'; };
     const mesesDestino = obterOpsMesDestino(), NOMES_MES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
     const htmlMesDestino = o => { const m = String(mesesDestino[montarChaveOP(o.ciclo, o.op)] || '').match(/^(\d{4})-(\d{2})$/); return m ? `<strong>${NOMES_MES[parseInt(m[2]) - 1] || m[2]}/${m[1]}</strong>` : '<span style="color:var(--texto-secundario);">—</span>'; };
     const htmlPlano = plano.length ? `<div class="secao" style="margin-bottom:12px;"><div class="secao-header" style="background:var(--cor-despacho);"><span><i class="fas fa-clipboard-check"></i> PLANO DE HOJE (${dataBRPrep(hoje)})</span><span>${plano.length} OP(s) · ${plano.reduce((t, o) => t + (o.qtd || 0), 0).toLocaleString('pt-BR')} peças</span></div>
@@ -113,13 +151,14 @@ function renderizarPreparacao() {
             const cor = g.janelas.length > 1 ? CORES_JANELAS_PREPARACAO[ij % CORES_JANELAS_PREPARACAO.length] : 'var(--cor-primaria)';
             const lista = ops.filter(o => o.local === normLocalPrep(j.local)).sort(ordenarPreparacao);
             const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0);
-            const linhas = lista.map(o => `<tr${noPlano.has(chaveOPPrep(o)) ? ' style="opacity:.55;"' : ''}>
+            const linhas = lista.map(o => { const urg = urgentes.has(chaveOPPrep(o)); return `<tr style="${noPlano.has(chaveOPPrep(o)) ? 'opacity:.55;' : ''}${urg ? 'background:rgba(193,68,78,.14);' : ''}">
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
+                <td style="text-align:center;"><i class="fas fa-fire prep-urg${urg ? ' ativa' : ''}" style="cursor:pointer; color:${urg ? 'var(--cor-alerta)' : 'var(--borda-cor)'};" onclick="alternarUrgentePreparacao('${escPrep(chaveOPPrep(o))}')" title="${urg ? 'Tirar urgência' : 'Marcar como urgente'}"></i></td>
                 <td><strong>${escPrep(o.op)}</strong></td><td>${escPrep(o.ciclo)}</td><td>${escPrep(o.descRef)} <span style="color:var(--texto-secundario);">${escPrep(o.ref)}</span></td>
-                <td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td></tr>`).join('');
+                <td>${htmlLocalProd(o)}</td><td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td></tr>`; }).join('');
             return `<div id="prepJanela-${g.chave}-${ij}" style="border:1px solid ${cor}; border-left:6px solid ${cor}; border-radius:6px; overflow:hidden; min-width:0;">
-                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
-                ${lista.length ? `<div class="prep-rolagem" style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th>OP</th><th>Ciclo</th><th>Produto</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
+                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
+                ${lista.length ? `<div class="prep-rolagem" style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th title="Urgente"><i class="fas fa-fire"></i></th><th>OP</th><th>Ciclo</th><th>Produto</th><th title="Local de produção (Local Obs. da POR_OP, ou da Fila de Corte)">Local prod.</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
         }).join('');
         const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local));
         return `<div class="secao" style="margin-bottom:12px;"><div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-layer-group"></i> ${escPrep(g.rotulo)}</span><span>${todas.length} OP(s) · ${todas.reduce((t, o) => t + (o.qtd || 0), 0).toLocaleString('pt-BR')} peças</span></div>
@@ -157,6 +196,7 @@ function imprimirJanelaPreparacao(idJanela) {
     checks.forEach(c => { const tr = c.closest('tr'); if (tr && tem && !c.checked) tr.classList.add('imprimir-esconder'); });
     el.querySelectorAll('button').forEach(b => b.classList.add('imprimir-esconder'));
     el.querySelectorAll('tr').forEach(tr => { const c = tr.firstElementChild; if (c) c.classList.add('imprimir-esconder'); });   // coluna dos checkboxes
+    el.querySelectorAll('.prep-urg:not(.ativa)').forEach(i => i.classList.add('imprimir-esconder'));
     el.querySelectorAll('.prep-rolagem').forEach(d => d.classList.add('prep-sem-limite'));
     imprimirSecao(idJanela);
 }

@@ -113,7 +113,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); carregarEfCosturaDaNuvem(); });
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
-        wireEvento('abrirAba-aba-preparacao', 'click', (event) => { abrirAba(event, 'aba-preparacao'); renderizarPreparacao(); });
+        wireEvento('abrirAba-aba-preparacao', 'click', (event) => { abrirAba(event, 'aba-preparacao'); renderizarPreparacao(); carregarUrgentesPreparacaoDaNuvem(); });
         wireEvento('inputPorOPPreparacao', 'change', () => { processarPorOPPreparacao(); });
         wireEvento('abrirAba-aba-producao-grupo', 'click', (event) => { abrirAba(event, 'aba-producao-grupo'); renderizarProducaoGrupo(); carregarEfCosturaDaNuvem().then(() => renderizarProducaoGrupo()); });
         wireEvento('abrirAba-aba-plano-costura', 'click', (event) => { abrirAba(event, 'aba-plano-costura'); renderizarPlanoCostura(); carregarPlanosCosturaDaNuvem(); carregarEfCosturaDaNuvem(); });

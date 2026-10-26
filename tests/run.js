@@ -199,13 +199,13 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   }
   igual('sincronização lê referência e matéria-prima pelo título (colunas mudaram de lugar)', await p.evaluate(() => { const o = bancoDadosOPs.find(x => x.id === '7001'); return [o.referencia, o.codigoMP]; }), ['SEGP031', '1005989']);
   {   // aba PREPARAÇÃO: janelas por local, ordem por finalização, plano do dia
-    const cab = 'Emp;Descrição Local;Ciclo;OP;Descrição Referência;Qt OP Local;Data Finalização;Dias Local\n';
-    const lin = (loc, op, qtd, fin, dias) => `1;${loc};211;${op};CORTE CALCA X;${qtd};${fin};${dias}\n`;
+    const cab = 'Emp;Descrição Local;Ciclo;OP;Descrição Referência;Qt OP Local;Data Finalização;Dias Local;Local Obs.\n';
+    const lin = (loc, op, qtd, fin, dias) => `1;${loc};211;${op};CORTE CALCA X;${qtd};${fin};${dias};GILBERTO\n`;
     const fp = path.join(os.tmpdir(), 'corte-pro-prep.csv');
-    fs.writeFileSync(fp, cab + lin('PNP PREP PARTES SUP', '1', 10, '2026-11-05', 3) + lin('PNP PREP PARTES SUP', '2', 20, '2026-11-01', 1) + lin('PNP PREP GOLA E PUNHO', '3', 5, '2026-11-02', 2) + lin('PNP SILK INTERNO', '4', 7, '', 9) + lin('PNP DISTRIBUICAO INT', '5', 9, '2026-11-03', 1) + lin('PNP CORTE', '6', 99, '2026-11-03', 1));
+    fs.writeFileSync(fp, cab + lin('PNP PREP PARTES SUP', '1', 10, '2026-11-05', 3) + lin('PNP PREP PARTES SUP', '2', 20, '2026-11-01', 1) + lin('PNP PREP GOLA E PUNHO', '3', 5, '2026-11-02', 2) + lin('PNP SILK INTERNO', '4', 7, '', 9) + lin('PNP DISTRIBUICAO INT', '5', 9, '2026-11-03', 1) + lin('PNP CORTE', '6', 99, '2026-11-03', 1) + lin('PNP COSTURA PROGRAMADA', '9', 30, '2026-11-04', 2));
     await p.setInputFiles('#inputPorOPPreparacao', fp);
     await p.evaluate(() => { processarPorOPPreparacao(); }); await p.waitForTimeout(800);
-    igual('preparação guarda só as OPs dos locais da preparação', await p.evaluate(() => obterOPsPreparacao().map(o => o.op).sort()), ['1', '2', '3', '4', '5']);
+    igual('preparação guarda só as OPs dos locais da preparação', await p.evaluate(() => obterOPsPreparacao().map(o => o.op).sort()), ['1', '2', '3', '4', '5', '9']);
     {   // balanço da preparação: reimporta com mudanças (1 saiu, 4 mudou de janela, 6 nova)
       fs.writeFileSync(fp, cab + lin('PNP PREP PARTES SUP', '1', 10, '2026-11-05', 3) + lin('PNP PREP PARTES SUP', '2', 12, '2026-11-01', 1) + lin('PNP PREP GOLA E PUNHO', '3', 5, '2026-11-02', 2) + lin('PNP BORDADO INTERNO', '4', 7, '', 9) + lin('PNP DISTRIBUICAO INT', '5', 9, '2026-11-03', 1) + lin('PNP PREP PARTES INF', '8', 40, '2026-11-09', 0));
       await p.setInputFiles('#inputPorOPPreparacao', fp); await p.waitForTimeout(800);   // o próprio evento 'change' importa
@@ -239,6 +239,13 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
         supabaseClient = velho; sessaoAdminAtual = velhaSessao; papelUsuarioAtual = velhoPapel; return out;
       });
       igual('Destino publicado na nuvem aparece para outro usuário', r, { pub: true, linha: 'global', mes: '2026-12', prio: true });
+    }
+    {   // nova janela, local de produção e urgência
+      igual('janela "Costura programada" no grupo da preparação superior', await p.evaluate(() => { renderizarPreparacao(); const t = document.getElementById('preparacaoConteudo').innerText; return [/Costura programada/i.test(t), /GILBERTO/.test(t)]; }), [true, true]);
+      await p.evaluate(() => alternarUrgentePreparacao('211-1')); await p.waitForTimeout(100);
+      igual('marcar urgente: vai pro topo da janela e fica salvo', await p.evaluate(() => [Array.from(document.querySelectorAll('#prepJanela-SUP-0 .check-prep'))[0].dataset.chave, JSON.parse(localStorage.getItem('urgentesPreparacao'))]), ['211-1', ['211-1']]);
+      await p.evaluate(() => alternarUrgentePreparacao('211-1')); await p.waitForTimeout(100);
+      igual('tirar urgência volta à ordem normal', await p.evaluate(() => [Array.from(document.querySelectorAll('#prepJanela-SUP-0 .check-prep'))[0].dataset.chave, JSON.parse(localStorage.getItem('urgentesPreparacao')).length]), ['211-2', 0]);
     }
     igual('plano mostra grupo e janela', await p.evaluate(() => /Gola e punho/.test(document.getElementById('preparacaoConteudo').innerText)), true);
     await p.evaluate(() => tirarOPDoPlanoPreparacao('211-3'));

@@ -101,7 +101,7 @@ async function verificarPapelUsuario() {
     // estiver alto (80%+); senão não aparece nada, pra não virar barulho
     // toda vez que o admin entra.
     if (papelUsuarioAtual === 'admin') { verificarEspacoNuvem(false); verificarBackupNuvemAutomatico(); }
-    carregarDestinoDaNuvem();
+    carregarDestinoDaNuvem(); carregarUrgentesPreparacaoDaNuvem();
 }
 
 function atualizarIndicadorLogin() {
@@ -674,6 +674,7 @@ async function carregarTudoDaNuvemParaVisitante() {
         carregarMovimentacoesKPIDaNuvemParaVisitante(),
         carregarPorOPCosturaDaNuvemParaVisitante(),
         carregarDestinoDaNuvem(),
+        carregarUrgentesPreparacaoDaNuvem(),
     ]);
     atualizarIndicadorUltimaPublicacao();
 }
