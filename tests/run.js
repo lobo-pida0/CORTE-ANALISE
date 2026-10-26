@@ -296,9 +296,10 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     localStorage.setItem('porOPElaboracaoCostura', JSON.stringify([{ op: '1', ciclo: '1', local: 'SLV COST CEL PALETO', qtd: 220, tipoProduto: 'BLAZER', descRef: 'BLAZER X' }]));   // 220 / 110 = 2 dias
     localStorage.setItem('mediasElaboracaoCostura', JSON.stringify({ PALETOS: 110 })); localStorage.removeItem('configReposicaoPaleto');
     localStorage.setItem('porOPPaletoEmp1', JSON.stringify([
-      { op: '10', ciclo: '1', local: 'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA', qtd: 600, descRef: 'BLAZER A', dataInclusao: '2026-09-01' },
+      { op: '10', ciclo: '1', local: 'PNP SEPARAR PECAS / UNIR CORPO E PTS', qtd: 600, descRef: 'BLAZER A', dataInclusao: '2026-09-01' },
       { op: '11', ciclo: '1', local: 'PNP QUAL - INSPECAO EXT', qtd: 500, descRef: 'BLAZER B' }, { op: '12', ciclo: '1', local: 'EXT COSTURA FULANO', qtd: 400, descRef: 'BLAZER C' },
-      { op: '13', ciclo: '1', local: 'PNP BORDADO INTERNO', qtd: 900, descRef: 'BLAZER D', dataInclusao: '2026-09-10' }]));
+      { op: '13', ciclo: '1', local: 'PNP AGUARD BIP DISTRIBUICAO', qtd: 900, descRef: 'BLAZER D', dataInclusao: '2026-09-10' },
+      { op: '14', ciclo: '1', local: 'PNP ETIQ PROF/AMARR SOC/SEP LOG/SEP GLA', qtd: 700, descRef: 'BLAZER E' }, { op: '15', ciclo: '1', local: 'PNP BORDADO INTERNO', qtd: 300, descRef: 'BLAZER F' }]));
     renderizarElaboracaoCostura();
     const rp = calcularReposicaoPaleto(obterPorOPElab()), bn = document.getElementById('alertaReposicaoPaleto');
     return [rp.nivel, rp.faltam, rp.candidatos.filter(c => c.pegar).map(c => c.op), bn.style.display, /baixando|CRÍTICA/.test(bn.innerText)];

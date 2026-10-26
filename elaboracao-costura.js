@@ -73,10 +73,10 @@ function extrairOPsPaletoEmp1DasLinhas(rows) {
     }
     return lista;
 }
-// "Já cortado e pronto para a costura da 02": locais da empresa 01 depois do corte e antes da costura (etiquetação, bordado, distribuição interna).
-// Fora daqui ficam: costuras externas (EXT ...), inspeção/qualidade, aguardando finalização etc. (já passaram da costura). Ajuste a lista se precisar.
-const REGEX_PALETO_EMP1_CORTADO = /ETIQ|BORDADO|AGUARD\. DISTRIBUICAO/;
-function paletoEmp1JaCortado(o) { return REGEX_PALETO_EMP1_CORTADO.test(o.local); }
+// "Já cortado e pronto para a costura da 02": só os locais abaixo (definidos pelo usuário) — paletó/blazer da empresa 01 já
+// cortado, nas etapas finais de separação/distribuição. Qualquer outro local da empresa 01 NÃO conta como "já cortada".
+const LOCAIS_PALETO_EMP1_CORTADO = new Set(['PNP AGRUP DE DISTRIBUICAO', 'PNP AGUARD BIP DISTRIBUICAO', 'PNP DISTRIBUICAO EXT', 'PNP SEPARAR PECAS / UNIR CORPO E PTS']);
+function paletoEmp1JaCortado(o) { return LOCAIS_PALETO_EMP1_CORTADO.has(normalizarLocalElab(o.local)); }
 
 function processarPorOPElaboracao() {
     if (!exigirAdminOuUsuario('importar a planilha da elaboração de costura')) return;
@@ -149,7 +149,7 @@ function renderizarReposicaoPaleto(todas) {
             <span>Avisar abaixo de <input type="number" id="inputLimiteReposicaoPaleto" min="1" step="1" value="${rp.cfg.limite}" style="width:60px;"> dias</span>
             <span>Meta de serviço na 02 <input type="number" id="inputMetaDiasReposicaoPaleto" min="1" step="1" value="${rp.cfg.metaDias}" style="width:60px;"> dias</span></div>
         ${rp.faltam > 0 ? (rp.nivel === 'verde' ? '<details style="padding:6px 16px 10px;"><summary style="cursor:pointer; font-size:12px;">Ver o que mandar para chegar a ' + rp.cfg.metaDias + ' dias</summary>' : '') + (rp.candidatos.length ? `<div style="overflow:auto; max-height:380px;"><table class="tabela-dados" style="width:100%;"><thead><tr><th class="num">#</th><th>OP</th><th>SITUAÇÃO NA EMPRESA 01</th><th>DESCRIÇÃO</th><th>ONDE ESTÁ</th><th class="num">PEÇAS</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div>
-            <div style="padding:6px 16px; font-size:11px; color:var(--texto-secundario);">Ordem: primeiro as já cortadas (mais antiga primeiro), depois as que ainda vão cortar (etapa mais perto do corte, depois a mais antiga). "MANDAR" marca o que cobre a necessidade (${fmt(rp.somaSugerida)} peças). Já cortada = paletó/blazer da empresa 01 em etiquetação, bordado ou aguardando distribuição (depois do corte, antes da costura).</div>` : '<div style="padding:12px 16px; font-size:12px; color:var(--texto-secundario);">Nenhum paletó/blazer da empresa 01 encontrado para sugerir (importe a POR_OP e sincronize a planilha).</div>') + (rp.nivel === 'verde' ? '</details>' : '') : '<div style="padding:10px 16px; font-size:12px; color:var(--texto-secundario);">Elaboração acima da meta de dias — nada a mandar por enquanto.</div>'}`;
+            <div style="padding:6px 16px; font-size:11px; color:var(--texto-secundario);">Ordem: primeiro as já cortadas (mais antiga primeiro), depois as que ainda vão cortar (etapa mais perto do corte, depois a mais antiga). "MANDAR" marca o que cobre a necessidade (${fmt(rp.somaSugerida)} peças). Já cortada = paletó/blazer da empresa 01 em: agrupamento de distribuição, aguardando bipagem, distribuição externa ou separar peças / unir corpo.</div>` : '<div style="padding:12px 16px; font-size:12px; color:var(--texto-secundario);">Nenhum paletó/blazer da empresa 01 encontrado para sugerir (importe a POR_OP e sincronize a planilha).</div>') + (rp.nivel === 'verde' ? '</details>' : '') : '<div style="padding:10px 16px; font-size:12px; color:var(--texto-secundario);">Elaboração acima da meta de dias — nada a mandar por enquanto.</div>'}`;
     const salvar = () => { const l = parseFloat(document.getElementById('inputLimiteReposicaoPaleto').value), m = parseFloat(document.getElementById('inputMetaDiasReposicaoPaleto').value); if (l > 0 && m > 0) { try { localStorage.setItem('configReposicaoPaleto', JSON.stringify({ limite: l, metaDias: m })); } catch (e) { /* ignora */ } } renderizarElaboracaoCostura(); };
     ['inputLimiteReposicaoPaleto', 'inputMetaDiasReposicaoPaleto'].forEach(id => { const e = document.getElementById(id); if (e) e.onchange = salvar; });
 }
