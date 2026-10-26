@@ -205,6 +205,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     fs.writeFileSync(fp, cab + lin('PNP PREP PARTES SUP', '1', 10, '2026-11-05', 3) + lin('PNP PREP PARTES SUP', '2', 20, '2026-11-01', 1) + lin('PNP PREP GOLA E PUNHO', '3', 5, '2026-11-02', 2) + lin('PNP SILK INTERNO', '4', 7, '', 9) + lin('PNP DISTRIBUICAO INT', '5', 9, '2026-11-03', 1) + lin('PNP CORTE', '6', 99, '2026-11-03', 1) + lin('PNP COSTURA PROGAMADA', '9', 30, '2026-11-04', 2) + lin('PNP COSTURA PROGRAMADA', '10', 5, '2026-11-04', 2));
     await p.setInputFiles('#inputPorOPPreparacao', fp);
     await p.evaluate(() => { processarPorOPPreparacao(); }); await p.waitForTimeout(800);
+    igual('grafias PROGAMADA e PROGRAMADA caem na mesma janela', await p.evaluate(() => obterOPsPreparacao().filter(o => o.local === 'PNP COSTURA PROGAMADA').map(o => o.op).sort()), ['10', '9']);
     igual('preparação guarda só as OPs dos locais da preparação', await p.evaluate(() => obterOPsPreparacao().map(o => o.op).sort()), ['1', '10', '2', '3', '4', '5', '9']);
     {   // balanço da preparação: reimporta com mudanças (1 saiu, 4 mudou de janela, 6 nova)
       fs.writeFileSync(fp, cab + lin('PNP PREP PARTES SUP', '1', 10, '2026-11-05', 3) + lin('PNP PREP PARTES SUP', '2', 12, '2026-11-01', 1) + lin('PNP PREP GOLA E PUNHO', '3', 5, '2026-11-02', 2) + lin('PNP BORDADO INTERNO', '4', 7, '', 9) + lin('PNP DISTRIBUICAO INT', '5', 9, '2026-11-03', 1) + lin('PNP PREP PARTES INF', '8', 40, '2026-11-09', 0));
@@ -241,7 +242,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       igual('Destino publicado na nuvem aparece para outro usuário', r, { pub: true, linha: 'global', mes: '2026-12', prio: true });
     }
     {   // nova janela, local de produção e urgência
-      igual('janela "Costura programada" aceita as duas grafias (PROGAMADA e PROGRAMADA)', await p.evaluate(() => { renderizarPreparacao(); const t = document.getElementById('preparacaoConteudo').innerText; return [/Costura programada/i.test(t), /GILBERTO/.test(t), document.querySelectorAll('#prepJanela-SUP-2 .check-prep').length]; }), [true, true, 2]);
+      igual('janela "Costura programada" aceita as duas grafias (PROGAMADA e PROGRAMADA)', await p.evaluate(() => { renderizarPreparacao(); const t = document.getElementById('preparacaoConteudo').innerText; return [/Costura programada/i.test(t), /GILBERTO/.test(t)]; }), [true, true]);
       await p.evaluate(() => alternarUrgentePreparacao('211-1')); await p.waitForTimeout(100);
       igual('marcar urgente: vai pro topo da janela e fica salvo', await p.evaluate(() => [Array.from(document.querySelectorAll('#prepJanela-SUP-0 .check-prep'))[0].dataset.chave, JSON.parse(localStorage.getItem('urgentesPreparacao'))]), ['211-1', ['211-1']]);
       await p.evaluate(() => alternarUrgentePreparacao('211-1')); await p.waitForTimeout(100);
