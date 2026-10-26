@@ -62,14 +62,14 @@ function extrairOPsElaboracaoDasLinhas(rows) {
     }
     return lista;
 }
-// Paletó/blazer da EMPRESA 01 (em qualquer local) — para sugerir o que mandar para a 02.
+// OPs da EMPRESA 01 nos locais de "já cortada" (qualquer produto) — para sugerir o que mandar para a 02.
 function extrairOPsPaletoEmp1DasLinhas(rows) {
     const { iCab, ix, semAc } = lerCabecalhoElab(rows), lista = [];
     for (let i = iCab + 1; i < rows.length; i++) {
         const r = rows[i]; if (!r || r[ix.op] === undefined || r[ix.op] === null || r[ix.op] === '') continue;
         if (!['1', '01'].includes(String(r[ix.emp]).trim())) continue;
         const o = montarOPElab(r, ix, semAc, normalizarLocalElab(r[ix.local]));
-        if (ehPaletoBlazer(o)) lista.push(o);
+        if (paletoEmp1JaCortado(o)) lista.push(o);   // tudo que está nos locais de "já cortada" (qualquer produto), não só paletó/blazer
     }
     return lista;
 }

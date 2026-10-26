@@ -304,6 +304,12 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     const rp = calcularReposicaoPaleto(obterPorOPElab()), bn = document.getElementById('alertaReposicaoPaleto');
     return [rp.nivel, rp.faltam, rp.candidatos.filter(c => c.pegar).map(c => c.op), bn.style.display, /baixando|CRÍTICA/.test(bn.innerText)];
   }), ['vermelho', 1430, ['10', '13'], 'block', true]);
+  igual('reposição do paletó: lê tudo que está nos locais de "já cortada" (qualquer produto) da empresa 01', await p.evaluate(() => {
+    const rows = [['Emp', 'Descrição Local', 'OP', 'Ciclo', 'Descrição Referência', 'Qt OP Local', 'Tipo Produto'],
+      [1, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 20, 211, 'CALCA X', 10, 'CALCA'], [1, 'PNP AGUARD BIP DISTRIBUICAO', 21, 211, 'BLAZER Y', 5, 'PALETO'],
+      [1, 'PNP BORDADO INTERNO', 22, 211, 'BLAZER Z', 5, 'PALETO'], [2, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 23, 211, 'CALCA W', 5, 'CALCA']];
+    return extrairOPsPaletoEmp1DasLinhas(rows).map(o => o.op).sort();
+  }), ['20', '21']);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); if (h !== '2026-10-26') { pl['2026-10-26'] = pl[h]; delete pl[h]; } salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-26'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
