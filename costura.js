@@ -113,7 +113,7 @@ function linhaSupabaseParaPorOPCostura(l) {
 // e das remoções do Seq. Costura, que são pensados pra sincronizar com
 // TODO MUNDO.
 async function carregarPorOPCosturaDaNuvemParaVisitante() {
-    if (!supabaseClient || sessaoAdminAtual) return;
+    if (!supabaseClient || (sessaoAdminAtual && papelUsuarioAtual !== 'sequencia')) return;   // o papel "sequencia" só consulta: carrega da nuvem como visitante
     try {
         const data = await buscarTodasLinhasSupabase('por_op_costura_detalhado');
         localStorage.setItem('porOPCosturaDetalhado', JSON.stringify((data || []).map(linhaSupabaseParaPorOPCostura)));

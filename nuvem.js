@@ -22,7 +22,7 @@ try {
 registrarLogDebug('log', ['[NUVEM v2] window.supabase = ' + (typeof window.supabase) + ' | cliente montado = ' + (supabaseClient ? 'SIM' : 'NÃO')]);
 
 let sessaoAdminAtual = null; // guarda a sessão do usuário logado (null = visitante)
-let papelUsuarioAtual = null; // 'admin' ou 'usuario' — só tem valor quando sessaoAdminAtual existe
+let papelUsuarioAtual = null; // 'admin', 'usuario' ou 'sequencia' — só tem valor quando sessaoAdminAtual existe
 
 // Converte uma OP do formato usado no sistema (bancoDadosOPs) pro formato de
 // colunas da tabela "ops" no Supabase (snake_case)
@@ -92,7 +92,7 @@ async function verificarPapelUsuario() {
         const email = sessaoAdminAtual.user.email;
         const { data, error } = await supabaseClient.from('papeis_usuario').select('papel').eq('email', email).maybeSingle();
         if (error) throw error;
-        papelUsuarioAtual = data && data.papel === 'usuario' ? 'usuario' : 'admin';
+        papelUsuarioAtual = data && data.papel === 'usuario' ? 'usuario' : (data && data.papel === 'sequencia' ? 'sequencia' : 'admin');
     } catch (e) {
         registrarLogDebug('error', ['Não consegui checar o papel do usuário, tratando como admin: ' + e.message]);
         papelUsuarioAtual = 'admin'; // mesma lógica de segurança: se der erro, não bloqueia o admin original
@@ -102,6 +102,7 @@ async function verificarPapelUsuario() {
     // toda vez que o admin entra.
     if (papelUsuarioAtual === 'admin') { verificarEspacoNuvem(false); verificarBackupNuvemAutomatico(); }
     carregarDestinoDaNuvem(); carregarUrgentesPreparacaoDaNuvem();
+    if (papelUsuarioAtual === 'sequencia') carregarTudoDaNuvemParaVisitante();   // só consulta: recebe os dados publicados
 }
 
 function atualizarIndicadorLogin() {
@@ -110,8 +111,8 @@ function atualizarIndicadorLogin() {
     document.body.classList.toggle('modo-usuario', papelUsuarioAtual === 'usuario');
     if (sessaoAdminAtual) {
         const nome = sessaoAdminAtual.user.email.split('@')[0].toUpperCase();
-        txt.innerText = papelUsuarioAtual === 'usuario' ? `${nome} (USUÁRIO)` : nome;
-        $('btnLoginAdmin').title = papelUsuarioAtual === 'usuario' ? 'Logado — só pode importar planilhas. Clique pra sair.' : 'Logado como admin — clique pra sair';
+        txt.innerText = papelUsuarioAtual === 'usuario' ? `${nome} (USUÁRIO)` : (papelUsuarioAtual === 'sequencia' ? `${nome} (SEQUÊNCIA)` : nome);
+        $('btnLoginAdmin').title = papelUsuarioAtual === 'usuario' ? 'Logado — só pode importar planilhas. Clique pra sair.' : (papelUsuarioAtual === 'sequencia' ? 'Logado — só consulta a Sequência da costura. Clique pra sair.' : 'Logado como admin — clique pra sair');
         if ($('indicadorUltimaPublicacao')) $('indicadorUltimaPublicacao').innerText = ''; // não faz sentido pro admin, ele usa o dado local ao vivo
     } else {
         txt.innerText = 'VISITANTE';
@@ -126,14 +127,16 @@ function atualizarIndicadorLogin() {
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
 const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
+const ABAS_LIBERADAS_PARA_SEQUENCIA = ['aba-seq-costura'];   // papel "sequencia": só consulta a Sequência da costura
 const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura', 'aba-urgencias', 'aba-producao-grupo', 'aba-preparacao'];
 function abaLiberadaAgora(idAba) {
     if (papelUsuarioAtual === 'admin') return true;
     if (papelUsuarioAtual === 'usuario') return ABAS_LIBERADAS_PARA_USUARIO.includes(idAba);
+    if (papelUsuarioAtual === 'sequencia') return ABAS_LIBERADAS_PARA_SEQUENCIA.includes(idAba);
     return ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba); // visitante — nem logado
 }
 function aplicarRestricaoDeAbaVisitante() {
-    document.body.classList.toggle('modo-visitante', !sessaoAdminAtual);
+    document.body.classList.toggle('modo-visitante', !sessaoAdminAtual || papelUsuarioAtual === 'sequencia');   // o papel "sequencia" vê a tela como visitante (sem botões de admin)
     // Seletor por ID (não por classe .tab-btn) de propósito — algumas abas
     // moraram pra dentro do menu "MAIS" e usam outra classe visual (.btn),
     // mas ainda precisam ser escondidas certinho pra quem não é admin.
@@ -151,7 +154,8 @@ function aplicarRestricaoDeAbaVisitante() {
     // joga pra Prioridades em vez de deixar a tela numa aba escondida.
     const abaAtivaEl = document.querySelector('.aba-conteudo.ativa');
     if (abaAtivaEl && !abaLiberadaAgora(abaAtivaEl.id)) {
-        abrirAba(null, 'aba-prioridades');
+        if (papelUsuarioAtual === 'sequencia' && $('abrirAba-aba-seq-costura')) $('abrirAba-aba-seq-costura').click();   // abre a única aba dele (o clique também carrega a tela)
+        else abrirAba(null, 'aba-prioridades');
     }
 }
 
@@ -177,7 +181,7 @@ async function fazerLoginAdmin(email, senha) {
     fecharModais();
     showToast(papelUsuarioAtual === 'usuario'
         ? "<i class='fas fa-check'></i> Login feito — você pode importar planilhas."
-        : "<i class='fas fa-check'></i> Login feito — você é admin agora.");
+        : (papelUsuarioAtual === 'sequencia' ? "<i class='fas fa-check'></i> Login feito — acesso à Sequência da costura." : "<i class='fas fa-check'></i> Login feito — você é admin agora."));
 }
 
 async function fazerLogoutAdmin() {
@@ -787,6 +791,10 @@ async function restaurarBackupNuvem(e) {
 // e não só na hora de publicar.
 function exigirAdmin(oQueIaFazer) {
     if (sessaoAdminAtual && papelUsuarioAtual === 'admin') return true;
+    if (sessaoAdminAtual && papelUsuarioAtual === 'sequencia') {
+        showToast(`<i class="fas fa-lock"></i> Seu acesso é só pra consultar a Sequência da costura — entre como admin pra ${oQueIaFazer || 'fazer isso'}.`, true);
+        return false;
+    }
     if (sessaoAdminAtual && papelUsuarioAtual === 'usuario') {
         showToast(`<i class="fas fa-lock"></i> Seu acesso é só pra importar planilhas — entre como admin pra ${oQueIaFazer || 'fazer isso'}.`, true);
         return false;
@@ -799,7 +807,8 @@ function exigirAdmin(oQueIaFazer) {
 // "usuario" (acesso restrito) — usado só nas ações de IMPORTAR planilha,
 // que foi a única coisa que esse papel tem permissão de fazer.
 function exigirAdminOuUsuario(oQueIaFazer) {
-    if (sessaoAdminAtual) return true;
+    if (sessaoAdminAtual && papelUsuarioAtual !== 'sequencia') return true;
+    if (sessaoAdminAtual) { showToast(`<i class="fas fa-lock"></i> Seu acesso é só pra consultar a Sequência da costura.`, true); return false; }
     showToast(`<i class="fas fa-lock"></i> Modo visitante — entre com login pra ${oQueIaFazer || 'fazer isso'}.`, true);
     return false;
 }

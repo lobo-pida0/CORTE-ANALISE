@@ -311,6 +311,17 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       [1, 'PNP BORDADO INTERNO', 22, 211, 'BLAZER Z', 5, 'PALETO'], [2, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 23, 211, 'CALCA W', 5, 'CALCA']];
     const l = extrairOPsPaletoEmp1DasLinhas(rows); return [l.map(o => o.op).sort(), l.find(o => o.op === '20').localProd];
   }), [['20', '21'], 'MS']);
+  {   // papel "sequencia": só a aba Sequência da costura, sem ações de admin/usuário
+    const r = await p.evaluate(() => {
+      const velhoP = papelUsuarioAtual, velhaS = sessaoAdminAtual;
+      sessaoAdminAtual = { user: { email: 'luis@x.com' } }; papelUsuarioAtual = 'sequencia'; atualizarIndicadorLogin();
+      const visiveis = [...document.querySelectorAll('[id^="abrirAba-"]')].filter(b => b.style.display !== 'none').map(b => b.id.replace('abrirAba-', ''));
+      const ativa = document.querySelector('.aba-conteudo.ativa').id;
+      const out = { visiveis, ativa, usuario: exigirAdminOuUsuario('x'), admin: exigirAdmin('x'), visitante: document.body.classList.contains('modo-visitante') };
+      papelUsuarioAtual = velhoP; sessaoAdminAtual = velhaS; aplicarRestricaoDeAbaVisitante(); return out;
+    });
+    igual('papel "sequencia": só a aba da Sequência, sem ações de admin ou usuário', r, { visiveis: ['aba-seq-costura'], ativa: 'aba-seq-costura', usuario: false, admin: false, visitante: true });
+  }
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); if (h !== '2026-10-26') { pl['2026-10-26'] = pl[h]; delete pl[h]; } salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-26'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);
