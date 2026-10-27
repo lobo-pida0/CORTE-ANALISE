@@ -113,7 +113,8 @@ function linhaSupabaseParaPorOPCostura(l) {
 // e das remoções do Seq. Costura, que são pensados pra sincronizar com
 // TODO MUNDO.
 async function carregarPorOPCosturaDaNuvemParaVisitante() {
-    if (!supabaseClient || (sessaoAdminAtual && papelUsuarioAtual !== 'sequencia')) return;   // o papel "sequencia" só consulta: carrega da nuvem como visitante
+    if (!supabaseClient || (sessaoAdminAtual && papelUsuarioAtual !== 'sequencia')) return;   // o papel "sequencia" só consulta: carrega da nuvem como visitante...
+    if (sessaoAdminAtual && localStorage.getItem('porOPCosturaImportadaLocal') === '1') return;   // ...exceto se ele mesmo importou a planilha (a dele vale até o próximo login)
     try {
         const data = await buscarTodasLinhasSupabase('por_op_costura_detalhado');
         localStorage.setItem('porOPCosturaDetalhado', JSON.stringify((data || []).map(linhaSupabaseParaPorOPCostura)));
@@ -423,7 +424,8 @@ function exibirHistoricoBalancoCostura() {
 }
 
 function processarPorOPCostura() {
-    if (!exigirAdminOuUsuario('importar a planilha do Seq. Costura')) return;
+    const ehSequencia = !!sessaoAdminAtual && papelUsuarioAtual === 'sequencia';   // esse papel só consulta, mas pode importar a POR_OP da Sequência
+    if (!ehSequencia && !exigirAdminOuUsuario('importar a planilha do Seq. Costura')) return;
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputPorOPCostura'); if (!input.files[0]) return;
     const r = new FileReader();
@@ -507,6 +509,7 @@ function processarPorOPCostura() {
             try { snapshotAntes = JSON.parse(localStorage.getItem('snapshotBalancoCostura') || '[]'); } catch (e2) { /* sem foto anterior */ }
             try { localStorage.setItem('snapshotBalancoCostura', JSON.stringify(snapshotBalanco)); } catch (e2) { /* ignora */ }
             localStorage.setItem('porOPCosturaDetalhado', JSON.stringify(porOPCosturaDetalhado));
+            if (ehSequencia) localStorage.setItem('porOPCosturaImportadaLocal', '1');   // a importação dele vale até o próximo login (a nuvem não sobrescreve)
             input.value = '';
             renderizarSequenciamentoCostura();
             if (snapshotAntes.length) exibirBalancoSeqCostura(snapshotAntes, snapshotBalanco);

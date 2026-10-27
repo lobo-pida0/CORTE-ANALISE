@@ -102,13 +102,14 @@ async function verificarPapelUsuario() {
     // toda vez que o admin entra.
     if (papelUsuarioAtual === 'admin') { verificarEspacoNuvem(false); verificarBackupNuvemAutomatico(); }
     carregarDestinoDaNuvem(); carregarUrgentesPreparacaoDaNuvem();
-    if (papelUsuarioAtual === 'sequencia') carregarTudoDaNuvemParaVisitante();   // só consulta: recebe os dados publicados
+    if (papelUsuarioAtual === 'sequencia') { try { localStorage.removeItem('porOPCosturaImportadaLocal'); } catch (e) { /* ignora */ } carregarTudoDaNuvemParaVisitante(); }   // só consulta: recebe os dados publicados
 }
 
 function atualizarIndicadorLogin() {
     const txt = $('txtLoginAdmin');
     if (!txt) return;
     document.body.classList.toggle('modo-usuario', papelUsuarioAtual === 'usuario');
+    document.body.classList.toggle('modo-sequencia', papelUsuarioAtual === 'sequencia');
     if (sessaoAdminAtual) {
         const nome = sessaoAdminAtual.user.email.split('@')[0].toUpperCase();
         txt.innerText = papelUsuarioAtual === 'usuario' ? `${nome} (USUÁRIO)` : (papelUsuarioAtual === 'sequencia' ? `${nome} (SEQUÊNCIA)` : nome);

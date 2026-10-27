@@ -321,6 +321,14 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       papelUsuarioAtual = velhoP; sessaoAdminAtual = velhaS; aplicarRestricaoDeAbaVisitante(); return out;
     });
     igual('papel "sequencia": só a aba da Sequência, sem ações de admin ou usuário', r, { visiveis: ['aba-seq-costura'], ativa: 'aba-seq-costura', usuario: false, admin: false, visitante: true });
+    const fSeq = path.join(os.tmpdir(), 'corte-pro-seq-role.csv');
+    fs.writeFileSync(fSeq, 'Descricao Local;OP;Ciclo;Qt OP Local\nPNP COST INF CALCA;9901;211;40\n');
+    await p.evaluate(() => { localStorage.removeItem('porOPCosturaDetalhado'); sessaoAdminAtual = { user: { email: 'luis@x.com' } }; papelUsuarioAtual = 'sequencia'; atualizarIndicadorLogin(); });
+    const visivelBtn = await p.evaluate(() => { const l = document.getElementById('inputPorOPCostura').closest('label'); return getComputedStyle(l).display !== 'none'; });
+    await p.evaluate(() => { document.querySelector('#abrirAba-aba-seq-costura') && document.querySelector('#abrirAba-aba-seq-costura').click(); });
+    await p.setInputFiles('#inputPorOPCostura', fSeq); await p.waitForTimeout(800);
+    igual('papel "sequencia": vê o botão de importar a POR_OP e consegue importar', [visivelBtn, await p.evaluate(() => JSON.parse(localStorage.getItem('porOPCosturaDetalhado') || '[]').map(o => o.op))], [true, ['9901']]);
+    await p.evaluate(() => { papelUsuarioAtual = 'admin'; sessaoAdminAtual = {}; localStorage.removeItem('porOPCosturaImportadaLocal'); aplicarRestricaoDeAbaVisitante(); });
   }
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); if (h !== '2026-10-26') { pl['2026-10-26'] = pl[h]; delete pl[h]; } salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-26'; renderizarPlanoCostura(); });
