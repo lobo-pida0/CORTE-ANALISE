@@ -92,7 +92,7 @@ function processarPorOPPreparacao() {
 
 // ---- TEMPO PEÇA POR TIPO DE OPERAÇÃO: planilha (1 linha por OP; colunas "Tempo Peca OP Local" com o nome da operação na linha de cima) ----
 // Parte pura (testável): linhas → { 'ciclo-op': { 'PREP PARTES SUPERIOR': 7.76, ... }, 'op': {...} }  (valor = minutos por peça)
-function extrairTemposPreparacaoDasLinhas(rows) {
+function extrairTemposPreparacaoDasLinhas(rows, soOperacoes) {
     const iCab = [0, 1, 2, 3].find(i => rows[i] && rows[i].some(c => normLocalPrep(c) === 'OP'));
     if (iCab === undefined || iCab === 0) throw new Error('Não achei a linha de títulos (coluna OP) com os nomes das operações acima dela.');
     const cab = rows[iCab].map(normLocalPrep), nomes = rows[iCab - 1].map(normLocalPrep);
@@ -104,13 +104,23 @@ function extrairTemposPreparacaoDasLinhas(rows) {
         const r = rows[i]; if (!r) continue;
         if (iCiclo !== -1 && r[iCiclo] != null && r[iCiclo] !== '') ciclo = String(r[iCiclo]).trim();
         if (r[iOP] == null || r[iOP] === '') continue;   // linhas só com o local (mesma OP em outro local) repetem os mesmos tempos
-        const tempos = {}; colunas.forEach(c => { const v = parseFloat(r[c]); if (v > 0) tempos[nomes[c]] = v; });
+        const tempos = {}; colunas.forEach(c => { const v = parseFloat(r[c]); if (v > 0 && (!soOperacoes || soOperacoes.has(nomes[c]))) tempos[nomes[c]] = Math.round(v * 1000) / 1000; });
+        if (!Object.keys(tempos).length) continue;
         const op = String(r[iOP]).trim();
         mapa[`${ciclo}-${op}`] = tempos; if (!(op in mapa)) mapa[op] = tempos;
     }
     return mapa;
 }
-function obterTemposPreparacao() { try { return JSON.parse(localStorage.getItem('temposPreparacao') || '{}') || {}; } catch (e) { return {}; } }
+// Os tempos ficam no IndexedDB (a planilha é grande e o localStorage de 5 MB já enche com as outras abas); só as operações usadas pelas janelas.
+let temposPreparacaoCache = {};
+function abrirIDBTempos() { return new Promise((ok, erro) => { const r = indexedDB.open('corte-pro-tempos', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => ok(r.result); r.onerror = () => erro(r.error); }); }
+async function salvarTemposIDB(valor) { const db = await abrirIDBTempos(); return new Promise((ok, erro) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(valor, 'temposPreparacao'); tx.oncomplete = () => ok(); tx.onerror = () => erro(tx.error); }); }
+async function carregarTemposPreparacao() {
+    try { const db = await abrirIDBTempos(); temposPreparacaoCache = await new Promise((ok, erro) => { const r = db.transaction('kv').objectStore('kv').get('temposPreparacao'); r.onsuccess = () => ok(r.result || {}); r.onerror = () => erro(r.error); }); } catch (e) { temposPreparacaoCache = {}; }
+    renderizarPreparacao();
+}
+function obterTemposPreparacao() { return temposPreparacaoCache; }
+function operacoesUsadasPreparacao() { return new Set(GRUPOS_PREPARACAO.flatMap(g => g.janelas.map(j => j.tempo ? normLocalPrep(j.tempo) : null)).filter(Boolean)); }
 function tempoPecaPreparacao(o, janela, tempos) {
     if (!janela.tempo) return 0;
     const t = tempos[`${o.ciclo}-${o.op}`] || tempos[o.op];
@@ -122,11 +132,12 @@ function importarTemposPreparacao() {
     if (!exigirBibliotecaExcel()) return;
     const input = $('inputTemposPreparacao'); if (!input.files[0]) return;
     const r = new FileReader();
-    r.onload = e => {
+    r.onload = async e => {
         try {
             const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-            const mapa = extrairTemposPreparacaoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }));
-            localStorage.setItem('temposPreparacao', JSON.stringify(mapa)); localStorage.setItem('temposPreparacaoEm', new Date().toISOString());
+            const mapa = extrairTemposPreparacaoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }), operacoesUsadasPreparacao());
+            await salvarTemposIDB(mapa); temposPreparacaoCache = mapa;
+            try { localStorage.removeItem('temposPreparacao'); localStorage.setItem('temposPreparacaoEm', new Date().toISOString()); } catch (e2) { /* localStorage cheio: só perde a data */ }
             input.value = ''; renderizarPreparacao();
             showToast(`<i class="fas fa-check-double"></i> Tempos de ${Object.keys(mapa).filter(k => k.includes('-')).length} OPs importados!`);
         } catch (err) { alert('❌ Não foi possível processar a planilha de tempos.\n\n' + err.message); input.value = ''; }
@@ -182,7 +193,7 @@ function renderizarPreparacao() {
     const plano = planos[hoje] ? planos[hoje].ops : [], noPlano = new Set(plano.map(chaveOPPrep));
     const em = localStorage.getItem('porOPPreparacaoEm');
     const info = $('preparacaoInfo'); if (info) info.innerText = em ? `Planilha importada em ${new Date(em).toLocaleString('pt-BR')} · ${ops.length} OPs` : 'Nenhuma planilha importada ainda.';
-    const infoT = $('preparacaoTemposInfo'); if (infoT) { const eT = localStorage.getItem('temposPreparacaoEm'); infoT.innerText = eT ? `Tempos importados em ${new Date(eT).toLocaleString('pt-BR')}` : 'Tempos: não importados'; }
+    const infoT = $('preparacaoTemposInfo'); if (infoT) { const eT = (() => { try { return localStorage.getItem('temposPreparacaoEm'); } catch (e) { return null; } })(); infoT.innerText = Object.keys(temposPreparacaoCache).length ? (eT ? `Tempos importados em ${new Date(eT).toLocaleString('pt-BR')}` : 'Tempos importados') : 'Tempos: não importados' }
     if (!ops.length) { alvo.innerHTML = '<div style="padding:30px; text-align:center; color:var(--texto-secundario);">Importe a planilha POR_OP para ver as OPs da preparação.</div>'; return; }
 
     // Mês de destino (o mesmo da aba Prioridades / importação de Destino de Produção), ex.: "2026-11" → NOV/2026.
