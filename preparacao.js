@@ -3,19 +3,20 @@
 // Fonte: planilha POR_OP (colunas OP, Ciclo, Descrição Local, Qt OP Local, Data Finalização...). Só as OPs desses locais
 // são guardadas. Ordem em cada janela: finalização mais próxima primeiro, depois quem está há mais dias no local.
 // A pessoa marca as OPs do dia e clica em SALVAR NO PLANO (plano do dia, guardado por data).
-// Para mudar o que entra em cada grupo/janela, é só editar GRUPOS_PREPARACAO.
+// Para mudar o que entra em cada grupo/janela, é só editar GRUPOS_PREPARACAO. O campo `tempo` de cada janela é a coluna da
+// planilha de TEMPO PEÇA POR TIPO DE OPERAÇÃO usada pra calcular o tempo (peças × tempo por peça); janela sem `tempo` não calcula.
 // =========================================================================
 const GRUPOS_PREPARACAO = [
     { chave: 'SUP', rotulo: 'Preparação parte superior', janelas: [
-        { local: 'PNP PREP PARTES SUP', rotulo: 'Partes superiores' }, { local: 'PNP PREP GOLA E PUNHO', rotulo: 'Gola e punho' },
+        { local: 'PNP PREP PARTES SUP', rotulo: 'Partes superiores', tempo: 'PREP PARTES SUPERIOR' }, { local: 'PNP PREP GOLA E PUNHO', rotulo: 'Gola e punho', tempo: 'PREP GLA E PUNHO' },
         // (no sistema o local está escrito "PROGAMADA", sem o R — aceita as duas grafias)
-        { local: 'PNP COSTURA PROGAMADA', alias: ['PNP COSTURA PROGRAMADA'], rotulo: 'Costura programada' }] },
-    { chave: 'INF', rotulo: 'Preparação parte inferior', janelas: [{ local: 'PNP PREP PARTES INF', rotulo: 'Partes inferiores' }] },
+        { local: 'PNP COSTURA PROGAMADA', alias: ['PNP COSTURA PROGRAMADA'], rotulo: 'Costura programada', tempo: 'COSTURA PROGRAMADA' }] },
+    { chave: 'INF', rotulo: 'Preparação parte inferior', janelas: [{ local: 'PNP PREP PARTES INF', rotulo: 'Partes inferiores', tempo: 'PREP PARTES INFERIOR' }] },
     { chave: 'LOGO', rotulo: 'Fusionadeira / logo / silk / bordado', janelas: [
-        { local: 'PNP FUSIONADEIRA LOGO', rotulo: 'Fusionadeira logo' }, { local: 'PNP INSPECAO LOGO/MARCA INDIRETO', rotulo: 'Inspeção logo/marca' },
-        { local: 'PNP SILK INTERNO', rotulo: 'Silk' }, { local: 'PNP BORDADO INTERNO', rotulo: 'Bordado' },
+        { local: 'PNP FUSIONADEIRA LOGO', rotulo: 'Fusionadeira logo', tempo: 'FUSIO LOGO' }, { local: 'PNP INSPECAO LOGO/MARCA INDIRETO', rotulo: 'Inspeção logo/marca' },
+        { local: 'PNP SILK INTERNO', rotulo: 'Silk' }, { local: 'PNP BORDADO INTERNO', rotulo: 'Bordado', tempo: 'BORD INT' },
         { local: 'PNP AGUARD DEFINICAO SILK', rotulo: 'Aguardando definição de silk' }, { local: 'PNP AGUARD DEFINICAO BORDADO', rotulo: 'Aguardando definição de bordado' }] },
-    { chave: 'UNIR', rotulo: 'Separar peças / unir corpo', janelas: [{ local: 'PNP SEPARAR PECAS / UNIR CORPO E PTS', rotulo: 'Separar peças / unir corpo' }] },
+    { chave: 'UNIR', rotulo: 'Separar peças / unir corpo', janelas: [{ local: 'PNP SEPARAR PECAS / UNIR CORPO E PTS', rotulo: 'Separar peças / unir corpo', tempo: 'PREP SEPARACAO' }] },
     { chave: 'DIST', rotulo: 'Distribuição', janelas: [
         { local: 'PNP AGUARD BIP DISTRIBUICAO', rotulo: 'Aguardando bipagem' }, { local: 'PNP DISTRIBUICAO INT', rotulo: 'Distribuição interna' }] },
 ];
@@ -89,6 +90,50 @@ function processarPorOPPreparacao() {
     r.readAsArrayBuffer(input.files[0]);
 }
 
+// ---- TEMPO PEÇA POR TIPO DE OPERAÇÃO: planilha (1 linha por OP; colunas "Tempo Peca OP Local" com o nome da operação na linha de cima) ----
+// Parte pura (testável): linhas → { 'ciclo-op': { 'PREP PARTES SUPERIOR': 7.76, ... }, 'op': {...} }  (valor = minutos por peça)
+function extrairTemposPreparacaoDasLinhas(rows) {
+    const iCab = [0, 1, 2, 3].find(i => rows[i] && rows[i].some(c => normLocalPrep(c) === 'OP'));
+    if (iCab === undefined || iCab === 0) throw new Error('Não achei a linha de títulos (coluna OP) com os nomes das operações acima dela.');
+    const cab = rows[iCab].map(normLocalPrep), nomes = rows[iCab - 1].map(normLocalPrep);
+    const iOP = cab.indexOf('OP'), iCiclo = cab.indexOf('CICLO');
+    const colunas = cab.map((c, i) => (c.startsWith('TEMPO PECA') && nomes[i]) ? i : -1).filter(i => i !== -1);
+    if (iOP === -1 || !colunas.length) throw new Error('Não achei as colunas "Tempo Peça" por operação.');
+    const mapa = {}; let ciclo = '';
+    for (let i = iCab + 1; i < rows.length; i++) {
+        const r = rows[i]; if (!r) continue;
+        if (iCiclo !== -1 && r[iCiclo] != null && r[iCiclo] !== '') ciclo = String(r[iCiclo]).trim();
+        if (r[iOP] == null || r[iOP] === '') continue;   // linhas só com o local (mesma OP em outro local) repetem os mesmos tempos
+        const tempos = {}; colunas.forEach(c => { const v = parseFloat(r[c]); if (v > 0) tempos[nomes[c]] = v; });
+        const op = String(r[iOP]).trim();
+        mapa[`${ciclo}-${op}`] = tempos; if (!(op in mapa)) mapa[op] = tempos;
+    }
+    return mapa;
+}
+function obterTemposPreparacao() { try { return JSON.parse(localStorage.getItem('temposPreparacao') || '{}') || {}; } catch (e) { return {}; } }
+function tempoPecaPreparacao(o, janela, tempos) {
+    if (!janela.tempo) return 0;
+    const t = tempos[`${o.ciclo}-${o.op}`] || tempos[o.op];
+    return t ? (t[normLocalPrep(janela.tempo)] || 0) : 0;
+}
+const fmtMinPrep = min => { if (!min) return '—'; const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`; };
+function importarTemposPreparacao() {
+    if (!exigirAdminOuUsuario('importar a planilha de tempos da preparação')) return;
+    if (!exigirBibliotecaExcel()) return;
+    const input = $('inputTemposPreparacao'); if (!input.files[0]) return;
+    const r = new FileReader();
+    r.onload = e => {
+        try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            const mapa = extrairTemposPreparacaoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }));
+            localStorage.setItem('temposPreparacao', JSON.stringify(mapa)); localStorage.setItem('temposPreparacaoEm', new Date().toISOString());
+            input.value = ''; renderizarPreparacao();
+            showToast(`<i class="fas fa-check-double"></i> Tempos de ${Object.keys(mapa).filter(k => k.includes('-')).length} OPs importados!`);
+        } catch (err) { alert('❌ Não foi possível processar a planilha de tempos.\n\n' + err.message); input.value = ''; }
+    };
+    r.readAsArrayBuffer(input.files[0]);
+}
+
 // ---- URGENTE: marcação compartilhada (linha 'urgentes_preparacao' da tabela destino_producao), igual ao Destino ----
 function obterUrgentesPreparacao() { try { return new Set(JSON.parse(localStorage.getItem('urgentesPreparacao') || '[]')); } catch (e) { return new Set(); } }
 async function publicarUrgentesPreparacao() {
@@ -137,9 +182,11 @@ function renderizarPreparacao() {
     const plano = planos[hoje] ? planos[hoje].ops : [], noPlano = new Set(plano.map(chaveOPPrep));
     const em = localStorage.getItem('porOPPreparacaoEm');
     const info = $('preparacaoInfo'); if (info) info.innerText = em ? `Planilha importada em ${new Date(em).toLocaleString('pt-BR')} · ${ops.length} OPs` : 'Nenhuma planilha importada ainda.';
+    const infoT = $('preparacaoTemposInfo'); if (infoT) { const eT = localStorage.getItem('temposPreparacaoEm'); infoT.innerText = eT ? `Tempos importados em ${new Date(eT).toLocaleString('pt-BR')}` : 'Tempos: não importados'; }
     if (!ops.length) { alvo.innerHTML = '<div style="padding:30px; text-align:center; color:var(--texto-secundario);">Importe a planilha POR_OP para ver as OPs da preparação.</div>'; return; }
 
     // Mês de destino (o mesmo da aba Prioridades / importação de Destino de Produção), ex.: "2026-11" → NOV/2026.
+    const tempos = obterTemposPreparacao(), temTempos = Object.keys(tempos).length > 0;
     const urgentes = obterUrgentesPreparacao(), localProdFila = obterLocalProducaoPorOP();
     const htmlLocalProd = o => { const v = o.localProd || localProdFila.get(o.op) || ''; return v ? `<span style="font-size:11px;">${escPrep(v)}</span>` : '<span style="color:var(--texto-secundario);">—</span>'; };
     const mesesDestino = obterOpsMesDestino(), NOMES_MES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
@@ -153,15 +200,16 @@ function renderizarPreparacao() {
         const janelas = g.janelas.map((j, ij) => {
             const cor = g.janelas.length > 1 ? CORES_JANELAS_PREPARACAO[ij % CORES_JANELAS_PREPARACAO.length] : 'var(--cor-primaria)';
             const lista = ops.filter(o => o.local === normLocalPrep(j.local)).sort(ordenarPreparacao);
-            const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0);
+            const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0), minJanela = temTempos && j.tempo ? lista.reduce((t, o) => t + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) : 0;
+            const colTempo = temTempos && !!j.tempo, tp = o => tempoPecaPreparacao(o, j, tempos);
             const linhas = lista.map(o => { const urg = urgentes.has(chaveOPPrep(o)); return `<tr style="${noPlano.has(chaveOPPrep(o)) ? 'opacity:.55;' : ''}${urg ? 'background:rgba(193,68,78,.14);' : ''}">
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
                 <td style="text-align:center;"><i class="fas fa-fire prep-urg${urg ? ' ativa' : ''}" style="cursor:pointer; color:${urg ? 'var(--cor-alerta)' : 'var(--borda-cor)'};" onclick="alternarUrgentePreparacao('${escPrep(chaveOPPrep(o))}')" title="${urg ? 'Tirar urgência' : 'Marcar como urgente'}"></i></td>
                 <td><strong>${escPrep(o.op)}</strong></td><td>${escPrep(o.ciclo)}</td><td>${escPrep(o.descRef)} <span style="color:var(--texto-secundario);">${escPrep(o.ref)}</span></td>
-                <td>${htmlLocalProd(o)}</td><td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td></tr>`; }).join('');
+                <td>${htmlLocalProd(o)}</td><td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td>${colTempo ? `<td style="text-align:right; white-space:nowrap;">${tp(o) ? tp(o).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'}</td><td class="prep-qtd" style="text-align:right; white-space:nowrap; font-weight:bold;">${fmtMinPrep((o.qtd || 0) * tp(o))}</td>` : ''}</tr>`; }).join('');
             return `<div id="prepJanela-${g.chave}-${ij}" style="border:1px solid ${cor}; border-left:6px solid ${cor}; border-radius:6px; overflow:hidden; min-width:0;">
-                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
-                ${lista.length ? `<div class="prep-rolagem" style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th title="Urgente"><i class="fas fa-fire"></i></th><th>OP</th><th>Ciclo</th><th>Produto</th><th title="Local de produção (Local Obs. da POR_OP, ou da Fila de Corte)">Local prod.</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
+                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças${minJanela ? ' · ⏱ ' + fmtMinPrep(minJanela) : ''}${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
+                ${lista.length ? `<div class="prep-rolagem" style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th title="Urgente"><i class="fas fa-fire"></i></th><th>OP</th><th>Ciclo</th><th>Produto</th><th title="Local de produção (Local Obs. da POR_OP, ou da Fila de Corte)">Local prod.</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th>${colTempo ? `<th style="text-align:right;" title="Minutos por peça (${escPrep(j.tempo)})">Min/peça</th><th class="prep-qtd" style="text-align:right;" title="Qtd × minutos por peça">Tempo</th>` : ''}</tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
         }).join('');
         const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local));
         return `<div class="secao" style="margin-bottom:12px;"><div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-layer-group"></i> ${escPrep(g.rotulo)}</span><span>${todas.length} OP(s) · ${todas.reduce((t, o) => t + (o.qtd || 0), 0).toLocaleString('pt-BR')} peças</span></div>

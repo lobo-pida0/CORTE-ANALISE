@@ -221,6 +221,15 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     await p.evaluate(() => abrirSubabaPreparacao('LOGO'));
     igual('sub-aba mostra só o grupo escolhido', await p.evaluate(() => [/Silk/.test(document.getElementById('preparacaoConteudo').innerText), document.querySelectorAll('.check-prep').length]), [true, 1]);
     igual('coluna mês destino mostra o mês da OP', await p.evaluate(() => { localStorage.setItem('opsMesDestino', JSON.stringify({ '211-4': '2026-11' })); renderizarPreparacao(); return /NOV\/2026/.test(document.getElementById('preparacaoConteudo').innerText); }), true);
+    igual('tempos da preparação: lê a planilha (ciclo desce nas linhas, linha só de local é ignorada)', await p.evaluate(() => {
+      const m = extrairTemposPreparacaoDasLinhas([['Tipo de Operacao', null, null, 'PREP PARTES SUPERIOR', 'PREP SEPARACAO'], ['Empresa', 'Ciclo', 'OP', 'Tempo Peca OP Local', 'Tempo Peca OP Local'], ['1', '211', '1', 6, 0.5], [null, null, null, 6, 0.5], [null, null, '7', 2.5, null]]);
+      return [m['211-1']['PREP PARTES SUPERIOR'], m['211-7']['PREP PARTES SUPERIOR'], '211-7' in m && !('PREP SEPARACAO' in m['211-7']), Object.keys(m).length];
+    }), [6, 2.5, true, 4]);
+    igual('tempos da preparação: janela mostra min/peça e tempo total da OP', await p.evaluate(() => {
+      localStorage.setItem('temposPreparacao', JSON.stringify({ '211-1': { 'PREP PARTES SUPERIOR': 2 } })); abrirSubabaPreparacao('SUP');
+      const j = document.getElementById('prepJanela-SUP-0'), op = obterOPsPreparacao().find(o => o.ciclo === '211' && o.op === '1');
+      return [/Min\/peça/.test(j.innerText), j.innerText.includes(fmtMinPrep(op.qtd * 2)), fmtMinPrep(150)];
+    }), [true, true, '2h30']);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
     {   // impressão de uma janela só, só com as marcadas
       await p.evaluate(() => { abrirSubabaPreparacao('SUP'); window.print = () => { window.dispatchEvent(new Event('beforeprint')); }; });

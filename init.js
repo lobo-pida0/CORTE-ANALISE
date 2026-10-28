@@ -115,6 +115,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('abrirAba-aba-preparacao', 'click', (event) => { abrirAba(event, 'aba-preparacao'); renderizarPreparacao(); carregarUrgentesPreparacaoDaNuvem(); });
         wireEvento('inputPorOPPreparacao', 'change', () => { processarPorOPPreparacao(); });
+        wireEvento('inputTemposPreparacao', 'change', () => { importarTemposPreparacao(); });
         wireEvento('abrirAba-aba-producao-grupo', 'click', (event) => { abrirAba(event, 'aba-producao-grupo'); renderizarProducaoGrupo(); carregarEfCosturaDaNuvem().then(() => renderizarProducaoGrupo()); });
         wireEvento('abrirAba-aba-plano-costura', 'click', (event) => { abrirAba(event, 'aba-plano-costura'); renderizarPlanoCostura(); carregarPlanosCosturaDaNuvem(); carregarEfCosturaDaNuvem(); });
         wireEvento('planoCosturaData', 'change', () => { renderizarPlanoCostura(); });
