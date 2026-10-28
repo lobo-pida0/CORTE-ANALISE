@@ -330,6 +330,12 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('papel "sequencia": vê o botão de importar a POR_OP e consegue importar', [visivelBtn, await p.evaluate(() => JSON.parse(localStorage.getItem('porOPCosturaDetalhado') || '[]').map(o => o.op))], [true, ['9901']]);
     await p.evaluate(() => { papelUsuarioAtual = 'admin'; sessaoAdminAtual = {}; localStorage.removeItem('porOPCosturaImportadaLocal'); aplicarRestricaoDeAbaVisitante(); });
   }
+  igual('máquinas de enfesto: coluna FINALIZAÇÃO mostra a data de finalização da OP', await p.evaluate(() => {
+    bancoDadosOPs = [{ id: '8001', ciclo: '211', desc: 'CORTE CALCA X', qtd: 10, etapa: 6, tempoCorte: 0, localDestino: 'INT', dataFinalizacao: '2026-11-06T12:00:00.000Z', referencia: 'R1', diasLocal: 1 }];
+    dadosProgramacaoVisiveis = bancoDadosOPs.slice(); const por = classificarOPsPorMaquinaEnfesto(dadosProgramacaoVisiveis); maquinaEnfestoSelecionada = ['1','2','SEM'].find(m => por[m].length); abrirSubabaProgramacao('maquinas');
+    const th = [...document.querySelectorAll('#listaMaquinaEnfesto')][0].closest('table').querySelector('thead').innerText;
+    return [/FINALIZA/i.test(th), !/CORTE\s*$/i.test(th.trim()), /06\/11\/2026/.test(document.getElementById('listaMaquinaEnfesto').innerText)];
+  }), [true, true, true]);
   igual('salvar de novo soma sem duplicar', await p.evaluate(() => obterPlanosCostura()[hojeISOLocalPlanoCostura()].ops.length), 3);
   await p.evaluate(() => { const h = hojeISOLocalPlanoCostura(), pl = obterPlanosCostura(); if (h !== '2026-10-26') { pl['2026-10-26'] = pl[h]; delete pl[h]; } salvarPlanosCostura(pl); abrirAba(null, 'aba-plano-costura'); $('planoCosturaData').value = '2026-10-26'; renderizarPlanoCostura(); });
   igual('aba do plano lista só as OPs adicionadas', await p.evaluate(() => document.querySelectorAll('#planoCosturaLista strong').length >= 3 && /101/.test(document.getElementById('planoCosturaLista').innerText)), true);

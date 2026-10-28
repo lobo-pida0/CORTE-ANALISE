@@ -100,7 +100,7 @@ function renderizarMaquinasEnfesto() {
             <td><span class="pill selo-produto">${esc(chave || '—')}</span>${ambas ? ' <small title="Aceito nas duas máquinas">✱</small>' : ''}</td>
             <td title="${esc(o.descMP)}"><span style="background:#eee; color:#333; padding:2px 6px; border-radius:4px; font-size:0.85em; font-weight:bold; cursor:help;">${esc(mpOP)}</span></td>
             <td>${esc(o.desc)}</td><td class="num" style="color:${(o.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${o.diasLocal || 0}</td><td>${o.prioridade && o.mesDestino ? `<span class="pill selo-mes">${esc(o.mesDestino)}</span>` : '—'}</td><td class="num">${esc(o.qtd)}</td>
-            <td>${o.dataCorte ? new Date(o.dataCorte).toLocaleDateString('pt-BR') : 'FIFO'}</td>
+            <td>${o.dataFinalizacao && formatarDataBR(o.dataFinalizacao) ? formatarDataBR(o.dataFinalizacao) : '—'}</td>
         </tr>`;
     });
     $('listaMaquinaEnfesto').innerHTML = ops.length ? html
