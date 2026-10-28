@@ -228,13 +228,13 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('tempos da preparação: janela mostra min/peça e tempo total da OP', await p.evaluate(() => {
       temposPreparacaoCache = { '211-1': { 'PREP PARTES SUPERIOR': 2 } }; abrirSubabaPreparacao('SUP');
       const j = document.getElementById('prepJanela-SUP-0'), op = obterOPsPreparacao().find(o => o.ciclo === '211' && o.op === '1');
-      return [/Seg\/peça/.test(j.innerText), j.innerText.includes(fmtMinPrep(op.qtd * 2 / 60)), fmtMinPrep(150)];
+      return [/Min\/peça/.test(j.innerText), j.innerText.includes(fmtMinPrep(op.qtd * 2)), fmtMinPrep(150)];
     }), [true, true, '2h30']);
     igual('pessoas por grupo: calcula disponível/dia, fila e dias para zerar', await p.evaluate(() => {
       temposPreparacaoCache = { '211-1': { 'PREP PARTES SUPERIOR': 60 }, '211-2': { 'PREP PARTES SUPERIOR': 60 } }; abrirSubabaPreparacao('SUP');
       definirPessoasPreparacao('SUP', '2');
       const c = document.getElementById('preparacaoConteudo').innerText, qtd = obterOPsPreparacao().filter(o => o.local === 'PNP PREP PARTES SUP' && ['1', '2'].includes(o.op)).reduce((s, o) => s + o.qtd, 0);
-      const ok = [/Disponível por dia:\s*17h36/.test(c), c.includes('Zera em'), c.includes(fmtMinPrep(qtd))];
+      const ok = [/Disponível por dia:\s*17h36/.test(c), c.includes('Zera em'), c.includes(fmtMinPrep(qtd * 60))];
       definirPessoasPreparacao('SUP', '0'); return [...ok, !/Zera em/.test(document.getElementById('preparacaoConteudo').innerText), fmtDiasPrep(0.5)];
     }), [true, true, true, true, '0,5 dia']);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
