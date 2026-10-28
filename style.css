@@ -1357,3 +1357,7 @@ body.dark-mode #efCosturaCorpo tr.ef-dia-total td:first-child { box-shadow: inse
 #aba-preparacao .prep-obs { width: 100%; min-width: 200px; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--borda-cor); border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 12px; }
 #aba-preparacao .prep-obs:focus { outline: 2px solid var(--cor-primaria); background: var(--card-bg, transparent); }
 @media print { #areaImpressaoGenerica .prep-obs { border: none; padding: 0; white-space: normal; } #areaImpressaoGenerica .prep-produto { max-width: none; white-space: normal; } }
+
+.selo-parte { background: #8E5BB5; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px; letter-spacing: .5px; vertical-align: middle; }
+.prep-outros { font-size: 10px; color: var(--texto-secundario); max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media print { #areaImpressaoGenerica .prep-outros { max-width: none; white-space: normal; } }

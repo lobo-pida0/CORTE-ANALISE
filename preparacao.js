@@ -32,11 +32,15 @@ function obterPlanosPreparacao() { try { return JSON.parse(localStorage.getItem(
 function salvarPlanosPreparacao(p) { try { localStorage.setItem('planoPreparacao', JSON.stringify(p)); } catch (e) { /* ignora */ } }
 function hojePreparacao() { return isoLocalPrep(new Date()); }
 let subabaPreparacao = GRUPOS_PREPARACAO[0].chave;
+let filtroTipoPreparacao = 'todas';   // 'todas' | 'inteiras' | 'partes'
+function definirFiltroTipoPreparacao(v) { filtroTipoPreparacao = v; renderizarPreparacao(); }
+const passaFiltroTipoPrep = o => filtroTipoPreparacao === 'todas' || (filtroTipoPreparacao === 'partes') === !!o.parte;
+const chaveLinhaPrep = o => `${chaveOPPrep(o)}|${o.local}|${o.parte ? 'P' : 'I'}`;   // observação é por linha (a inteira e a parte têm anotações separadas)
 function abrirSubabaPreparacao(chave) { subabaPreparacao = chave; renderizarPreparacao(); }
 const chaveOPPrep = o => `${o.ciclo || ''}-${o.op}`;
 
 // Parte pura (testável): linhas da planilha → OPs nos locais da preparação.
-function extrairOPsPreparacaoDasLinhas(rows) {
+function extrairOPsPreparacaoDasLinhas(rows, parte = false, todasSaida = null) {
     const semAc = normLocalPrep;
     const iCab = [0, 1, 2, 3].find(i => rows[i] && rows[i].some(c => semAc(c) === 'OP'));
     if (iCab === undefined) throw new Error('Não achei a linha de títulos (coluna OP).');
@@ -50,10 +54,12 @@ function extrairOPsPreparacaoDasLinhas(rows) {
     const lista = [];
     for (let i = iCab + 1; i < rows.length; i++) {
         const r = rows[i]; if (!r || r[ix.op] === undefined || r[ix.op] === null || r[ix.op] === '') continue;
-        const localBruto = normLocalPrep(r[ix.local]); if (!LOCAIS_PREPARACAO.has(localBruto)) continue;
+        const localBruto = normLocalPrep(r[ix.local]);
+        if (todasSaida) todasSaida.push({ k: `${ix.ciclo !== -1 && r[ix.ciclo] != null ? String(r[ix.ciclo]).trim() : ''}-${String(r[ix.op]).trim()}`, l: localBruto, p: parte ? 1 : 0, q: ix.qtd !== -1 ? (parseFloat(r[ix.qtd]) || 0) : 0 });   // todas as linhas (qualquer local), pra mostrar onde está a outra metade
+        if (!LOCAIS_PREPARACAO.has(localBruto)) continue;
         const local = CANONICO_LOCAL_PREP.get(localBruto);   // grafia única (PROGAMADA/PROGRAMADA → a mesma janela)
         lista.push({
-            op: String(r[ix.op]).trim(), ciclo: ix.ciclo !== -1 && r[ix.ciclo] != null ? String(r[ix.ciclo]).trim() : '', local,
+            op: String(r[ix.op]).trim(), ciclo: ix.ciclo !== -1 && r[ix.ciclo] != null ? String(r[ix.ciclo]).trim() : '', local, parte,
             ref: ix.ref !== -1 && r[ix.ref] ? String(r[ix.ref]).trim().toUpperCase() : '', descRef: ix.descRef !== -1 ? String(r[ix.descRef] || '').trim() : '',
             cor: ix.cor !== -1 && r[ix.cor] ? String(r[ix.cor]).trim().toUpperCase() : '', qtd: ix.qtd !== -1 ? (parseFloat(r[ix.qtd]) || 0) : 0,
             tipo: ix.tipo !== -1 ? semAc(r[ix.tipo]) : '', localProd: ix.localProd !== -1 && r[ix.localProd] ? String(r[ix.localProd]).trim().toUpperCase() : '', fin: ix.dataFin !== -1 ? isoLocalPrep(extrairDataExcel(r[ix.dataFin])) : null,
@@ -64,6 +70,24 @@ function extrairOPsPreparacaoDasLinhas(rows) {
 }
 
 // Nome curto do local no balanço: a janela (ex.: "Gola e punho", "Silk").
+// A planilha pode ter 2 abas: "sem partes" (OPs inteiras) e "somente partes" (as partes das OPs, cada uma com o local dela).
+// Aba com "PARTE" no nome e "SOMENTE"/"SO" = partes; "SEM PARTES" = inteiras; arquivo de 1 aba só = tudo é OP inteira (como antes).
+function abasInteirasEPartesPreparacao(nomes) {
+    const partes = [], inteiras = [];
+    nomes.forEach(n => { const s = normLocalPrep(n); if (s.includes('PARTE') && !s.includes('SEM') && /SOMENTE|SO PARTE|^PARTES/.test(s)) partes.push(n); else inteiras.push(n); });
+    if (partes.length && !inteiras.length) throw new Error('Achei só a aba de partes; falta a aba das OPs inteiras ("sem partes").');
+    return { inteiras: partes.length ? inteiras : [nomes[0]], partes };
+}
+// Em cada OP/parte guarda onde estão as OUTRAS linhas da mesma OP (a inteira em um local, as partes em outros) — mesmo fora da preparação.
+function anexarOutrasMetadesPreparacao(lista, todas) {
+    const por = new Map(); todas.forEach(x => { if (!por.has(x.k)) por.set(x.k, []); por.get(x.k).push(x); });
+    lista.forEach(o => {
+        const k = `${o.ciclo}-${o.op}`, outros = (por.get(k) || []).filter(x => !(x.l === o.local && x.p === (o.parte ? 1 : 0)));
+        if (outros.length) o.outros = outros.slice(0, 5).map(x => [x.l, x.p, x.q]);   // no máx. 5 (o localStorage é pequeno)
+    });
+}
+const paraBalancoPrep = o => o.parte ? { ...o, op: `${o.op} (parte)` } : o;   // no balanço a parte conta à parte (senão "inteira + parte" viraria uma OP só)
+
 function nomeLocalPreparacao(local) {
     for (const g of GRUPOS_PREPARACAO) { const j = g.janelas.find(x => normLocalPrep(x.local) === normLocalPrep(local)); if (j) return j.rotulo; }
     return local;
@@ -77,14 +101,17 @@ function processarPorOPPreparacao() {
     r.onload = e => {
         try {
             const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-            const lista = extrairOPsPreparacaoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }));
+            const abas = abasInteirasEPartesPreparacao(wb.SheetNames), todas = [], lista = [];
+            abas.inteiras.forEach(n => lista.push(...extrairOPsPreparacaoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1 }), false, todas)));
+            abas.partes.forEach(n => lista.push(...extrairOPsPreparacaoDasLinhas(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1 }), true, todas)));
+            anexarOutrasMetadesPreparacao(lista, todas);
             if (!lista.length) throw new Error('Nenhuma OP nos locais da preparação foi encontrada.');
             const antes = obterOPsPreparacao();   // foto anterior, pro balanço
             localStorage.setItem('porOPPreparacao', JSON.stringify(lista));
             localStorage.setItem('porOPPreparacaoEm', new Date().toISOString());
             input.value = ''; renderizarPreparacao();
-            showToast(`<i class="fas fa-check-double"></i> ${lista.length} OPs da preparação importadas!`);
-            if (antes.length) exibirBalancoSeqCostura(antes, lista, { titulo: 'BALANÇO DA PREPARAÇÃO', icone: 'fa-boxes-packing', setor: 'PREPARAÇÃO', nomeLocal: nomeLocalPreparacao, semHistorico: true });
+            showToast(`<i class="fas fa-check-double"></i> ${lista.length} OPs da preparação importadas${abas.partes.length ? ` (${lista.filter(o => o.parte).length} são partes)` : ''}!`);
+            if (antes.length) exibirBalancoSeqCostura(antes.map(paraBalancoPrep), lista.map(paraBalancoPrep), { titulo: 'BALANÇO DA PREPARAÇÃO', icone: 'fa-boxes-packing', setor: 'PREPARAÇÃO', nomeLocal: nomeLocalPreparacao, semHistorico: true });
         } catch (err) { alert('❌ Não foi possível processar a planilha.\n\n' + err.message); input.value = ''; }
     };
     r.readAsArrayBuffer(input.files[0]);
@@ -228,6 +255,13 @@ function ordenarPreparacao(a, b) {
     if (a.fin !== b.fin) return a.fin < b.fin ? -1 : 1;
     return (b.dias || 0) - (a.dias || 0);
 }
+const semPNP = l => String(l || '').replace(/^PNP /, '');
+function htmlOutrasMetades(o) {
+    if (!o.outros || !o.outros.length) return '';
+    const txt = o.outros.slice(0, 4).map(([l, p, q]) => `${p ? 'parte' : 'inteira'} em ${semPNP(l)} (${q})`).join('; ') + (o.outros.length > 4 ? ` +${o.outros.length - 4}` : '');
+    const tudo = o.outros.map(([l, p, q]) => `${p ? 'parte' : 'inteira'} em ${l} (${q})`).join('\n');
+    return `<div class="prep-outros" title="${escPrep(tudo)}">${escPrep(txt)}</div>`;
+}
 const dataBRPrep = iso => iso ? iso.split('-').reverse().join('/') : '—';
 
 function renderizarPreparacao() {
@@ -254,22 +288,22 @@ function renderizarPreparacao() {
         const pessoasGrupo = obterPessoasPreparacao()[g.chave] || 0, minPessoa = obterMinPessoaPreparacao();
         const janelas = g.janelas.map((j, ij) => {
             const cor = g.janelas.length > 1 ? CORES_JANELAS_PREPARACAO[ij % CORES_JANELAS_PREPARACAO.length] : 'var(--cor-primaria)';
-            const lista = ops.filter(o => o.local === normLocalPrep(j.local)).sort(ordenarPreparacao);
+            const lista = ops.filter(o => o.local === normLocalPrep(j.local) && passaFiltroTipoPrep(o)).sort(ordenarPreparacao);
             const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0), minJanela = temTempos && j.tempo ? lista.reduce((t, o) => t + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) : 0;
             const dispDia = pessoasGrupo * minPessoa, diasJanela = dispDia && minJanela ? minJanela / dispDia : 0;
             const colTempo = temTempos && !!j.tempo, tp = o => tempoPecaPreparacao(o, j, tempos);
             const linhas = lista.map(o => { const urg = urgentes.has(chaveOPPrep(o)); return `<tr style="${noPlano.has(chaveOPPrep(o)) ? 'opacity:.55;' : ''}${urg ? 'background:rgba(193,68,78,.14);' : ''}">
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
                 <td style="text-align:center;"><i class="fas fa-fire prep-urg${urg ? ' ativa' : ''}" style="cursor:pointer; color:${urg ? 'var(--cor-alerta)' : 'var(--borda-cor)'};" onclick="alternarUrgentePreparacao('${escPrep(chaveOPPrep(o))}')" title="${urg ? 'Tirar urgência' : 'Marcar como urgente'}"></i></td>
-                <td style="white-space:nowrap;"><strong>${escPrep(o.op)}</strong><div style="font-size:10px; color:var(--texto-secundario);">ciclo ${escPrep(o.ciclo)}</div></td>
+                <td style="white-space:nowrap;"><strong>${escPrep(o.op)}</strong>${o.parte ? ' <span class="pill selo-parte" title="Esta linha é uma PARTE da OP (não a OP inteira)">PARTE</span>' : ''}<div style="font-size:10px; color:var(--texto-secundario);">ciclo ${escPrep(o.ciclo)}</div>${htmlOutrasMetades(o)}</td>
                 <td><div class="prep-produto" title="${escPrep(o.descRef)} ${escPrep(o.ref)}">${escPrep(o.descRef)}</div><div style="font-size:10px; color:var(--texto-secundario);">${escPrep(o.ref)}${o.cor ? ' · ' + escPrep(o.cor) : ''}</div></td>
-                <td>${htmlLocalProd(o)}</td><td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td>${colTempo ? `<td style="text-align:right; white-space:nowrap;">${tp(o) ? tp(o).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'}</td><td class="prep-qtd" style="text-align:right; white-space:nowrap; font-weight:bold;">${fmtMinPrep((o.qtd || 0) * tp(o))}</td>` : ''}<td class="prep-qtd prep-obs-cel"><input type="text" class="prep-obs" maxlength="500" value="${escPrep(obsTodas[chaveOPPrep(o)] || '')}" placeholder="observação…" title="${escPrep(obsTodas[chaveOPPrep(o)] || '')}" onchange="salvarObsPreparacao('${escPrep(chaveOPPrep(o))}', this.value)"></td></tr>`; }).join('');
+                <td>${htmlLocalProd(o)}</td><td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td>${colTempo ? `<td style="text-align:right; white-space:nowrap;">${tp(o) ? tp(o).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'}</td><td class="prep-qtd" style="text-align:right; white-space:nowrap; font-weight:bold;">${fmtMinPrep((o.qtd || 0) * tp(o))}</td>` : ''}<td class="prep-qtd prep-obs-cel"><input type="text" class="prep-obs" maxlength="500" value="${escPrep(obsTodas[chaveLinhaPrep(o)] || '')}" placeholder="observação…" title="${escPrep(obsTodas[chaveLinhaPrep(o)] || '')}" onchange="salvarObsPreparacao('${escPrep(chaveLinhaPrep(o))}', this.value)"></td></tr>`; }).join('');
             return `<div id="prepJanela-${g.chave}-${ij}" style="border:1px solid ${cor}; border-left:6px solid ${cor}; border-radius:6px; overflow:hidden; min-width:0;">
-                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças${minJanela ? ' · ⏱ ' + fmtMinPrep(minJanela) : ''}${diasJanela ? ' · 📅 ' + fmtDiasPrep(diasJanela) : ''}${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
+                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s)${lista.some(o => o.parte) ? ` (${lista.filter(o => o.parte).length} parte${lista.filter(o => o.parte).length > 1 ? 's' : ''})` : ''} · ${pecas.toLocaleString('pt-BR')} peças${minJanela ? ' · ⏱ ' + fmtMinPrep(minJanela) : ''}${diasJanela ? ' · 📅 ' + fmtDiasPrep(diasJanela) : ''}${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
                 ${lista.length ? `<div class="prep-rolagem" style="max-height:460px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th title="Urgente"><i class="fas fa-fire"></i></th><th>OP</th><th>Produto</th><th title="Local de produção (Local Obs. da POR_OP, ou da Fila de Corte)">Local prod.</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th>${colTempo ? `<th style="text-align:right;" title="Minutos por peça (${escPrep(j.tempo)})">Min/peça</th><th class="prep-qtd" style="text-align:right;" title="Qtd × minutos por peça">Tempo</th>` : ''}<th class="prep-qtd" style="min-width:220px;">Observação</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
         }).join('');
-        const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local));
-        const minGrupo = temTempos ? g.janelas.reduce((tt, j) => tt + (j.tempo ? ops.filter(o => o.local === normLocalPrep(j.local)).reduce((s, o) => s + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) : 0), 0) : 0;
+        const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local) && passaFiltroTipoPrep(o));
+        const minGrupo = temTempos ? g.janelas.reduce((tt, j) => tt + (j.tempo ? ops.filter(o => o.local === normLocalPrep(j.local) && passaFiltroTipoPrep(o)).reduce((s, o) => s + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) : 0), 0) : 0;
         const dispDiaG = pessoasGrupo * minPessoa;
         const barraPessoas = `<div style="grid-column:1/-1; display:flex; flex-wrap:wrap; gap:14px; align-items:center; padding:8px 12px; border:1px dashed var(--borda-cor); border-radius:6px; font-size:12px;" class="imprimir-esconder-sempre">
             <label style="display:flex; align-items:center; gap:6px;"><i class="fas fa-people-group"></i> <strong>Pessoas no grupo:</strong> <input type="number" min="0" step="0.5" value="${pessoasGrupo || ''}" placeholder="0" style="width:70px;" onchange="definirPessoasPreparacao('${g.chave}', this.value)"></label>
@@ -281,7 +315,9 @@ function renderizarPreparacao() {
         return `<div class="secao" style="margin-bottom:12px;"><div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-layer-group"></i> ${escPrep(g.rotulo)}</span><span>${todas.length} OP(s) · ${todas.reduce((t, o) => t + (o.qtd || 0), 0).toLocaleString('pt-BR')} peças</span></div>
             <div class="secao-corpo" style="display:grid; grid-template-columns:1fr; gap:14px; align-items:start;">${barraPessoas}${janelas}</div></div>`;
     }).join('');
-    alvo.innerHTML = htmlSubabas + htmlPlano + htmlGrupos;
+    const nPartes = ops.filter(o => o.parte).length;
+    const htmlFiltroTipo = nPartes ? `<div class="subabas-programacao" style="margin-bottom:10px;"><span style="font-size:12px; font-weight:bold; margin-right:8px;">Mostrar:</span>${[['todas', 'Todas'], ['inteiras', 'Só OPs inteiras (' + (ops.length - nPartes) + ')'], ['partes', 'Só partes (' + nPartes + ')']].map(([v, r]) => `<button class="subaba-btn${filtroTipoPreparacao === v ? ' ativo' : ''}" onclick="definirFiltroTipoPreparacao('${v}')">${r}</button>`).join('')}</div>` : '';
+    alvo.innerHTML = htmlSubabas + htmlFiltroTipo + htmlPlano + htmlGrupos;
 }
 
 function salvarMarcadasNoPlanoPreparacao() {

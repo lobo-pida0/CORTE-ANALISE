@@ -238,10 +238,26 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       definirPessoasPreparacao('SUP', '0'); return [...ok, !/Zera em/.test(document.getElementById('preparacaoConteudo').innerText), fmtDiasPrep(0.5)];
     }), [true, true, true, true, '0,5 dia']);
     igual('observação por OP: salva, aparece no campo e persiste ao redesenhar', await p.evaluate(async () => {
-      abrirSubabaPreparacao('SUP'); await salvarObsPreparacao('211-1', '  falta botão  '); renderizarPreparacao();
+      abrirSubabaPreparacao('SUP'); const o1 = obterOPsPreparacao().find(o => o.ciclo === '211' && o.op === '1'), k1 = chaveLinhaPrep(o1); await salvarObsPreparacao(k1, '  falta botão  '); renderizarPreparacao();
       const inp = [...document.querySelectorAll('#prepJanela-SUP-0 tr')].find(tr => tr.querySelector('.check-prep') && tr.querySelector('.check-prep').dataset.chave === '211-1').querySelector('.prep-obs');
-      const r = [inp.value, obterObsPreparacao()['211-1']]; await salvarObsPreparacao('211-1', ''); return [...r, '211-1' in obterObsPreparacao()];
+      const r = [inp.value, obterObsPreparacao()[k1]]; await salvarObsPreparacao(k1, ''); return [...r, k1 in obterObsPreparacao()];
     }), ['falta botão', 'falta botão', false]);
+    igual('partes: reconhece as 2 abas, marca PARTE e guarda onde está a outra metade', await p.evaluate(() => {
+      const ab = abasInteirasEPartesPreparacao(['sem partes', 'somente partes']), um = abasInteirasEPartesPreparacao(['Planilha1']);
+      const cab = ['Descrição Local', 'Ciclo', 'OP', 'Qt OP Local'], todas = [];
+      const inteiras = extrairOPsPreparacaoDasLinhas([cab, ['PNP SEPARAR PECAS / UNIR CORPO E PTS', '211', '9001', 10]], false, todas);
+      const partes = extrairOPsPreparacaoDasLinhas([cab, ['PNP PREP GOLA E PUNHO', '211', '9001', 10], ['EXT BORDADO X', '211', '9001', 10]], true, todas);
+      const lista = [...inteiras, ...partes]; anexarOutrasMetadesPreparacao(lista, todas);
+      return [ab.partes.join(), ab.inteiras.join(), um.partes.length, um.inteiras.join(), inteiras[0].parte, partes[0].parte, lista[0].outros.length, lista[1].outros.map(x => x[1] + x[0]).join('|'), paraBalancoPrep(partes[0]).op];
+    }), ['somente partes', 'sem partes', 0, 'Planilha1', false, true, 2, '0PNP SEPARAR PECAS / UNIR CORPO E PTS|1EXT BORDADO X', '9001 (parte)']);
+    igual('partes: selo PARTE e filtro Só partes / Só inteiras', await p.evaluate(() => {
+      const bak = obterOPsPreparacao(); const mk = (op, parte) => ({ op, ciclo: '300', local: 'PNP PREP GOLA E PUNHO', parte, ref: '', descRef: 'X', cor: '', qtd: 5, tipo: '', localProd: '', fin: null, dias: 1, outros: parte ? [['PNP SEPARAR PECAS / UNIR CORPO E PTS', 0, 5]] : undefined });
+      localStorage.setItem('porOPPreparacao', JSON.stringify([mk('A1', false), mk('A2', true)])); abrirSubabaPreparacao('SUP');
+      const n = () => document.querySelectorAll('#prepJanela-SUP-1 .check-prep').length, selos = () => document.querySelectorAll('#prepJanela-SUP-1 .selo-parte').length;
+      const r = [n(), selos(), /inteira em SEPARAR PECAS/.test(document.getElementById('preparacaoConteudo').innerText)];
+      definirFiltroTipoPreparacao('partes'); r.push(n()); definirFiltroTipoPreparacao('inteiras'); r.push(n()); definirFiltroTipoPreparacao('todas');
+      localStorage.setItem('porOPPreparacao', JSON.stringify(bak)); renderizarPreparacao(); return r;
+    }), [2, 1, true, 1, 1]);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
     {   // impressão de uma janela só, só com as marcadas
       await p.evaluate(() => { abrirSubabaPreparacao('SUP'); window.print = () => { window.dispatchEvent(new Event('beforeprint')); }; });
