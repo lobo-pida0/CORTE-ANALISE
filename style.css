@@ -1349,3 +1349,11 @@ body.dark-mode #efCosturaCorpo tr.ef-dia-total td:first-child { box-shadow: inse
 /* Preparação: na impressão a janela sai inteira (sem a rolagem interna da tela) */
 .prep-sem-limite { max-height: none !important; overflow: visible !important; }
 @media print { #areaImpressaoGenerica table th.prep-qtd:last-child, #areaImpressaoGenerica table td.prep-qtd:last-child { display: table-cell !important; } }
+
+/* Preparação: produto numa linha só (reticências), observação larga e editável */
+.prep-produto { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#aba-preparacao .tabela-dados td { white-space: nowrap; }
+#aba-preparacao .prep-obs-cel { min-width: 220px; white-space: normal; }
+#aba-preparacao .prep-obs { width: 100%; min-width: 200px; box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--borda-cor); border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 12px; }
+#aba-preparacao .prep-obs:focus { outline: 2px solid var(--cor-primaria); background: var(--card-bg, transparent); }
+@media print { #areaImpressaoGenerica .prep-obs { border: none; padding: 0; white-space: normal; } #areaImpressaoGenerica .prep-produto { max-width: none; white-space: normal; } }

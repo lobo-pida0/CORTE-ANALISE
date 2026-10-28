@@ -237,6 +237,11 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       const ok = [/Disponível por dia:\s*17h36/.test(c), c.includes('Zera em'), c.includes(fmtMinPrep(qtd * 60))];
       definirPessoasPreparacao('SUP', '0'); return [...ok, !/Zera em/.test(document.getElementById('preparacaoConteudo').innerText), fmtDiasPrep(0.5)];
     }), [true, true, true, true, '0,5 dia']);
+    igual('observação por OP: salva, aparece no campo e persiste ao redesenhar', await p.evaluate(async () => {
+      abrirSubabaPreparacao('SUP'); await salvarObsPreparacao('211-1', '  falta botão  '); renderizarPreparacao();
+      const inp = [...document.querySelectorAll('#prepJanela-SUP-0 tr')].find(tr => tr.querySelector('.check-prep') && tr.querySelector('.check-prep').dataset.chave === '211-1').querySelector('.prep-obs');
+      const r = [inp.value, obterObsPreparacao()['211-1']]; await salvarObsPreparacao('211-1', ''); return [...r, '211-1' in obterObsPreparacao()];
+    }), ['falta botão', 'falta botão', false]);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
     {   // impressão de uma janela só, só com as marcadas
       await p.evaluate(() => { abrirSubabaPreparacao('SUP'); window.print = () => { window.dispatchEvent(new Event('beforeprint')); }; });
