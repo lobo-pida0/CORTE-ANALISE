@@ -119,6 +119,17 @@ async function carregarTemposPreparacao() {
     try { const db = await abrirIDBTempos(); temposPreparacaoCache = await new Promise((ok, erro) => { const r = db.transaction('kv').objectStore('kv').get('temposPreparacao'); r.onsuccess = () => ok(r.result || {}); r.onerror = () => erro(r.error); }); } catch (e) { temposPreparacaoCache = {}; }
     renderizarPreparacao();
 }
+// Pessoas por GRUPO (digitadas) → tempo disponível por dia = pessoas × minutos por pessoa (528 = 8h48, igual à Eficiência da Costura).
+function obterPessoasPreparacao() { try { return JSON.parse(localStorage.getItem('pessoasPreparacao') || '{}') || {}; } catch (e) { return {}; } }
+function obterMinPessoaPreparacao() { return parseFloat(localStorage.getItem('minPessoaPreparacao')) || 528; }
+function definirPessoasPreparacao(chave, valor) {
+    const p = obterPessoasPreparacao(), n = parseFloat(String(valor).replace(',', '.'));
+    if (n > 0) p[chave] = n; else delete p[chave];
+    try { localStorage.setItem('pessoasPreparacao', JSON.stringify(p)); } catch (e) { /* ignora */ }
+    renderizarPreparacao();
+}
+function definirMinPessoaPreparacao(valor) { const n = parseFloat(String(valor).replace(',', '.')); try { if (n > 0) localStorage.setItem('minPessoaPreparacao', String(n)); else localStorage.removeItem('minPessoaPreparacao'); } catch (e) { /* ignora */ } renderizarPreparacao(); }
+const fmtDiasPrep = d => d < 0.05 ? '< 0,1 dia' : `${d.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} dia${d >= 1.05 ? 's' : ''}`;
 function obterTemposPreparacao() { return temposPreparacaoCache; }
 function operacoesUsadasPreparacao() { return new Set(GRUPOS_PREPARACAO.flatMap(g => g.janelas.map(j => j.tempo ? normLocalPrep(j.tempo) : null)).filter(Boolean)); }
 function tempoPecaPreparacao(o, janela, tempos) {
@@ -208,10 +219,12 @@ function renderizarPreparacao() {
     const gSel = GRUPOS_PREPARACAO.find(g => g.chave === subabaPreparacao) || GRUPOS_PREPARACAO[0];
     const htmlSubabas = `<div class="subabas-programacao">${GRUPOS_PREPARACAO.map(g => { const q = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local)).length; return `<button class="subaba-btn${g === gSel ? ' ativo' : ''}" onclick="abrirSubabaPreparacao('${g.chave}')">${escPrep(g.rotulo)} (${q})</button>`; }).join('')}</div>`;
     const htmlGrupos = [gSel].map(g => {
+        const pessoasGrupo = obterPessoasPreparacao()[g.chave] || 0, minPessoa = obterMinPessoaPreparacao();
         const janelas = g.janelas.map((j, ij) => {
             const cor = g.janelas.length > 1 ? CORES_JANELAS_PREPARACAO[ij % CORES_JANELAS_PREPARACAO.length] : 'var(--cor-primaria)';
             const lista = ops.filter(o => o.local === normLocalPrep(j.local)).sort(ordenarPreparacao);
             const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0), minJanela = temTempos && j.tempo ? lista.reduce((t, o) => t + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) / 60 : 0;   // planilha em segundos → minutos
+            const dispDia = pessoasGrupo * minPessoa, diasJanela = dispDia && minJanela ? minJanela / dispDia : 0;
             const colTempo = temTempos && !!j.tempo, tp = o => tempoPecaPreparacao(o, j, tempos);
             const linhas = lista.map(o => { const urg = urgentes.has(chaveOPPrep(o)); return `<tr style="${noPlano.has(chaveOPPrep(o)) ? 'opacity:.55;' : ''}${urg ? 'background:rgba(193,68,78,.14);' : ''}">
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
@@ -219,12 +232,21 @@ function renderizarPreparacao() {
                 <td><strong>${escPrep(o.op)}</strong></td><td>${escPrep(o.ciclo)}</td><td>${escPrep(o.descRef)} <span style="color:var(--texto-secundario);">${escPrep(o.ref)}</span></td>
                 <td>${htmlLocalProd(o)}</td><td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td>${colTempo ? `<td style="text-align:right; white-space:nowrap;">${tp(o) ? tp(o).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'}</td><td class="prep-qtd" style="text-align:right; white-space:nowrap; font-weight:bold;">${fmtMinPrep((o.qtd || 0) * tp(o) / 60)}</td>` : ''}</tr>`; }).join('');
             return `<div id="prepJanela-${g.chave}-${ij}" style="border:1px solid ${cor}; border-left:6px solid ${cor}; border-radius:6px; overflow:hidden; min-width:0;">
-                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças${minJanela ? ' · ⏱ ' + fmtMinPrep(minJanela) : ''}${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
+                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s) · ${pecas.toLocaleString('pt-BR')} peças${minJanela ? ' · ⏱ ' + fmtMinPrep(minJanela) : ''}${diasJanela ? ' · 📅 ' + fmtDiasPrep(diasJanela) : ''}${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
                 ${lista.length ? `<div class="prep-rolagem" style="max-height:340px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th title="Urgente"><i class="fas fa-fire"></i></th><th>OP</th><th>Ciclo</th><th>Produto</th><th title="Local de produção (Local Obs. da POR_OP, ou da Fila de Corte)">Local prod.</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th>${colTempo ? `<th style="text-align:right;" title="Segundos por peça (${escPrep(j.tempo)})">Seg/peça</th><th class="prep-qtd" style="text-align:right;" title="Qtd × segundos por peça (mostrado em horas/minutos)">Tempo</th>` : ''}</tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
         }).join('');
         const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local));
+        const minGrupo = temTempos ? g.janelas.reduce((tt, j) => tt + (j.tempo ? ops.filter(o => o.local === normLocalPrep(j.local)).reduce((s, o) => s + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) / 60 : 0), 0) : 0;
+        const dispDiaG = pessoasGrupo * minPessoa;
+        const barraPessoas = `<div style="grid-column:1/-1; display:flex; flex-wrap:wrap; gap:14px; align-items:center; padding:8px 12px; border:1px dashed var(--borda-cor); border-radius:6px; font-size:12px;" class="imprimir-esconder-sempre">
+            <label style="display:flex; align-items:center; gap:6px;"><i class="fas fa-people-group"></i> <strong>Pessoas no grupo:</strong> <input type="number" min="0" step="0.5" value="${pessoasGrupo || ''}" placeholder="0" style="width:70px;" onchange="definirPessoasPreparacao('${g.chave}', this.value)"></label>
+            <label style="display:flex; align-items:center; gap:6px;" title="Minutos de trabalho por pessoa por dia (padrão 528 = 8h48, o mesmo da Eficiência da Costura)">min/pessoa/dia: <input type="number" min="1" value="${minPessoa}" style="width:70px;" onchange="definirMinPessoaPreparacao(this.value)"></label>
+            ${pessoasGrupo ? `<span>Disponível por dia: <strong>${fmtMinPrep(dispDiaG)}</strong></span>` : '<span style="color:var(--texto-secundario);">Digite as pessoas do grupo para calcular o tempo disponível por dia.</span>'}
+            ${minGrupo ? `<span>Fila do grupo: <strong>${fmtMinPrep(minGrupo)}</strong></span>` : ''}
+            ${pessoasGrupo && minGrupo ? `<span>Zera em: <strong style="color:var(--cor-primaria);">${fmtDiasPrep(minGrupo / dispDiaG)}</strong></span>` : ''}
+            ${pessoasGrupo && temTempos ? '<span style="color:var(--texto-secundario);">Em cada janela: dias de trabalho do grupo inteiro só nela (a soma das janelas = dias do grupo).</span>' : ''}</div>`;
         return `<div class="secao" style="margin-bottom:12px;"><div class="secao-header" style="background:var(--cor-primaria);"><span><i class="fas fa-layer-group"></i> ${escPrep(g.rotulo)}</span><span>${todas.length} OP(s) · ${todas.reduce((t, o) => t + (o.qtd || 0), 0).toLocaleString('pt-BR')} peças</span></div>
-            <div class="secao-corpo" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(${g.janelas.length === 1 ? '100%' : '620px'}, 1fr)); gap:14px; align-items:start;">${janelas}</div></div>`;
+            <div class="secao-corpo" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(${g.janelas.length === 1 ? '100%' : '620px'}, 1fr)); gap:14px; align-items:start;">${barraPessoas}${janelas}</div></div>`;
     }).join('');
     alvo.innerHTML = htmlSubabas + htmlPlano + htmlGrupos;
 }
