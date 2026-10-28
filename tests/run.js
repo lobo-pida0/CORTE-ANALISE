@@ -228,7 +228,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('tempos da preparação: janela mostra min/peça e tempo total da OP', await p.evaluate(() => {
       temposPreparacaoCache = { '211-1': { 'PREP PARTES SUPERIOR': 2 } }; abrirSubabaPreparacao('SUP');
       const j = document.getElementById('prepJanela-SUP-0'), op = obterOPsPreparacao().find(o => o.ciclo === '211' && o.op === '1');
-      return [/Min\/peça/.test(j.innerText), j.innerText.includes(fmtMinPrep(op.qtd * 2)), fmtMinPrep(150)];
+      return [/Seg\/peça/.test(j.innerText), j.innerText.includes(fmtMinPrep(op.qtd * 2 / 60)), fmtMinPrep(150)];
     }), [true, true, '2h30']);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
     {   // impressão de uma janela só, só com as marcadas
