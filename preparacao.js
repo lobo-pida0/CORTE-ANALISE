@@ -126,7 +126,7 @@ function tempoPecaPreparacao(o, janela, tempos) {
     const t = tempos[`${o.ciclo}-${o.op}`] || tempos[o.op];
     return t ? (t[normLocalPrep(janela.tempo)] || 0) : 0;
 }
-const fmtMinPrep = min => { if (!min) return '—'; const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`; };
+const fmtMinPrep = min => { if (!min) return '—'; if (min < 1) return `${Math.max(1, Math.round(min * 60))}s`; const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`; };
 function importarTemposPreparacao() {
     if (!exigirAdminOuUsuario('importar a planilha de tempos da preparação')) return;
     if (!exigirBibliotecaExcel()) return;
