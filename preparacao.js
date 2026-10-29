@@ -317,7 +317,14 @@ function renderizarPreparacao() {
     }).join('');
     const nPartes = ops.filter(o => o.parte).length;
     const htmlFiltroTipo = nPartes ? `<div class="subabas-programacao" style="margin-bottom:10px;"><span style="font-size:12px; font-weight:bold; margin-right:8px;">Mostrar:</span>${[['todas', 'Todas'], ['inteiras', 'Só OPs inteiras (' + (ops.length - nPartes) + ')'], ['partes', 'Só partes (' + nPartes + ')']].map(([v, r]) => `<button class="subaba-btn${filtroTipoPreparacao === v ? ' ativo' : ''}" onclick="definirFiltroTipoPreparacao('${v}')">${r}</button>`).join('')}</div>` : '';
+    // Redesenhar não pode jogar a pessoa pro topo: guarda a rolagem da página e de cada janela e devolve depois.
+    const rolagemJanelas = {}; alvo.querySelectorAll('[id^="prepJanela-"]').forEach(j => { const r = j.querySelector('.prep-rolagem'); if (r) rolagemJanelas[j.id] = r.scrollTop; });
+    const scrollPagina = window.scrollY, tinhaConteudo = alvo.childElementCount > 0;
     alvo.innerHTML = htmlSubabas + htmlFiltroTipo + htmlPlano + htmlGrupos;
+    if (tinhaConteudo) {
+        Object.entries(rolagemJanelas).forEach(([id, topo]) => { const j = document.getElementById(id), r = j && j.querySelector('.prep-rolagem'); if (r) r.scrollTop = topo; });
+        window.scrollTo(window.scrollX, scrollPagina);
+    }
 }
 
 function salvarMarcadasNoPlanoPreparacao() {

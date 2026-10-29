@@ -258,6 +258,14 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       definirFiltroTipoPreparacao('partes'); r.push(n()); definirFiltroTipoPreparacao('inteiras'); r.push(n()); definirFiltroTipoPreparacao('todas');
       localStorage.setItem('porOPPreparacao', JSON.stringify(bak)); renderizarPreparacao(); return r;
     }), [2, 1, true, 1, 1]);
+    igual('marcar urgente não joga a rolagem da janela pro topo', await p.evaluate(async () => {
+      const bak = localStorage.getItem('porOPPreparacao'), L = [];
+      for (let i = 0; i < 60; i++) L.push({ op: 'R' + i, ciclo: '400', local: 'PNP PREP PARTES SUP', parte: false, ref: '', descRef: 'X', cor: '', qtd: 1, tipo: '', localProd: '', fin: '2026-12-' + String(1 + (i % 28)).padStart(2, '0'), dias: 1 });
+      localStorage.setItem('porOPPreparacao', JSON.stringify(L)); abrirSubabaPreparacao('SUP');
+      const r0 = document.querySelector('#prepJanela-SUP-0 .prep-rolagem'); r0.scrollTop = 300; const antes = r0.scrollTop;
+      await alternarUrgentePreparacao('400-R30'); const depois = document.querySelector('#prepJanela-SUP-0 .prep-rolagem').scrollTop;
+      await alternarUrgentePreparacao('400-R30'); localStorage.setItem('porOPPreparacao', bak); renderizarPreparacao(); return [antes > 0, depois === antes];
+    }), [true, true]);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
     {   // impressão de uma janela só, só com as marcadas
       await p.evaluate(() => { abrirSubabaPreparacao('SUP'); window.print = () => { window.dispatchEvent(new Event('beforeprint')); }; });
