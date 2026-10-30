@@ -168,6 +168,17 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   const bk = await p.evaluate(async () => { const txt = JSON.stringify({ a: Array.from({ length: 3000 }, (_, i) => ({ i, t: 'ÁÇÃO ' + i })) }); const c = await comprimirTextoBackup(txt); return [await descomprimirTextoBackup(c) === txt, c.length < txt.length]; });
   igual('compressão do backup volta idêntica e menor', bk, [true, true]);
 
+  igual('lupa da Sequência: acha a OP em qualquer grupo, mostra posição e leva até a linha', await p.evaluate(() => {
+    const base = { local: 'PNP COST INF CALCA', ref: 'REF9', descRef: 'CALCA TESTE', cor: '', tempoPecaCostura: 1, diasLocal: 1, tipoProduto: '', prioridade: 99, minutosCostura: 10, minutosAcabamento: 0, dataFinalizacao: null };
+    localStorage.setItem('porOPCosturaDetalhado', JSON.stringify([{ ...base, op: '9101', ciclo: '211', qtd: 50 }, { ...base, op: '9102', ciclo: '211', qtd: 70 }, { ...base, local: 'PNP COST SUP CAMISA', op: '9200', ciclo: '211', qtd: 20, descRef: 'CAMISA X' }]));
+    abrirAba(null, 'aba-seq-costura'); $('seqCostGrupo').value = 'CAMISA'; renderizarSequenciamentoCostura();
+    const inp = $('seqCostBusca'); inp.value = '9102'; renderizarBuscaSequenciaCostura();
+    const r1 = $('seqCostBuscaResultado').innerText, ach = buscarOPNaSequenciaCostura('9102');
+    irParaOPNaSequenciaCostura(ach[0].grupo, chaveOPCostura('9102', '211'));
+    const r = [ach.length, ach[0].grupo, /Calça/i.test(r1), /fila/.test(r1), $('seqCostGrupo').value, !!document.querySelector('#seqCostListaOPs tr[data-seq-chave="9102|211"]')];
+    inp.value = 'zzzz'; renderizarBuscaSequenciaCostura(); r.push(/Nenhuma OP/.test($('seqCostBuscaResultado').innerText), buscarOPNaSequenciaCostura('9').length);
+    inp.value = ''; renderizarBuscaSequenciaCostura(); r.push($('seqCostBuscaResultado').style.display); return r;
+  }), [1, 'CALCA', true, true, 'CALCA', true, true, 0, 'none']);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');

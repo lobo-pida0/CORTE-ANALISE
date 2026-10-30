@@ -934,6 +934,7 @@
                         <option value="ETIQUETACAO">Etiquetação</option>
                     </select>
                 </div>
+                <div class="campo-meta" style="width:230px;"><label><i class="fas fa-magnifying-glass"></i> BUSCAR OP NA COSTURA</label><input type="search" id="seqCostBusca" placeholder="OP, referência ou descrição…" autocomplete="off"></div>
                 <div class="campo-meta" style="width:110px;"><label>Nº DE PESSOAS</label><input type="number" id="seqCostPessoas" min="1" step="1" value="5"></div>
                 <div class="campo-meta" style="width:110px;"><label>HORAS POR DIA</label><input type="number" id="seqCostHoras" min="0.5" step="0.5" value="8"></div>
                 <div class="campo-meta" style="width:110px;"><label>EFICIÊNCIA (%)</label><input type="number" id="seqCostEficiencia" min="1" max="100" step="1" value="85"></div>
@@ -948,6 +949,7 @@
                 <button id="btnImprimirSeqCostura" class="btn" style="background:var(--cor-historico); color:white;" title="Imprime só a fila da tela, sem o resto do sistema"><i class="fas fa-print"></i> IMPRIMIR</button>
                 <button id="btnPlanoSeqCostura" class="btn somente-admin" style="background:var(--cor-despacho); color:white;" title="Salva as OPs marcadas na lista no plano de hoje (aba PLANO DA COSTURA)"><i class="fas fa-clipboard-check"></i> SALVAR NO PLANO</button>
                 <button id="btnOrdemAutomaticaEnfesto" class="btn somente-admin tambem-usuario" style="background:var(--cor-alerta); color:white; display:none;" title="Descarta a ordem que você arrastou na mão e volta a ordenar por data/prioridade"><i class="fas fa-rotate-left"></i> ORDEM AUTOMÁTICA</button>
+                <div id="seqCostBuscaResultado" style="display:none; flex-basis:100%;"></div>
             </div>
         </div>
 
