@@ -365,9 +365,9 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   igual('reposição do paletó: lê tudo que está nos locais de "já cortada" (qualquer produto) da empresa 01', await p.evaluate(() => {
     const rows = [['Emp', 'Descrição Local', 'OP', 'Ciclo', 'Descrição Referência', 'Qt OP Local', 'Tipo Produto', 'Local Obs.'],
       [1, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 20, 211, 'CALCA X', 10, 'CALCA', 'ms'], [1, 'PNP AGUARD BIP DISTRIBUICAO', 21, 211, 'BLAZER Y', 5, 'PALETO'],
-      [1, 'PNP BORDADO INTERNO', 22, 211, 'BLAZER Z', 5, 'PALETO'], [2, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 23, 211, 'CALCA W', 5, 'CALCA']];
+      [1, 'PNP BORDADO INTERNO', 22, 211, 'BLAZER Z', 5, 'PALETO'], [1, 'PNP PREP PARTES INF', 24, 211, 'CALCA V', 5, 'CALCA'], [2, 'PNP SEPARAR PECAS / UNIR CORPO E PTS', 23, 211, 'CALCA W', 5, 'CALCA']];
     const l = extrairOPsPaletoEmp1DasLinhas(rows); return [l.map(o => o.op).sort(), l.find(o => o.op === '20').localProd];
-  }), [['20', '21'], 'MS']);
+  }), [['20', '21', '24'], 'MS']);
   {   // papel "sequencia": só a aba Sequência da costura, sem ações de admin/usuário
     const r = await p.evaluate(() => {
       const velhoP = papelUsuarioAtual, velhaS = sessaoAdminAtual;
