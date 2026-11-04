@@ -93,10 +93,28 @@ async function publicarDiasEfCostura(dias) {
         return false;
     }
 }
+// Dias apagados (LIMPAR MÊS): a tabela da nuvem não tem permissão de DELETE, então o dia vira uma linha "apagado" (sem dados). Quem abre a aba
+// remove o dia do navegador; reimportar o dia depois sobrescreve a marca. Se não conseguiu enviar, fica em `eficienciaCosturaApagadosPend`.
+function obterEfCosturaApagadosPend() { try { return JSON.parse(localStorage.getItem('eficienciaCosturaApagadosPend') || '[]'); } catch (e) { return []; } }
+function salvarEfCosturaApagadosPend(arr) { try { localStorage.setItem('eficienciaCosturaApagadosPend', JSON.stringify([...new Set(arr)])); } catch (e) { /* ignora */ } }
+async function publicarDiasApagadosEfCostura(dias) {
+    if (!dias || !dias.length) return true;
+    if (!supabaseClient || !sessaoAdminAtual) { salvarEfCosturaApagadosPend([...obterEfCosturaApagadosPend(), ...dias]); return false; }
+    const por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase();
+    try {
+        for (let i = 0; i < dias.length; i += 200) {
+            const { error } = await supabaseClient.from('eficiencia_costura_dias').upsert(dias.slice(i, i + 200).map(d => ({ id: d, dados: { apagado: true, locais: {}, pessoasLocal: {} } })), { onConflict: 'id' });
+            if (error) throw error;
+        }
+        salvarEfCosturaApagadosPend(obterEfCosturaApagadosPend().filter(d => !dias.includes(d)));
+        return true;
+    } catch (e) { salvarEfCosturaApagadosPend([...obterEfCosturaApagadosPend(), ...dias]); avisarFalhaNuvemEfCostura(e); return false; }
+}
 async function carregarEfCosturaDaNuvem() {
     if (!supabaseClient || !sessaoAdminAtual || efCosturaSincronizando) return;
     efCosturaSincronizando = true;
     try {
+        const apagPend = obterEfCosturaApagadosPend(); if (apagPend.length) await publicarDiasApagadosEfCostura(apagPend);
         const pendentes = obterEfCosturaPendentes().filter(d => obterEficienciaCostura()[d]);
         if (pendentes.length) await publicarDiasEfCostura(pendentes);
         const { data, error } = await supabaseClient.from('eficiencia_costura_dias').select('id, dados');
@@ -107,6 +125,7 @@ async function carregarEfCosturaDaNuvem() {
         let mudou = false;
         (data || []).forEach(l => {
             naNuvem.add(l.id);
+            if (l.dados && l.dados.apagado) { if (!aindaPendentes.has(l.id) && todos[l.id]) { delete todos[l.id]; mudou = true; } return; }   // mês limpo por alguém: some daqui também
             if (aindaPendentes.has(l.id) || !l.dados || !l.dados.locais) return;
             const novo = { locais: l.dados.locais, opsTotal: l.dados.opsTotal ?? null, ...(l.dados.opsMov ? { opsMov: l.dados.opsMov } : {}), ...(l.dados.grupos ? { grupos: l.dados.grupos } : {}), pessoasLocal: l.dados.pessoasLocal || {} };
             if (JSON.stringify(todos[l.id] || null) !== JSON.stringify(novo)) { todos[l.id] = novo; mudou = true; }
@@ -603,13 +622,15 @@ function limparMesEfCostura() {
     const outros = Object.keys(todos).length - doMes.length;
     const mensagem = `Vai apagar ${doMes.length} dia(s) de ${rotulo} da eficiência da costura (movimentação e pessoas informadas).\n\n`
         + `Os outros meses NÃO são mexidos (${outros} dia(s) continuam).\n\n`
-        + `Só apaga deste navegador — o que já foi publicado na nuvem continua lá. Se ainda não baixou o arquivo do mês (BAIXAR MÊS), baixe antes.\n\n`
+        + `Apaga também da nuvem (some para todo mundo). Se ainda não baixou o arquivo do mês (BAIXAR MÊS), baixe antes.\n\n`
         + `Não dá pra desfazer. Confirma?`;
     if (!confirm(mensagem)) return;
     doMes.forEach(d => delete todos[d]);
     salvarEficienciaCostura(todos);
+    salvarEfCosturaPendentes(obterEfCosturaPendentes().filter(d => !doMes.includes(d)));   // não reenviar dia que acabou de ser limpo
     popularSeletorMesEfCostura();
     renderizarEficienciaCostura();
+    publicarDiasApagadosEfCostura(doMes);   // limpa na nuvem também (senão a próxima abertura traz os dias de volta)
     showToast(`<i class="fas fa-check"></i> ${rotulo} limpo (${doMes.length} dia(s)). Os outros meses foram mantidos.`);
 }
 

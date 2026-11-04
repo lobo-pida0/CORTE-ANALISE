@@ -179,6 +179,21 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     inp.value = 'zzzz'; renderizarBuscaSequenciaCostura(); r.push(/Nenhuma OP/.test($('seqCostBuscaResultado').innerText), buscarOPNaSequenciaCostura('9').length);
     inp.value = ''; renderizarBuscaSequenciaCostura(); r.push($('seqCostBuscaResultado').style.display); return r;
   }), [1, 'CALCA', true, true, 'CALCA', true, true, 0, 'none']);
+  igual('limpar mês da eficiência: apaga local e na nuvem, e o dia não volta ao reabrir a aba', await p.evaluate(async () => {
+    const velho = supabaseClient, velhaSessao = sessaoAdminAtual, velhoPapel = papelUsuarioAtual, velhoConfirm = window.confirm;
+    const nuvem = { '2026-09-10': { locais: { 'PNP COST SUP CEL 2': { pecas: 5, minutos: 50, ops: 1, semTempo: 0 } }, pessoasLocal: {} }, '2026-10-05': { locais: { 'PNP COST SUP CEL 2': { pecas: 9, minutos: 90, ops: 1, semTempo: 0 } }, pessoasLocal: {} } };
+    supabaseClient = { from: () => ({
+      upsert: rows => { (Array.isArray(rows) ? rows : [rows]).forEach(r => { nuvem[r.id] = r.dados; }); return Promise.resolve({ error: null }); },
+      select: () => { const res = Promise.resolve({ data: Object.entries(nuvem).map(([id, dados]) => ({ id, dados })), error: null }); res.in = () => res; return res; } }) };
+    sessaoAdminAtual = { user: { email: 'admin@x.com' } }; papelUsuarioAtual = 'admin'; window.confirm = () => true;
+    localStorage.setItem('eficienciaCostura', JSON.stringify({ ...nuvem })); localStorage.removeItem('eficienciaCosturaPendentes');
+    popularSeletorMesEfCostura(); $('seletorMesEfCostura').value = '2026-09';
+    limparMesEfCostura(); await new Promise(r => setTimeout(r, 100));
+    const aposLimpar = Object.keys(obterEficienciaCostura());
+    await carregarEfCosturaDaNuvem();
+    const r = [aposLimpar.join(), Object.keys(obterEficienciaCostura()).join(), nuvem['2026-09-10'].apagado === true, '2026-10-05' in nuvem && !nuvem['2026-10-05'].apagado];
+    supabaseClient = velho; sessaoAdminAtual = velhaSessao; papelUsuarioAtual = velhoPapel; window.confirm = velhoConfirm; localStorage.removeItem('eficienciaCostura'); return r;
+  }), ['2026-10-05', '2026-10-05', true, true]);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');
