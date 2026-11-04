@@ -214,7 +214,7 @@ async function carregarOpsRemovidasSeqCosturaDaNuvem() {
 // (fica na lista de exclusão, então nem reimportando ela volta) — guarda
 // quem removeu e quando, pro histórico.
 function removerOPDaSequenciaCostura(op, ciclo) {
-    if (!exigirAdminOuUsuario('remover uma OP da sequência')) return;
+    if (!exigirLogadoNaSequencia('remover uma OP da sequência')) return;
     const todas = obterPorOPCosturaDetalhado();
     const item = todas.find(o => o.op === op && (o.ciclo || '') === (ciclo || ''));
     if (!item) return;
@@ -247,7 +247,7 @@ function removerOPDaSequenciaCostura(op, ciclo) {
 // importação da planilha volta a trazer ela normalmente, já que a checagem
 // de exclusão passa a ignorar registros restaurados.
 function restaurarOPRemovidaSeqCostura(chave) {
-    if (!exigirAdminOuUsuario('restaurar uma OP removida')) return;
+    if (!exigirLogadoNaSequencia('restaurar uma OP removida')) return;
     const removidas = obterOpsRemovidasSeqCostura();
     const item = removidas[chave];
     if (!item || item.restauradoEm) return;
@@ -282,7 +282,7 @@ function renderizarOpsRemovidasSeqCostura() {
             <td>${item.motivo || '<span style="color:var(--texto-secundario);">—</span>'}</td>
             <td>${quemTexto}</td>
             <td style="white-space:nowrap;">${quandoTexto}
-                <button class="btn somente-admin tambem-usuario" style="padding:2px 8px; margin-left:8px; background:var(--cor-despacho); font-size:10px;" onclick="restaurarOPRemovidaSeqCostura('${chave}')" title="Restaurar essa OP (volta a aparecer na próxima importação)"><i class="fas fa-rotate-left"></i> RESTAURAR</button>
+                <button class="btn somente-admin tambem-usuario tambem-sequencia" style="padding:2px 8px; margin-left:8px; background:var(--cor-despacho); font-size:10px;" onclick="restaurarOPRemovidaSeqCostura('${chave}')" title="Restaurar essa OP (volta a aparecer na próxima importação)"><i class="fas fa-rotate-left"></i> RESTAURAR</button>
             </td>
         </tr>`;
     }).join('');
@@ -543,7 +543,7 @@ function salvarOpsOcultasSeqCostura(obj) {
     localStorage.setItem('opsOcultasSeqCostura', JSON.stringify(obj));
 }
 function ocultarOPDaSequenciaCostura(op, ciclo) {
-    if (!exigirAdminOuUsuario('ocultar uma OP da sequência')) return;
+    if (!exigirLogadoNaSequencia('ocultar uma OP da sequência')) return;
     const item = obterPorOPCosturaDetalhado().find(o => o.op === op && (o.ciclo || '') === (ciclo || ''));
     if (!item) return;
     const chave = chaveOPCostura(op, ciclo);
@@ -555,7 +555,7 @@ function ocultarOPDaSequenciaCostura(op, ciclo) {
     showToast(`<i class="fas fa-eye-slash"></i> OP ${op} ocultada da sequência.`);
 }
 function reexibirOPOcultaSeqCostura(chave) {
-    if (!exigirAdminOuUsuario('reexibir uma OP oculta')) return;
+    if (!exigirLogadoNaSequencia('reexibir uma OP oculta')) return;
     const ocultas = obterOpsOcultasSeqCostura();
     const item = ocultas[chave];
     if (!item) return;
@@ -582,7 +582,7 @@ function renderizarOpsOcultasSeqCostura() {
             <td><strong>${item.op}</strong></td>
             <td>${item.ciclo || '—'}</td>
             <td>${item.descRef || ''}</td>
-            <td style="text-align:center;"><button class="btn somente-admin tambem-usuario" style="padding:2px 8px; background:var(--cor-despacho); font-size:10px;" onclick="reexibirOPOcultaSeqCostura('${chave}')" title="Reexibir essa OP na sequência"><i class="fas fa-eye"></i> REEXIBIR</button></td>
+            <td style="text-align:center;"><button class="btn somente-admin tambem-usuario tambem-sequencia" style="padding:2px 8px; background:var(--cor-despacho); font-size:10px;" onclick="reexibirOPOcultaSeqCostura('${chave}')" title="Reexibir essa OP na sequência"><i class="fas fa-eye"></i> REEXIBIR</button></td>
         </tr>`).join('');
 }
 

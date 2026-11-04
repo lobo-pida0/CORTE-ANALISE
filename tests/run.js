@@ -415,6 +415,19 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     await p.evaluate(() => { document.querySelector('#abrirAba-aba-seq-costura') && document.querySelector('#abrirAba-aba-seq-costura').click(); });
     await p.setInputFiles('#inputPorOPCostura', fSeq); await p.waitForTimeout(800);
     igual('papel "sequencia": vê o botão de importar a POR_OP e consegue importar', [visivelBtn, await p.evaluate(() => JSON.parse(localStorage.getItem('porOPCosturaDetalhado') || '[]').map(o => o.op))], [true, ['9901']]);
+    igual('papel "sequencia": vê e usa ocultar/remover/reexibir/restaurar da Sequência', await p.evaluate(() => {
+      const lista = JSON.parse(localStorage.getItem('porOPCosturaDetalhado') || '[]'); if (!lista.length) return 'sem OPs';
+      const a = lista[0], visivel = sel => { const b = document.querySelector(sel); return !!b && getComputedStyle(b).display !== 'none'; };
+      const velhoConfirm = window.confirm, velhoPrompt = window.prompt; window.confirm = () => true; window.prompt = () => 'teste';
+      document.getElementById('seqCostGrupo').value = ['CALCA', 'CAMISA', 'MALHA', 'JAQUETA_GANDOLA_PARKA', 'ACABAMENTO', 'ENFESTO', 'ETIQUETACAO'].find(g => montarFilaSequenciamentoCostura(g).length); renderizarSequenciamentoCostura();
+      const r = [visivel('#seqCostListaOPs button[onclick^="ocultarOPDaSequenciaCostura"]'), visivel('#seqCostListaOPs button[onclick^="removerOPDaSequenciaCostura"]')];
+      ocultarOPDaSequenciaCostura(a.op, a.ciclo || ''); const chave = chaveOPCostura(a.op, a.ciclo || ''); r.push(!!obterOpsOcultasSeqCostura()[chave]);
+      renderizarOpsOcultasSeqCostura(); r.push(visivel('#seqCostListaOcultas button'));
+      reexibirOPOcultaSeqCostura(chave); r.push(!obterOpsOcultasSeqCostura()[chave]);
+      removerOPDaSequenciaCostura(a.op, a.ciclo || ''); r.push(!!obterOpsRemovidasSeqCostura()[chave]);
+      renderizarOpsRemovidasSeqCostura(); r.push(visivel('#seqCostListaRemovidas button'));
+      window.confirm = velhoConfirm; window.prompt = velhoPrompt; return r;
+    }), [true, true, true, true, true, true, true]);
     await p.evaluate(() => { papelUsuarioAtual = 'admin'; sessaoAdminAtual = {}; localStorage.removeItem('porOPCosturaImportadaLocal'); aplicarRestricaoDeAbaVisitante(); });
   }
   igual('máquinas de enfesto: coluna FINALIZAÇÃO mostra a data de finalização da OP', await p.evaluate(() => {
