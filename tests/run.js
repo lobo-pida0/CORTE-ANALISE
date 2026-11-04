@@ -277,6 +277,17 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       await alternarUrgentePreparacao('400-R30'); const depois = document.querySelector('#prepJanela-SUP-0 .prep-rolagem').scrollTop;
       await alternarUrgentePreparacao('400-R30'); localStorage.setItem('porOPPreparacao', bak); renderizarPreparacao(); return [antes > 0, depois === antes];
     }), [true, true]);
+    igual('lupa da Preparação: acha OP inteira e parte, troca de sub-aba e destaca a linha', await p.evaluate(() => {
+      const bak = localStorage.getItem('porOPPreparacao'), mk = (op, local, parte) => ({ op, ciclo: '500', local, parte, ref: 'RF1', descRef: 'JALECO TESTE', cor: 'BR', qtd: 7, tipo: '', localProd: '', fin: null, dias: 1 });
+      localStorage.setItem('porOPPreparacao', JSON.stringify([mk('7777', 'PNP PREP PARTES INF', false), mk('7777', 'PNP PREP GOLA E PUNHO', true), mk('8888', 'PNP SILK INTERNO', false)]));
+      abrirSubabaPreparacao('SUP'); $('prepBusca').value = '7777'; renderizarBuscaPreparacao();
+      const box = $('prepBuscaResultado').innerText, ach = buscarOPNaPreparacao('7777');
+      const gola = ach.find(a => a.o.parte); irParaOPNaPreparacao(gola.grupo.chave, gola.ij, chaveLinhaPrep(gola.o));
+      const r = [ach.length, /PARTE/.test(box), subabaPreparacao, !!document.querySelector('#prepJanela-SUP-1 tr[data-prep-linha]')];
+      $('prepBusca').value = 'zzzz'; renderizarBuscaPreparacao(); r.push(/Nenhuma OP/.test($('prepBuscaResultado').innerText));
+      $('prepBusca').value = ''; renderizarBuscaPreparacao(); r.push($('prepBuscaResultado').style.display);
+      localStorage.setItem('porOPPreparacao', bak); renderizarPreparacao(); return r;
+    }), [2, true, 'SUP', true, true, 'none']);
     await p.evaluate(() => abrirSubabaPreparacao('SUP'));
     {   // impressão de uma janela só, só com as marcadas
       await p.evaluate(() => { abrirSubabaPreparacao('SUP'); window.print = () => { window.dispatchEvent(new Event('beforeprint')); }; });

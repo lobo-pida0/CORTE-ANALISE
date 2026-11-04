@@ -1022,9 +1022,11 @@
                 <label class="btn somente-admin tambem-usuario" style="background:#6B4E8C; color:white; cursor:pointer; margin:0;" title="Planilha TEMPO PEÇA POR TIPO DE OPERAÇÃO"><i class="fas fa-stopwatch"></i> IMPORTAR TEMPOS
                     <input id="inputTemposPreparacao" type="file" accept=".xlsx, .xls" style="display:none;"></label>
                 <span id="preparacaoTemposInfo" style="font-size:11px; color:var(--texto-secundario);"></span>
+                <label style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700;"><i class="fas fa-magnifying-glass"></i> <input type="search" id="prepBusca" placeholder="Buscar OP, referência ou descrição…" autocomplete="off" style="width:240px; font-weight:400;"></label>
                 <span style="font-size:11px; color:var(--texto-secundario);">Marque as OPs de uma janela e clique em IMPRIMIR nela: sai só aquela janela, só com as marcadas (sem marcar, sai a janela inteira). Ordem: finalização mais próxima primeiro.</span>
             </div>
         </div>
+        <div id="prepBuscaResultado" style="display:none; margin-bottom:12px;"></div>
         <div id="preparacaoConteudo"></div>
     </div>
 

@@ -248,6 +248,39 @@ async function carregarObsPreparacaoDaNuvem() {
     } catch (e) { registrarLogDebug('error', ['Falha ao carregar as observações da preparação: ' + e.message]); }
 }
 
+// ---- LUPA: procura a OP em TODAS as janelas da Preparação (inteiras e partes) e leva até a linha ----
+function buscarOPNaPreparacao(texto) {
+    const termo = normLocalPrep(texto); if (termo.length < 2) return [];
+    const achados = [];
+    GRUPOS_PREPARACAO.forEach(g => g.janelas.forEach((j, ij) => {
+        obterOPsPreparacao().filter(o => o.local === normLocalPrep(j.local)).sort(ordenarPreparacao).forEach((o, i) => {
+            if ([o.op, o.ref, o.descRef, o.cor].some(c => normLocalPrep(c).includes(termo))) achados.push({ grupo: g, janela: j, ij, posicao: i + 1, o });
+        });
+    }));
+    return achados;
+}
+function irParaOPNaPreparacao(chaveGrupo, ij, chaveLinha) {
+    subabaPreparacao = chaveGrupo; filtroTipoPreparacao = 'todas'; renderizarPreparacao();
+    const tr = [...document.querySelectorAll(`#prepJanela-${chaveGrupo}-${ij} tr[data-prep-linha]`)].find(x => x.dataset.prepLinha === chaveLinha);
+    if (!tr) return;
+    tr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    tr.style.outline = '3px solid var(--cor-sugestao)'; tr.style.outlineOffset = '-3px';
+    setTimeout(() => { tr.style.outline = ''; tr.style.outlineOffset = ''; }, 3500);
+}
+function renderizarBuscaPreparacao() {
+    const inp = $('prepBusca'), box = $('prepBuscaResultado'); if (!inp || !box) return;
+    if (inp.value.trim().length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    const achados = buscarOPNaPreparacao(inp.value);
+    box.style.display = 'block';
+    box.innerHTML = achados.length
+        ? `<div style="border:1px solid var(--borda-cor); border-radius:8px; background:var(--bg-card); max-height:280px; overflow:auto;">${achados.slice(0, 50).map(a => `<div style="display:flex; gap:10px; align-items:center; padding:7px 12px; border-bottom:1px solid var(--borda-cor); cursor:pointer; font-size:12px; flex-wrap:wrap;" onclick="irParaOPNaPreparacao('${a.grupo.chave}', ${a.ij}, '${escPrep(chaveLinhaPrep(a.o))}')">
+            <strong>${escPrep(a.o.op)}</strong><span style="color:var(--texto-secundario);">${escPrep(a.o.ciclo)}</span>${a.o.parte ? '<span class="pill selo-parte">PARTE</span>' : ''}
+            <span class="pill" style="background:var(--cor-primaria); color:white;">${escPrep(a.grupo.rotulo)}</span><strong>${escPrep(a.janela.rotulo)}</strong>
+            <span>${a.posicao}º na janela</span><span>${(a.o.qtd || 0).toLocaleString('pt-BR')} peças</span>
+            <span style="color:var(--texto-secundario);">${escPrep(String(a.o.descRef || '').slice(0, 50))}</span></div>`).join('')}${achados.length > 50 ? `<div style="padding:6px 12px; font-size:11px; color:var(--texto-secundario);">+${achados.length - 50} resultados — digite mais para afinar.</div>` : ''}</div>`
+        : '<div style="padding:8px 12px; font-size:12px; color:var(--texto-secundario);">Nenhuma OP encontrada nas janelas da Preparação.</div>';
+}
+
 function ordenarPreparacao(a, b) {
     const ua = obterUrgentesPreparacao().has(chaveOPPrep(a)), ub = obterUrgentesPreparacao().has(chaveOPPrep(b));
     if (ua !== ub) return ua ? -1 : 1;   // urgentes primeiro
@@ -292,7 +325,7 @@ function renderizarPreparacao() {
             const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0), minJanela = temTempos && j.tempo ? lista.reduce((t, o) => t + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) : 0;
             const dispDia = pessoasGrupo * minPessoa, diasJanela = dispDia && minJanela ? minJanela / dispDia : 0;
             const colTempo = temTempos && !!j.tempo, tp = o => tempoPecaPreparacao(o, j, tempos);
-            const linhas = lista.map(o => { const urg = urgentes.has(chaveOPPrep(o)); return `<tr style="${noPlano.has(chaveOPPrep(o)) ? 'opacity:.55;' : ''}${urg ? 'background:rgba(193,68,78,.14);' : ''}">
+            const linhas = lista.map(o => { const urg = urgentes.has(chaveOPPrep(o)); return `<tr data-prep-linha="${escPrep(chaveLinhaPrep(o))}" style="${noPlano.has(chaveOPPrep(o)) ? 'opacity:.55;' : ''}${urg ? 'background:rgba(193,68,78,.14);' : ''}">
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
                 <td style="text-align:center;"><i class="fas fa-fire prep-urg${urg ? ' ativa' : ''}" style="cursor:pointer; color:${urg ? 'var(--cor-alerta)' : 'var(--borda-cor)'};" onclick="alternarUrgentePreparacao('${escPrep(chaveOPPrep(o))}')" title="${urg ? 'Tirar urgência' : 'Marcar como urgente'}"></i></td>
                 <td style="white-space:nowrap;"><strong>${escPrep(o.op)}</strong>${o.parte ? ' <span class="pill selo-parte" title="Esta linha é uma PARTE da OP (não a OP inteira)">PARTE</span>' : ''}<div style="font-size:10px; color:var(--texto-secundario);">ciclo ${escPrep(o.ciclo)}</div>${htmlOutrasMetades(o)}</td>
