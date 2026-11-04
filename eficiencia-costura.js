@@ -278,6 +278,12 @@ const faixasEficienciaPlugin = {
 };
 // Dia a dia. Padrão: um gráfico por local (mais o TOTAL), todos na mesma escala e com os pontos coloridos
 // pela faixa (verde/amarelo/vermelho) — dá pra ler sem legenda. "Tudo junto" = as linhas no mesmo gráfico.
+function limparGraficosEficienciaCostura() {
+    if (graficoEfCosturaInstance) { graficoEfCosturaInstance.destroy(); graficoEfCosturaInstance = null; }
+    graficosEfCosturaSepInstances.forEach(g => g.destroy()); graficosEfCosturaSepInstances = [];
+    ['graficoEfCosturaJuntoWrap', 'graficosEfCosturaSeparados', 'graficoEfCosturaAviso'].forEach(id => { if ($(id)) $(id).style.display = 'none'; });
+    if ($('graficosEfCosturaSeparados')) $('graficosEfCosturaSeparados').innerHTML = '';
+}
 function desenharGraficoEficienciaCostura(dias, serieEf) {
     const canvas = $('graficoEfCostura'); if (!canvas) return;
     if (graficoEfCosturaInstance) { graficoEfCosturaInstance.destroy(); graficoEfCosturaInstance = null; }
@@ -396,6 +402,7 @@ function renderizarEficienciaCostura() {
     if (!dias.length) {
         corpo.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--texto-secundario);">Nenhum dado ainda — importe o relatório de movimentação.</td></tr>';
         $('efCosturaResumo').innerHTML = ''; if ($('efCosturaPorLocal')) $('efCosturaPorLocal').innerHTML = ''; if ($('efCosturaPecasTabela')) $('efCosturaPecasTabela').innerHTML = '';
+        limparGraficosEficienciaCostura();   // sem dados no mês: os gráficos antigos não podem ficar na tela
         return;
     }
     const nomeCurto = nomeLocalEfCostura;

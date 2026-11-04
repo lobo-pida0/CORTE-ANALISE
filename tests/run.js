@@ -192,8 +192,12 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     const aposLimpar = Object.keys(obterEficienciaCostura());
     await carregarEfCosturaDaNuvem();
     const r = [aposLimpar.join(), Object.keys(obterEficienciaCostura()).join(), nuvem['2026-09-10'].apagado === true, '2026-10-05' in nuvem && !nuvem['2026-10-05'].apagado];
+    // gráficos de um mês sem dados não podem ficar na tela
+    graficoEfCosturaInstance = new Chart($('graficoEfCostura'), { type: 'line', data: { labels: ['a'], datasets: [{ data: [1] }] } }); $('graficoEfCosturaJuntoWrap').style.display = '';
+    $('seletorMesEfCostura').value = '2026-09'; renderizarEficienciaCostura();
+    r.push(graficoEfCosturaInstance === null, $('graficoEfCosturaJuntoWrap').style.display);
     supabaseClient = velho; sessaoAdminAtual = velhaSessao; papelUsuarioAtual = velhoPapel; window.confirm = velhoConfirm; localStorage.removeItem('eficienciaCostura'); return r;
-  }), ['2026-10-05', '2026-10-05', true, true]);
+  }), ['2026-10-05', '2026-10-05', true, true, true, 'none']);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');
