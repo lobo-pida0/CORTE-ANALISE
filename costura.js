@@ -47,6 +47,14 @@ const GRUPOS_SEQUENCIAMENTO_COSTURA = {
         aguardando: 'PNP AGUARD DEFINICAO COST SUP', filtroAguardando: (op) => !/MALHA|MOLETOM/i.test(op.descRef || '') && !['JAQUETA', 'GANDOLA', 'PARKA'].includes(op.tipoProduto), // fila compartilhada — sobra tudo que não é dos outros grupos
         campoTempo: 'minutosCostura',
     },
+    HIBRIDA: {
+        rotulo: 'Híbrida',
+        // Célula Híbrida: um local só ("PNP COST CEL HIBRIDA"), com tempo de costura como os outros grupos. Sem fila de espera
+        // separada (não há "AGUARD DEFINICAO" próprio dela nas planilhas); se existir, é só preencher `aguardando`.
+        emAndamento: 'PNP COST CEL HIBRIDA', filtroEmAndamento: null,
+        aguardando: null, filtroAguardando: null,
+        campoTempo: 'minutosCostura',
+    },
     ACABAMENTO: {
         rotulo: 'Acabamento',
         // Setor mais simples — um local só, sem fila de espera separada

@@ -192,6 +192,7 @@ const LOCAL_EF_COSTURA_DO_GRUPO = {
     MALHA: 'PNP COST SUP MALHA',
     CAMISA: 'PNP COST SUP CAMISA',
     JAQUETA_GANDOLA_PARKA: 'PNP COST SUP CAMISA',
+    HIBRIDA: 'PNP COST CEL HIBRIDA',
 };
 // Mesma conta da tabela "Resumo do mês por local" do KPI: minutos produzidos ÷ minutos disponíveis,
 // só nos dias em que as pessoas do local foram informadas.
@@ -218,7 +219,7 @@ function atualizarEficienciaSeqCostura() {
     if (!mesSel) { el.innerHTML = ''; return; }
     const r = calcularEficienciaMesLocal(local, mesSel);
     const nome = nomeLocalEfCostura(local);
-    const nomeGrupo = { CALCA: 'Calça', MALHA: 'Malha', CAMISA: 'Camisa', JAQUETA_GANDOLA_PARKA: 'Jaqueta' }[grupo];
+    const nomeGrupo = { CALCA: 'Calça', MALHA: 'Malha', CAMISA: 'Camisa', JAQUETA_GANDOLA_PARKA: 'Jaqueta', HIBRIDA: 'Híbrida' }[grupo];
     const compartilhado = grupo === 'CAMISA' || grupo === 'JAQUETA_GANDOLA_PARKA';
     const cor = r.efic === null ? '#cfcfcf' : (r.efic >= 100 ? '#7FD6A0' : (r.efic >= 70 ? '#F0C36A' : '#F08A8A'));
     const txt = r.efic === null ? 'sem pessoas informadas' : r.efic.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';

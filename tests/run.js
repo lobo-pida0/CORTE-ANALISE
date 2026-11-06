@@ -198,6 +198,15 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     r.push(graficoEfCosturaInstance === null, $('graficoEfCosturaJuntoWrap').style.display);
     supabaseClient = velho; sessaoAdminAtual = velhaSessao; papelUsuarioAtual = velhoPapel; window.confirm = velhoConfirm; localStorage.removeItem('eficienciaCostura'); return r;
   }), ['2026-10-05', '2026-10-05', true, true, true, 'none']);
+  igual('grupo Híbrida na Sequência: existe no seletor, pega o local da célula e só ele', await p.evaluate(() => {
+    const base = { ref: 'RH', descRef: 'JALECO HIBRIDO', cor: '', tempoPecaCostura: 2, diasLocal: 1, tipoProduto: '', prioridade: 99, minutosCostura: 40, minutosAcabamento: 0, dataFinalizacao: null, ciclo: '211' };
+    const bak = localStorage.getItem('porOPCosturaDetalhado'), grupoBak = $('seqCostGrupo').value;
+    localStorage.setItem('porOPCosturaDetalhado', JSON.stringify([{ ...base, op: '9301', local: 'PNP COST CEL HIBRIDA', qtd: 20 }, { ...base, op: '9302', local: 'PNP COST INF CALCA', qtd: 30 }]));
+    abrirAba(null, 'aba-seq-costura'); const sel = $('seqCostGrupo'); sel.value = 'HIBRIDA'; renderizarSequenciamentoCostura();
+    const fila = montarFilaSequenciamentoCostura('HIBRIDA'), cal = montarFilaSequenciamentoCostura('CALCA');
+    const r = [[...sel.options].some(o => o.value === 'HIBRIDA'), fila.map(o => o.op).join(), cal.map(o => o.op).join(), !!document.querySelector('#seqCostListaOPs tr[data-seq-chave="9301|211"]'), buscarOPNaSequenciaCostura('9301')[0].rotulo];
+    localStorage.setItem('porOPCosturaDetalhado', bak); sel.value = grupoBak; renderizarSequenciamentoCostura(); return r;
+  }), [true, '9301', '9302', true, 'Híbrida']);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');
