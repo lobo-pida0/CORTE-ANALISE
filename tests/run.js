@@ -207,6 +207,17 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     const r = [[...sel.options].some(o => o.value === 'HIBRIDA'), fila.map(o => o.op).join(), cal.map(o => o.op).join(), !!document.querySelector('#seqCostListaOPs tr[data-seq-chave="9301|211"]'), buscarOPNaSequenciaCostura('9301')[0].rotulo];
     localStorage.setItem('porOPCosturaDetalhado', bak); sel.value = grupoBak; renderizarSequenciamentoCostura(); return r;
   }), [true, '9301', '9302', true, 'Híbrida']);
+  igual('eficiência no cantinho da Sequência: quem só abre a Sequência (Luis) recebe da nuvem', await p.evaluate(async () => {
+    const velho = supabaseClient, velhaS = sessaoAdminAtual, velhoP = papelUsuarioAtual, bak = localStorage.getItem('eficienciaCostura');
+    const hoje = new Date(); const dia = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-05`;
+    supabaseClient = { from: () => ({ select: () => Promise.resolve({ data: [{ id: dia, dados: { locais: { 'PNP COST INF CALCA': { pecas: 10, minutos: 264, ops: 1, semTempo: 0 } }, pessoasLocal: { 'PNP COST INF CALCA': 1 } } }], error: null }) }) };
+    sessaoAdminAtual = { user: { email: 'luis@x.com' } }; papelUsuarioAtual = 'sequencia'; localStorage.removeItem('eficienciaCostura');
+    abrirAba(null, 'aba-seq-costura'); $('seqCostGrupo').value = 'CALCA';
+    document.getElementById('abrirAba-aba-seq-costura').click(); await new Promise(r => setTimeout(r, 500));
+    const txt = $('seqCostEfKpi').innerText;
+    supabaseClient = velho; sessaoAdminAtual = velhaS; papelUsuarioAtual = velhoP; if (bak) localStorage.setItem('eficienciaCostura', bak); else localStorage.removeItem('eficienciaCostura');
+    return /50/.test(txt);
+  }), true);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');
