@@ -112,7 +112,7 @@ function inicializarEventosUI() {
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); carregarEfCosturaDaNuvem(); });
-        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); carregarEfCosturaDaNuvem().then(() => atualizarEficienciaSeqCostura()); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
+        wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); carregarEfCosturaDaNuvem().then(() => atualizarEficienciaSeqCostura()); carregarCalendarioProducaoDaNuvem(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('abrirAba-aba-preparacao', 'click', (event) => { abrirAba(event, 'aba-preparacao'); renderizarPreparacao(); carregarUrgentesPreparacaoDaNuvem(); });
         wireEvento('inputPorOPPreparacao', 'change', () => { processarPorOPPreparacao(); });
         wireEvento('inputTemposPreparacao', 'change', () => { importarTemposPreparacao(); });

@@ -10,6 +10,49 @@
 // capacidade, o que fazia a previsão "passar por cima" de um feriado como
 // se fosse um dia de trabalho normal. Guardado junto (não por grupo),
 // já que um feriado vale pra fábrica inteira.
+// ---- CALENDÁRIO DA PRODUÇÃO NA NUVEM: feriados + dias extras valem pra todo mundo (linha 'calendario_producao' da tabela destino_producao) ----
+// Ao cadastrar/remover, lê a nuvem e troca SÓ aquela data (duas pessoas cadastrando datas diferentes não se sobrescrevem); depois o navegador copia o resultado.
+async function alterarCalendarioNaNuvem(tipo, acao, data) {   // tipo: 'feriados' | 'extras'; acao: 'add' | 'rem'
+    if (!supabaseClient || !sessaoAdminAtual) return;
+    try {
+        const { data: linha, error: e1 } = await supabaseClient.from('destino_producao').select('dados').eq('id', 'calendario_producao').maybeSingle();
+        if (e1) throw e1;
+        const dados = { feriados: [], extras: [], ...((linha && linha.dados) || {}) };
+        const s = new Set(dados[tipo]); if (acao === 'add') s.add(data); else s.delete(data); dados[tipo] = [...s].sort();
+        const por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase();
+        const { error } = await supabaseClient.from('destino_producao').upsert({ id: 'calendario_producao', dados, atualizado_em: new Date().toISOString(), atualizado_por: por }, { onConflict: 'id' });
+        if (error) throw error;
+        salvarFeriados(dados.feriados); salvarDiasExtras(dados.extras); localStorage.removeItem('calendarioPendentePublicar');
+    } catch (e) {
+        try { localStorage.setItem('calendarioPendentePublicar', '1'); } catch (e2) { /* ignora */ }
+        registrarLogDebug('error', ['Falha ao publicar o calendário da produção: ' + e.message]);
+        showToast('<i class="fas fa-triangle-exclamation"></i> Salvo só neste navegador (falha na nuvem). Abra a Sequência de novo pra tentar enviar.', true, 6000);
+    }
+}
+async function carregarCalendarioProducaoDaNuvem() {
+    if (!supabaseClient) return;
+    const podeGravar = !!sessaoAdminAtual && papelUsuarioAtual !== 'sequencia';
+    try {
+        const { data, error } = await supabaseClient.from('destino_producao').select('dados').eq('id', 'calendario_producao').maybeSingle();
+        if (error) throw error;
+        const local = { feriados: obterFeriados(), extras: obterDiasExtras() };
+        if (!data || !data.dados || localStorage.getItem('calendarioPendentePublicar') === '1') {
+            // nuvem vazia ou envio que falhou antes: quem pode gravar sobe o que tem aqui (união com a nuvem, nunca perde data)
+            if (!podeGravar || (!local.feriados.length && !local.extras.length)) return;
+            const nuvem = (data && data.dados) || {};
+            const dados = { feriados: [...new Set([...(nuvem.feriados || []), ...local.feriados])].sort(), extras: [...new Set([...(nuvem.extras || []), ...local.extras])].sort() };
+            const { error: e2 } = await supabaseClient.from('destino_producao').upsert({ id: 'calendario_producao', dados, atualizado_em: new Date().toISOString(), atualizado_por: String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase() }, { onConflict: 'id' });
+            if (e2) throw e2;
+            salvarFeriados(dados.feriados); salvarDiasExtras(dados.extras); localStorage.removeItem('calendarioPendentePublicar');
+        } else {
+            const f = data.dados.feriados || [], x = data.dados.extras || [];
+            if (JSON.stringify(f) === JSON.stringify(local.feriados) && JSON.stringify(x) === JSON.stringify(local.extras)) return;
+            salvarFeriados(f); salvarDiasExtras(x);
+        }
+        if ($('seqCostListaOPs')) renderizarSequenciamentoCostura();
+    } catch (e) { registrarLogDebug('error', ['Falha ao carregar o calendário da produção: ' + e.message]); }
+}
+
 function obterFeriados() {
     try { return JSON.parse(localStorage.getItem('feriadosSeqProducao') || '[]'); } catch (e) { return []; }
 }
@@ -23,12 +66,14 @@ function adicionarFeriado(dataChave) {
     if (!lista.includes(dataChave)) { lista.push(dataChave); salvarFeriados(lista); }
     renderizarModalFeriados();
     renderizarSequenciamentoCostura();
+    alterarCalendarioNaNuvem('feriados', 'add', dataChave).then(() => { renderizarModalFeriados(); renderizarSequenciamentoCostura(); });
 }
 function removerFeriado(dataChave) {
     if (!exigirAdminOuUsuario('remover feriado')) return;
     salvarFeriados(obterFeriados().filter(d => d !== dataChave));
     renderizarModalFeriados();
     renderizarSequenciamentoCostura();
+    alterarCalendarioNaNuvem('feriados', 'rem', dataChave).then(() => { renderizarModalFeriados(); renderizarSequenciamentoCostura(); });
 }
 
 // Dias EXTRAS trabalhados (ex.: sábado em que a fábrica costura): contam como dia útil no cronograma e nos prazos, mesmo sendo fim de semana.
@@ -45,11 +90,13 @@ function adicionarDiaExtra(dataChave) {
     if (!dataChave) return;
     const lista = obterDiasExtras(); if (!lista.includes(dataChave)) { lista.push(dataChave); salvarDiasExtras(lista); }
     renderizarModalDiasExtras(); renderizarSequenciamentoCostura();
+    alterarCalendarioNaNuvem('extras', 'add', dataChave).then(() => { renderizarModalDiasExtras(); renderizarSequenciamentoCostura(); });
 }
 function removerDiaExtra(dataChave) {
     if (!exigirAdminOuUsuario('remover dia trabalhado')) return;
     salvarDiasExtras(obterDiasExtras().filter(d => d !== dataChave));
     renderizarModalDiasExtras(); renderizarSequenciamentoCostura();
+    alterarCalendarioNaNuvem('extras', 'rem', dataChave).then(() => { renderizarModalDiasExtras(); renderizarSequenciamentoCostura(); });
 }
 function renderizarModalDiasExtras() {
     const lista = obterDiasExtras(), dias = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];

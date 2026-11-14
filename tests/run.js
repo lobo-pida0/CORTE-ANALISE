@@ -230,6 +230,23 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     if (bak) localStorage.setItem('diasExtrasSeqProducao', bak); else localStorage.removeItem('diasExtrasSeqProducao'); if (bakF) localStorage.setItem('feriadosSeqProducao', bakF); else localStorage.removeItem('feriadosSeqProducao');
     return r;
   }), ['2026-11-16', '2026-11-16', '2026-11-13', '2026-11-14', '2026-11-14', '2026-11-14', true, '2026-11-14,2026-11-21', '2026-11-14', true]);
+  igual('calendário na nuvem: dia extra e feriado cadastrados chegam a outro navegador; nuvem vazia sobe o que já existe', await p.evaluate(async () => {
+    const velho = supabaseClient, velhaS = sessaoAdminAtual, velhoP = papelUsuarioAtual, bakE = localStorage.getItem('diasExtrasSeqProducao'), bakF = localStorage.getItem('feriadosSeqProducao');
+    const nuvem = {};
+    supabaseClient = { from: () => ({ select: () => ({ eq: (_c, id) => ({ maybeSingle: () => Promise.resolve({ data: nuvem[id] ? { dados: nuvem[id] } : null, error: null }) }) }),
+      upsert: row => { nuvem[row.id] = row.dados; return Promise.resolve({ error: null }); } }) };
+    sessaoAdminAtual = { user: { email: 'admin@x.com' } }; papelUsuarioAtual = 'admin';
+    localStorage.setItem('feriadosSeqProducao', JSON.stringify(['2026-12-25'])); localStorage.removeItem('diasExtrasSeqProducao');
+    await carregarCalendarioProducaoDaNuvem();                       // nuvem vazia → sobe o feriado que já existia
+    const r = [JSON.stringify(nuvem.calendario_producao)];
+    adicionarDiaExtra('2026-11-14'); await new Promise(x => setTimeout(x, 80)); r.push(nuvem.calendario_producao.extras.join());
+    localStorage.clear(); papelUsuarioAtual = 'sequencia';          // outro navegador (Luis) sem nada local
+    await carregarCalendarioProducaoDaNuvem(); r.push(obterDiasExtras().join(), obterFeriados().join());
+    papelUsuarioAtual = 'admin'; removerDiaExtra('2026-11-14'); await new Promise(x => setTimeout(x, 80)); r.push(nuvem.calendario_producao.extras.length, obterDiasExtras().length);
+    supabaseClient = velho; sessaoAdminAtual = velhaS; papelUsuarioAtual = velhoP;
+    if (bakE) localStorage.setItem('diasExtrasSeqProducao', bakE); else localStorage.removeItem('diasExtrasSeqProducao'); if (bakF) localStorage.setItem('feriadosSeqProducao', bakF); else localStorage.removeItem('feriadosSeqProducao');
+    return r;
+  }), ['{"feriados":["2026-12-25"],"extras":[]}', '2026-11-14', '2026-11-14', '2026-12-25', 0, 0]);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');

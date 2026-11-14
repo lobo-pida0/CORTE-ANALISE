@@ -101,7 +101,7 @@ async function verificarPapelUsuario() {
     // estiver alto (80%+); senão não aparece nada, pra não virar barulho
     // toda vez que o admin entra.
     if (papelUsuarioAtual === 'admin') { verificarEspacoNuvem(false); verificarBackupNuvemAutomatico(); }
-    carregarDestinoDaNuvem(); carregarUrgentesPreparacaoDaNuvem();
+    carregarDestinoDaNuvem(); carregarUrgentesPreparacaoDaNuvem(); carregarCalendarioProducaoDaNuvem();
     if (papelUsuarioAtual === 'sequencia') { try { localStorage.removeItem('porOPCosturaImportadaLocal'); } catch (e) { /* ignora */ } carregarTudoDaNuvemParaVisitante(); }   // só consulta: recebe os dados publicados
 }
 
@@ -680,6 +680,7 @@ async function carregarTudoDaNuvemParaVisitante() {
         carregarPorOPCosturaDaNuvemParaVisitante(),
         carregarDestinoDaNuvem(),
         carregarUrgentesPreparacaoDaNuvem(),
+        carregarCalendarioProducaoDaNuvem(),
     ]);
     atualizarIndicadorUltimaPublicacao();
 }
