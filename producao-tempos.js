@@ -31,7 +31,7 @@ async function alterarCalendarioNaNuvem(tipo, acao, data) {   // tipo: 'feriados
 }
 async function carregarCalendarioProducaoDaNuvem() {
     if (!supabaseClient) return;
-    const podeGravar = !!sessaoAdminAtual && papelUsuarioAtual !== 'sequencia';
+    const podeGravar = !!sessaoAdminAtual && (papelUsuarioAtual !== 'sequencia' || localStorage.getItem('calendarioPendentePublicar') === '1');   // o papel sequencia só grava se tem um envio seu pendente
     try {
         const { data, error } = await supabaseClient.from('destino_producao').select('dados').eq('id', 'calendario_producao').maybeSingle();
         if (error) throw error;
@@ -86,14 +86,14 @@ function ehDiaDeTrabalhoCostura(d, feriadosSet, extrasSet) {
     return d.getDay() !== 0 && d.getDay() !== 6 && !(feriadosSet || new Set(obterFeriados())).has(iso);
 }
 function adicionarDiaExtra(dataChave) {
-    if (!exigirAdminOuUsuario('cadastrar dia trabalhado')) return;
+    if (!exigirLogadoNaSequencia('cadastrar dia trabalhado')) return;
     if (!dataChave) return;
     const lista = obterDiasExtras(); if (!lista.includes(dataChave)) { lista.push(dataChave); salvarDiasExtras(lista); }
     renderizarModalDiasExtras(); renderizarSequenciamentoCostura();
     alterarCalendarioNaNuvem('extras', 'add', dataChave).then(() => { renderizarModalDiasExtras(); renderizarSequenciamentoCostura(); });
 }
 function removerDiaExtra(dataChave) {
-    if (!exigirAdminOuUsuario('remover dia trabalhado')) return;
+    if (!exigirLogadoNaSequencia('remover dia trabalhado')) return;
     salvarDiasExtras(obterDiasExtras().filter(d => d !== dataChave));
     renderizarModalDiasExtras(); renderizarSequenciamentoCostura();
     alterarCalendarioNaNuvem('extras', 'rem', dataChave).then(() => { renderizarModalDiasExtras(); renderizarSequenciamentoCostura(); });
@@ -104,7 +104,7 @@ function renderizarModalDiasExtras() {
     const linhas = lista.length ? lista.map(d => `
             <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--borda-cor);">
                 <span>${fmt(d)}</span>
-                <button onclick="removerDiaExtra('${d}')" class="btn btn-perigo somente-admin tambem-usuario" style="padding:3px 8px;" title="Remover"><i class="fas fa-trash"></i></button>
+                <button onclick="removerDiaExtra('${d}')" class="btn btn-perigo somente-admin tambem-usuario tambem-sequencia" style="padding:3px 8px;" title="Remover"><i class="fas fa-trash"></i></button>
             </div>`).join('') : '<div style="padding:20px; text-align:center; color:var(--texto-secundario);">Nenhum dia extra cadastrado.</div>';
     $('modalDiasExtras').innerHTML = `
         <div class="modal-card" style="width:400px; max-width:90vw; border-top:5px solid var(--cor-despacho); max-height:80vh;">
@@ -114,7 +114,7 @@ function renderizarModalDiasExtras() {
             </div>
             <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:15px;">Um dia cadastrado aqui (ex.: um sábado de trabalho) passa a contar como dia útil: a Sequência usa a capacidade cheia nele e os prazos (data limite) também contam esse dia.</div>
             <div style="overflow-y:auto; flex:1; margin-bottom:15px; border:1px solid var(--borda-cor); border-radius:8px;">${linhas}</div>
-            <div class="somente-admin tambem-usuario" style="display:flex; gap:10px;">
+            <div class="somente-admin tambem-usuario tambem-sequencia" style="display:flex; gap:10px;">
                 <input type="date" id="inputNovoDiaExtra" style="flex:1;">
                 <button onclick="adicionarDiaExtra($('inputNovoDiaExtra').value)" class="btn btn-sugestao"><i class="fas fa-plus"></i> ADICIONAR</button>
             </div>

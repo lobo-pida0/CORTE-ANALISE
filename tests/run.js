@@ -247,6 +247,16 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     if (bakE) localStorage.setItem('diasExtrasSeqProducao', bakE); else localStorage.removeItem('diasExtrasSeqProducao'); if (bakF) localStorage.setItem('feriadosSeqProducao', bakF); else localStorage.removeItem('feriadosSeqProducao');
     return r;
   }), ['{"feriados":["2026-12-25"],"extras":[]}', '2026-11-14', '2026-11-14', '2026-12-25', 0, 0]);
+  igual('papel sequencia: vê o botão DIAS EXTRAS e consegue cadastrar/remover (feriados continuam fechados)', await p.evaluate(() => {
+    const velhaS = sessaoAdminAtual, velhoP = papelUsuarioAtual, bak = localStorage.getItem('diasExtrasSeqProducao');
+    sessaoAdminAtual = { user: { email: 'luis@x.com' } }; papelUsuarioAtual = 'sequencia'; document.body.classList.add('modo-sequencia', 'modo-visitante'); abrirAba(null, 'aba-seq-costura');
+    const vis = id => { const b = document.getElementById(id); return !!b && getComputedStyle(b).display !== 'none'; };
+    const r = [vis('btnGerenciarDiasExtras'), vis('btnGerenciarFeriados')];
+    renderizarModalDiasExtras(); $('modalDiasExtras').style.display = 'flex'; r.push(vis('inputNovoDiaExtra'));
+    adicionarDiaExtra('2026-12-06'); r.push(obterDiasExtras().includes('2026-12-06')); renderizarModalDiasExtras(); removerDiaExtra('2026-12-06'); r.push(!obterDiasExtras().includes('2026-12-06'));
+    $('modalDiasExtras').style.display = 'none'; sessaoAdminAtual = velhaS; papelUsuarioAtual = velhoP; document.body.classList.remove('modo-sequencia', 'modo-visitante'); aplicarRestricaoDeAbaVisitante();
+    if (bak) localStorage.setItem('diasExtrasSeqProducao', bak); else localStorage.removeItem('diasExtrasSeqProducao'); return r;
+  }), [true, false, true, true, true]);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');
