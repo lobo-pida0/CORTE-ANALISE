@@ -623,7 +623,7 @@ function somarDiasUteisCostura(data, dias, feriados) {
     let restante = dias;
     while (restante > 0) {
         d.setDate(d.getDate() + 1);
-        if (d.getDay() !== 0 && d.getDay() !== 6 && !feriadosSet.has(d.toISOString().slice(0, 10))) restante--;
+        if (ehDiaDeTrabalhoCostura(d, feriadosSet)) restante--;
     }
     return d;
 }
@@ -633,7 +633,7 @@ function subtrairDiasUteisCostura(data, dias, feriados) {
     let restante = dias;
     while (restante > 0) {
         d.setDate(d.getDate() - 1);
-        if (d.getDay() !== 0 && d.getDay() !== 6 && !feriadosSet.has(d.toISOString().slice(0, 10))) restante--;
+        if (ehDiaDeTrabalhoCostura(d, feriadosSet)) restante--;
     }
     return d;
 }

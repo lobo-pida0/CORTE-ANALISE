@@ -31,6 +31,49 @@ function removerFeriado(dataChave) {
     renderizarSequenciamentoCostura();
 }
 
+// Dias EXTRAS trabalhados (ex.: sábado em que a fábrica costura): contam como dia útil no cronograma e nos prazos, mesmo sendo fim de semana.
+function obterDiasExtras() { try { return JSON.parse(localStorage.getItem('diasExtrasSeqProducao') || '[]'); } catch (e) { return []; } }
+function salvarDiasExtras(lista) { localStorage.setItem('diasExtrasSeqProducao', JSON.stringify([...new Set(lista)].sort())); }
+// Dia de trabalho = dia extra cadastrado OU (seg-sex que não é feriado). O dia extra vale mesmo se cair em fim de semana ou feriado.
+function ehDiaDeTrabalhoCostura(d, feriadosSet, extrasSet) {
+    const iso = d.toISOString().slice(0, 10), extras = extrasSet || new Set(obterDiasExtras());
+    if (extras.has(iso)) return true;
+    return d.getDay() !== 0 && d.getDay() !== 6 && !(feriadosSet || new Set(obterFeriados())).has(iso);
+}
+function adicionarDiaExtra(dataChave) {
+    if (!exigirAdminOuUsuario('cadastrar dia trabalhado')) return;
+    if (!dataChave) return;
+    const lista = obterDiasExtras(); if (!lista.includes(dataChave)) { lista.push(dataChave); salvarDiasExtras(lista); }
+    renderizarModalDiasExtras(); renderizarSequenciamentoCostura();
+}
+function removerDiaExtra(dataChave) {
+    if (!exigirAdminOuUsuario('remover dia trabalhado')) return;
+    salvarDiasExtras(obterDiasExtras().filter(d => d !== dataChave));
+    renderizarModalDiasExtras(); renderizarSequenciamentoCostura();
+}
+function renderizarModalDiasExtras() {
+    const lista = obterDiasExtras(), dias = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+    const fmt = d => { const [a, m, dia] = d.split('-'); return `${dia}/${m}/${a} (${dias[new Date(+a, +m - 1, +dia).getDay()]})`; };
+    const linhas = lista.length ? lista.map(d => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--borda-cor);">
+                <span>${fmt(d)}</span>
+                <button onclick="removerDiaExtra('${d}')" class="btn btn-perigo somente-admin tambem-usuario" style="padding:3px 8px;" title="Remover"><i class="fas fa-trash"></i></button>
+            </div>`).join('') : '<div style="padding:20px; text-align:center; color:var(--texto-secundario);">Nenhum dia extra cadastrado.</div>';
+    $('modalDiasExtras').innerHTML = `
+        <div class="modal-card" style="width:400px; max-width:90vw; border-top:5px solid var(--cor-despacho); max-height:80vh;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:2px solid var(--borda-cor); padding-bottom:10px;">
+                <h2 style="margin:0; color:var(--texto-cor); display:flex; align-items:center; gap:10px; font-size:16px;"><i class="fas fa-calendar-plus" style="color:var(--cor-despacho);"></i> DIAS EXTRAS TRABALHADOS</h2>
+                <button onclick="fecharModais()" class="modal-fechar-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="font-size:12px; color:var(--texto-secundario); margin-bottom:15px;">Um dia cadastrado aqui (ex.: um sábado de trabalho) passa a contar como dia útil: a Sequência usa a capacidade cheia nele e os prazos (data limite) também contam esse dia.</div>
+            <div style="overflow-y:auto; flex:1; margin-bottom:15px; border:1px solid var(--borda-cor); border-radius:8px;">${linhas}</div>
+            <div class="somente-admin tambem-usuario" style="display:flex; gap:10px;">
+                <input type="date" id="inputNovoDiaExtra" style="flex:1;">
+                <button onclick="adicionarDiaExtra($('inputNovoDiaExtra').value)" class="btn btn-sugestao"><i class="fas fa-plus"></i> ADICIONAR</button>
+            </div>
+        </div>`;
+}
+
 function renderizarModalFeriados() {
     const lista = obterFeriados();
     // Formata direto da string "AAAA-MM-DD" pra "DD/MM/AAAA" sem passar por
@@ -84,7 +127,7 @@ function tempoCosturaOP(op) {
 function proximoDiaUtilCostura(data, feriados) {
     const feriadosSet = feriados || new Set(obterFeriados());
     const nova = new Date(data);
-    do { nova.setDate(nova.getDate() + 1); } while (nova.getDay() === 0 || nova.getDay() === 6 || feriadosSet.has(nova.toISOString().slice(0, 10)));
+    do { nova.setDate(nova.getDate() + 1); } while (!ehDiaDeTrabalhoCostura(nova, feriadosSet));
     return nova;
 }
 
@@ -100,7 +143,7 @@ function proximoDiaUtilCostura(data, feriados) {
 function calcularCronogramaCostura(fila, minutosDisponiveisPorDia) {
     const feriados = new Set(obterFeriados());
     let diaAtual = new Date(); diaAtual.setHours(0, 0, 0, 0);
-    while (diaAtual.getDay() === 0 || diaAtual.getDay() === 6 || feriados.has(diaAtual.toISOString().slice(0, 10))) {
+    while (!ehDiaDeTrabalhoCostura(diaAtual, feriados)) {
         diaAtual = proximoDiaUtilCostura(diaAtual, feriados);
     }
     let minutosUsadosHoje = 0;

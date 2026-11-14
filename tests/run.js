@@ -218,6 +218,18 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     supabaseClient = velho; sessaoAdminAtual = velhaS; papelUsuarioAtual = velhoP; if (bak) localStorage.setItem('eficienciaCostura', bak); else localStorage.removeItem('eficienciaCostura');
     return /50/.test(txt);
   }), true);
+  igual('dias extras trabalhados: sábado vira dia útil no cronograma e nos prazos', await p.evaluate(() => {
+    const bak = localStorage.getItem('diasExtrasSeqProducao'), bakF = localStorage.getItem('feriadosSeqProducao');
+    localStorage.removeItem('diasExtrasSeqProducao'); localStorage.setItem('feriadosSeqProducao', '[]');
+    const sex = new Date(2026, 10, 13), iso = d => d.toISOString().slice(0, 10), r = [];
+    r.push(iso(proximoDiaUtilCostura(sex)), iso(somarDiasUteisCostura(sex, 1)), iso(subtrairDiasUteisCostura(new Date(2026, 10, 16), 1)));   // sem extra: pula o fim de semana
+    localStorage.setItem('diasExtrasSeqProducao', JSON.stringify(['2026-11-14']));
+    r.push(iso(proximoDiaUtilCostura(sex)), iso(somarDiasUteisCostura(sex, 1)), iso(subtrairDiasUteisCostura(new Date(2026, 10, 16), 1)));   // com sábado extra: conta o sábado
+    localStorage.setItem('feriadosSeqProducao', JSON.stringify(['2026-11-14'])); r.push(ehDiaDeTrabalhoCostura(new Date(2026, 10, 14)));   // extra vale até se também for feriado
+    adicionarDiaExtra('2026-11-21'); r.push(obterDiasExtras().join()); removerDiaExtra('2026-11-21'); r.push(obterDiasExtras().join(), /sábado/.test((renderizarModalDiasExtras(), $('modalDiasExtras').innerText)));
+    if (bak) localStorage.setItem('diasExtrasSeqProducao', bak); else localStorage.removeItem('diasExtrasSeqProducao'); if (bakF) localStorage.setItem('feriadosSeqProducao', bakF); else localStorage.removeItem('feriadosSeqProducao');
+    return r;
+  }), ['2026-11-16', '2026-11-16', '2026-11-13', '2026-11-14', '2026-11-14', '2026-11-14', true, '2026-11-14,2026-11-21', '2026-11-14', true]);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');

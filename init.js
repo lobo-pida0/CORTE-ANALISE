@@ -129,6 +129,7 @@ function inicializarEventosUI() {
         wireEvento('seqCostGrupo', 'change', () => { renderizarSequenciamentoCostura(); });
         wireEvento('seqCostBusca', 'input', () => { renderizarBuscaSequenciaCostura(); });
         wireEvento('btnGerenciarFeriados', 'click', () => { renderizarModalFeriados(); $('modalFeriados').style.display = 'flex'; });
+        wireEvento('btnGerenciarDiasExtras', 'click', () => { renderizarModalDiasExtras(); $('modalDiasExtras').style.display = 'flex'; });
         wireEvento('checkTudoSeqCostura', 'change', (e) => { $$('.check-imprimir-seq').forEach(cb => cb.checked = e.target.checked); });
         wireEvento('btnPlanoSeqCostura', 'click', () => { adicionarMarcadasAoPlanoCostura(); });
         wireEvento('btnImprimirSeqCostura', 'click', () => { imprimirSecao('secaoImprimirSeqCostura'); });
