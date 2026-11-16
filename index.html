@@ -886,7 +886,7 @@
             </div>
         </div>
 
-        <div class="secao somente-admin tambem-usuario" id="secaoEficienciaAcabamento" style="margin-top:var(--espaco-md);">
+        <div class="secao somente-admin tambem-usuario tambem-sequencia" id="secaoEficienciaAcabamento" style="margin-top:var(--espaco-md);">
             <div class="secao-header" style="background:#5C4A35;"><span><i class="fas fa-gauge-high"></i> EFICIÊNCIA DO ACABAMENTO</span></div>
             <div style="display:flex; align-items:flex-end; gap:var(--espaco-sm); padding:14px 20px; background:var(--bg-painel); border-bottom:1px solid var(--borda-cor); flex-wrap:wrap;">
                 <div class="campo-meta" style="width:160px;"><label>MÊS</label>
@@ -899,7 +899,7 @@
                     <input id="inputEfAcab" type="file" accept=".csv" style="display:none;">
                 </label>
                 <button id="btnLimparMesEfAcab" class="btn somente-admin" style="background:var(--cor-alerta); color:white;" title="Apaga os dias do MÊS escolhido no seletor MÊS (movimentação e pessoas). Os outros meses não são mexidos."><i class="fas fa-trash"></i> LIMPAR MÊS</button>
-                <button id="btnBaixarMesEfAcab" class="btn somente-admin tambem-usuario" style="background:var(--cor-despacho); color:white;" title="Baixa um arquivo Excel com os números do mês escolhido no seletor MÊS, pra você guardar"><i class="fas fa-file-excel"></i> BAIXAR MÊS</button>
+                <button id="btnBaixarMesEfAcab" class="btn somente-admin tambem-usuario tambem-sequencia" style="background:var(--cor-despacho); color:white;" title="Baixa um arquivo Excel com os números do mês escolhido no seletor MÊS, pra você guardar"><i class="fas fa-file-excel"></i> BAIXAR MÊS</button>
                 <span style="font-size:11px; color:var(--texto-secundario); flex:1; min-width:260px;">Importe o relatório de movimentação do dia (o mesmo CSV da costura — importando lá, o acabamento entra junto). Só conta o local PNP ACABAMENTO (sem terceiros); minutos = peças × tempo do local. Digite quantas pessoas trabalharam em cada dia.</span>
             </div>
             <div class="secao-corpo" style="padding:20px;">

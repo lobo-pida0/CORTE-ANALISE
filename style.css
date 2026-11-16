@@ -1363,4 +1363,4 @@ body.dark-mode #efCosturaCorpo tr.ef-dia-total td:first-child { box-shadow: inse
 @media print { #areaImpressaoGenerica .prep-outros { max-width: none; white-space: normal; } }
 
 /* Papel "sequencia" no KPI: só o bloco de eficiência da costura (o KPI do corte fica de fora) */
-body.modo-sequencia #aba-kpi > .secao:not(#secaoEficienciaCostura) { display: none; }
+body.modo-sequencia #aba-kpi > .secao:not(#secaoEficienciaCostura):not(#secaoEficienciaAcabamento) { display: none; }

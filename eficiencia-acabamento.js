@@ -121,7 +121,7 @@ function importarAcabamentoDasLinhas(linhas) {
     return res;
 }
 function processarEficienciaAcabamento() {
-    if (!exigirAdminOuUsuario('importar a movimentação do acabamento')) return;
+    if (!exigirLogadoNaSequencia('importar a movimentação do acabamento')) return;
     const input = $('inputEfAcab'); if (!input || !input.files[0]) return;
     const r = new FileReader();
     r.onload = async function (e) {
@@ -155,7 +155,7 @@ function popularSeletorMesEfAcab(preferido) {
     else if (meses.length) sel.value = meses[meses.length - 1];
 }
 function definirPessoasEfAcab(dia, valor) {
-    if (!exigirAdminOuUsuario('informar as pessoas do dia')) { renderizarEficienciaAcabamento(); return; }
+    if (!exigirLogadoNaSequencia('informar as pessoas do dia')) { renderizarEficienciaAcabamento(); return; }
     const todos = obterEfAcab(); if (!todos[dia]) return;
     const n = parseFloat(String(valor).replace(',', '.'));
     todos[dia].pessoas = (isNaN(n) || n <= 0) ? 0 : n;

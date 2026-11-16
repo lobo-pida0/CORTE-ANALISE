@@ -581,9 +581,14 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       $('seletorMesEfAcab').value = '2026-10'; renderizarEficienciaAcabamento(); r.push(graficoEfAcabInstance === null);
       supabaseClient = velho; sessaoAdminAtual = velhaSessao; papelUsuarioAtual = velhoPapel; window.confirm = velhoConfirm; if (bak) localStorage.setItem('eficienciaAcabamento', bak); else localStorage.removeItem('eficienciaAcabamento'); return r;
     }), [2, false, '2026-10-26', 0, true, 0, true]);
-    igual('acabamento: o usuário "sequencia" (Luis) não vê o bloco', await p.evaluate(() => {
-      document.body.classList.add('modo-sequencia', 'modo-visitante'); const v = getComputedStyle($('secaoEficienciaAcabamento')).display; document.body.classList.remove('modo-sequencia', 'modo-visitante'); return v;
-    }), 'none');
+    igual('acabamento: o usuário "sequencia" (Luis) vê o bloco, importa, informa pessoas e baixa o mês, mas não limpa o mês', await p.evaluate(() => {
+      const velho = papelUsuarioAtual; papelUsuarioAtual = 'sequencia'; document.body.classList.add('modo-sequencia', 'modo-visitante');
+      const vis = id => getComputedStyle($(id)).display !== 'none';
+      const r = [vis('secaoEficienciaAcabamento'), vis('btnBaixarMesEfAcab'), vis('btnLimparMesEfAcab'), vis('secaoEficienciaCostura'), [...document.querySelectorAll('#aba-kpi > .secao')].filter(e => e.id !== 'secaoEficienciaCostura' && e.id !== 'secaoEficienciaAcabamento').every(e => getComputedStyle(e).display === 'none')];
+      localStorage.setItem('eficienciaAcabamento', JSON.stringify({ '2026-10-26': { pecas: 10, minutos: 40, ops: 1, semTempo: 0, pessoas: 0 } })); popularSeletorMesEfAcab('2026-10');
+      definirPessoasEfAcab('2026-10-26', '2'); r.push(obterEfAcab()['2026-10-26'].pessoas);
+      papelUsuarioAtual = velho; document.body.classList.remove('modo-sequencia', 'modo-visitante'); localStorage.removeItem('eficienciaAcabamento'); return r;
+    }), [true, true, false, true, true, 2]);
   }
 
   // ---------- 10c. Plano do ACABAMENTO (sub-aba do plano da costura) ----------
