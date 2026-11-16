@@ -241,3 +241,38 @@ function abrirSubabaPlano(tipo) {
     ativo('btnSubPlanoCostura', !acab, 'var(--cor-sugestao)'); ativo('btnSubPlanoAcabamento', acab, '#5C4A35');
     renderizarPlanoCostura();
 }
+
+// ---- EXPORTAR EXCEL: planejado x realizado de todos os planos salvos (um tipo por vez: costura ou acabamento).
+// Aba PLANEJADO x REALIZADO = uma linha por OP de cada dia (+ o que saiu sem estar no plano); aba RESUMO = uma linha por dia.
+function montarPlanoXRealizado(tipo) {
+    const dias = Object.keys(obterPlanosCostura(tipo)).sort();
+    const resumo = [['DATA DO PLANO', 'OPs NO PLANO', 'PEÇAS PROGRAMADAS', 'PEÇAS QUE SAÍRAM (DO PLANO)', '% CUMPRIDO', 'OPs COMPLETAS', 'OPs PARCIAIS', 'OPs QUE NÃO SAÍRAM', 'OPs FORA DO PLANO', 'PEÇAS FORA DO PLANO', 'PESSOAS', 'HORAS/DIA', 'EFICIÊNCIA USADA (%)', 'SITUAÇÃO']];
+    const detalhe = [['DATA DO PLANO', 'CICLO', 'OP', 'GRUPO', 'DESCRIÇÃO', 'FINALIZAÇÃO (SALVA)', 'PROGRAMADO', 'SAIU', 'FALTAM', '% DA OP', 'SITUAÇÃO']];
+    const nomeSit = { completa: 'SAIU POR COMPLETO', parcial: 'SAIU PARCIAL', nao: 'NÃO SAIU' };
+    dias.forEach(d => {
+        const r = compararPlanoCostura(d, tipo), data = formatarChaveDataBR(d), cap = r.plano.cap || {};
+        const prog = r.plano.ops.reduce((t, o) => t + o.qtd, 0);
+        const comum = [cap.pessoas ?? '', cap.horas ?? '', cap.ef ?? ''];
+        if (r.estado !== 'conferido') {
+            const sit = r.estado === 'aguardando' ? 'AGUARDANDO RELATÓRIO' : 'RELATÓRIO SEM DETALHE POR OP (reimportar)';
+            resumo.push([data, r.plano.ops.length, prog, '', '', '', '', '', '', '', ...comum, sit]);
+            r.plano.ops.forEach(o => detalhe.push([data, o.ciclo || '', o.op, o.grupo || '', o.desc || '', formatarDataBR(o.fin) || '', o.qtd, '', '', '', sit]));
+            return;
+        }
+        resumo.push([data, r.plano.ops.length, r.pecasProgramadas, r.pecasCumpridas, r.pct, r.qtdCompletas, r.qtdParciais, r.qtdNao, r.extras.length, r.pecasExtras, ...comum, 'CONFERIDO']);
+        r.itens.forEach(x => detalhe.push([data, x.ciclo || '', x.op, x.grupo || '', x.desc || '', formatarDataBR(x.fin) || '', x.qtd, x.saiu, Math.max(0, x.qtd - x.saiu), x.qtd ? Math.round(Math.min(x.saiu, x.qtd) / x.qtd * 100) : 0, nomeSit[x.status]]));
+        r.extras.forEach(x => { const sep = String(x.chave).split('-'); detalhe.push([data, sep.length > 1 ? sep[0] : '', sep.length > 1 ? sep.slice(1).join('-') : x.chave, '', '', '', 0, x.saiu, '', '', 'SAIU SEM ESTAR NO PLANO']); });
+    });
+    return { dias, resumo, detalhe };
+}
+function exportarPlanoXRealizadoExcel(tipo) {
+    if (!exigirBibliotecaExcel()) return;
+    const m = montarPlanoXRealizado(tipo);
+    if (!m.dias.length) return alert('Ainda não há planos salvos pra exportar.');
+    const wb = XLSX.utils.book_new();
+    [['PLANEJADO x REALIZADO', m.detalhe, [14, 8, 10, 14, 40, 18, 12, 10, 10, 10, 26]], ['RESUMO POR DIA', m.resumo, [14, 12, 18, 22, 12, 14, 14, 18, 16, 18, 10, 10, 18, 26]]].forEach(([nome, linhas, larg]) => {
+        const ws = XLSX.utils.aoa_to_sheet(linhas); ws['!cols'] = larg.map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, nome);
+    });
+    XLSX.writeFile(wb, `Plano_${cfgPlano(tipo).nome}_planejado_x_realizado_${hojeISOLocalPlanoCostura()}.xlsx`);
+    showToast(`<i class="fas fa-file-excel"></i> Planejado x realizado do ${cfgPlano(tipo).nome} exportado (${m.dias.length} dia(s)).`);
+}

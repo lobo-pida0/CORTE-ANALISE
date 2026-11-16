@@ -617,6 +617,11 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       const r = [Object.keys(gravado)[0] === 'acab-' + dia, !!obterPlanosCostura('acabamento')['2026-01-05'], !!obterPlanosCostura()['2026-01-05'], !!obterPlanosCostura()['2026-01-06'], !!obterPlanosCostura('acabamento')['2026-01-06']];
       supabaseClient = velho; sessaoAdminAtual = velhaS; return r;
     }), [true, true, false, true, false]);
+    igual('exportar planejado x realizado do acabamento: linhas por OP, fora do plano e resumo do dia', await p.evaluate(() => {
+      const m = montarPlanoXRealizado('acabamento'); const dia = formatarChaveDataBR(hojeISOLocalPlanoCostura());
+      const l = m.detalhe.filter(r => r[0] === dia).map(r => [r[2], r[6], r[7], r[8], r[9], r[10]]);
+      return [l, m.resumo.find(r => r[0] === dia).slice(1, 10), !!document.getElementById('btnExportarPlanoAcab'), !!document.getElementById('btnExportarPlanoCostura')];
+    }), [[['801', 100, 100, 0, 100, 'SAIU POR COMPLETO'], ['802', 60, 20, 40, 33, 'SAIU PARCIAL'], ['899', 0, 7, '', '', 'SAIU SEM ESTAR NO PLANO']], [2, 160, 120, 75, 1, 1, 0, 1, 7], true, true]);
     await p.evaluate(async () => { await tirarOPDoPlanoCostura('801', '211', 'acabamento'); });
     igual('TIRAR no plano do acabamento tira só dele', await p.evaluate(() => obterPlanosCostura('acabamento')[hojeISOLocalPlanoCostura()].ops.map(o => o.op)), ['802']);
     await p.evaluate(() => { if (window.__bakPOC) localStorage.setItem('porOPCosturaDetalhado', window.__bakPOC); else localStorage.removeItem('porOPCosturaDetalhado'); localStorage.removeItem('planoAcabamento'); $('seqCostGrupo').value = 'CALCA'; });
