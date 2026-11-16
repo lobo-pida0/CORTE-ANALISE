@@ -128,7 +128,7 @@ function atualizarIndicadorLogin() {
 // qualquer forma (exigirAdmin), deixar as outras abas visíveis só deixaria
 // o visitante perdido clicando em telas que não fazem sentido pro papel dele.
 const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
-const ABAS_LIBERADAS_PARA_SEQUENCIA = ['aba-seq-costura'];   // papel "sequencia": só consulta a Sequência da costura
+const ABAS_LIBERADAS_PARA_SEQUENCIA = ['aba-seq-costura', 'aba-kpi', 'aba-plano-costura'];   // papel "sequencia" (Luis): Sequência da costura + só o bloco de eficiência da costura no KPI + Plano da costura
 const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura', 'aba-urgencias', 'aba-producao-grupo', 'aba-preparacao'];
 function abaLiberadaAgora(idAba) {
     if (papelUsuarioAtual === 'admin') return true;

@@ -257,6 +257,15 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     $('modalDiasExtras').style.display = 'none'; sessaoAdminAtual = velhaS; papelUsuarioAtual = velhoP; document.body.classList.remove('modo-sequencia', 'modo-visitante'); aplicarRestricaoDeAbaVisitante();
     if (bak) localStorage.setItem('diasExtrasSeqProducao', bak); else localStorage.removeItem('diasExtrasSeqProducao'); return r;
   }), [true, false, true, true, true]);
+  igual('papel sequencia: acessa Sequência, KPI (só eficiência da costura) e Plano da costura; o resto continua fechado', await p.evaluate(() => {
+    const velhaS = sessaoAdminAtual, velhoP = papelUsuarioAtual, velhoSel = document.querySelector('.aba-conteudo.ativa').id;
+    sessaoAdminAtual = { user: { email: 'luis@x.com' } }; papelUsuarioAtual = 'sequencia'; document.body.classList.add('modo-sequencia', 'modo-visitante');
+    const liberada = ['aba-seq-costura', 'aba-kpi', 'aba-plano-costura', 'aba-prioridades', 'aba-preparacao', 'aba-programacao', 'aba-producao-grupo'].map(abaLiberadaAgora);
+    abrirAba(null, 'aba-kpi'); const vis = sel => { const b = document.querySelector(sel); return !!b && getComputedStyle(b).display !== 'none'; };
+    const r = [liberada.join(), vis('#aba-kpi > .secao:not(#secaoEficienciaCostura)'), vis('#secaoEficienciaCostura'), vis('#btnBaixarMesEfCostura'), vis('#btnLimparMesEfCostura'), vis('#btnPlanoSeqCostura')];
+    r.push(exigirLogadoNaSequencia('x'));
+    document.body.classList.remove('modo-sequencia', 'modo-visitante'); sessaoAdminAtual = velhaS; papelUsuarioAtual = velhoP; abrirAba(null, velhoSel); return r;
+  }), ['true,true,true,false,false,false,false', false, true, true, false, true, true]);
   // ---------- 10b. Plano da costura ----------
   await p.evaluate(() => {
     localStorage.removeItem('planoCostura'); localStorage.removeItem('eficienciaCostura');
@@ -466,7 +475,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       const out = { visiveis, ativa, usuario: exigirAdminOuUsuario('x'), admin: exigirAdmin('x'), visitante: document.body.classList.contains('modo-visitante') };
       papelUsuarioAtual = velhoP; sessaoAdminAtual = velhaS; aplicarRestricaoDeAbaVisitante(); return out;
     });
-    igual('papel "sequencia": só a aba da Sequência, sem ações de admin ou usuário', r, { visiveis: ['aba-seq-costura'], ativa: 'aba-seq-costura', usuario: false, admin: false, visitante: true });
+    igual('papel "sequencia": Sequência, KPI e Plano da costura, sem ações de admin ou usuário', r, { visiveis: ['aba-kpi', 'aba-seq-costura', 'aba-plano-costura'], ativa: 'aba-seq-costura', usuario: false, admin: false, visitante: true });
     const fSeq = path.join(os.tmpdir(), 'corte-pro-seq-role.csv');
     fs.writeFileSync(fSeq, 'Descricao Local;OP;Ciclo;Qt OP Local\nPNP COST INF CALCA;9901;211;40\n');
     await p.evaluate(() => { localStorage.removeItem('porOPCosturaDetalhado'); sessaoAdminAtual = { user: { email: 'luis@x.com' } }; papelUsuarioAtual = 'sequencia'; atualizarIndicadorLogin(); });

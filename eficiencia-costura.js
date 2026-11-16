@@ -143,7 +143,7 @@ async function carregarEfCosturaDaNuvem() {
 }
 
 function processarEficienciaCostura() {
-    if (!exigirAdminOuUsuario('importar a movimentação da costura')) return;
+    if (!exigirLogadoNaSequencia('importar a movimentação da costura')) return;
     const input = $('inputEfCostura'); if (!input || !input.files[0]) return;
     const r = new FileReader();
     r.onload = async function (e) {
@@ -234,7 +234,7 @@ function popularSeletorMesEfCostura(preferido) {
 }
 
 function definirPessoasEfCostura(dia, local, valor) {
-    if (!exigirAdminOuUsuario('informar as pessoas do dia')) { renderizarEficienciaCostura(); return; }
+    if (!exigirLogadoNaSequencia('informar as pessoas do dia')) { renderizarEficienciaCostura(); return; }
     const todos = obterEficienciaCostura(); if (!todos[dia]) return;
     const n = parseFloat(String(valor).replace(',', '.'));
     todos[dia].pessoasLocal = todos[dia].pessoasLocal || {};

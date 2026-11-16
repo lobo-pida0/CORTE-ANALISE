@@ -1361,3 +1361,6 @@ body.dark-mode #efCosturaCorpo tr.ef-dia-total td:first-child { box-shadow: inse
 .selo-parte { background: #8E5BB5; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px; letter-spacing: .5px; vertical-align: middle; }
 .prep-outros { font-size: 10px; color: var(--texto-secundario); max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media print { #areaImpressaoGenerica .prep-outros { max-width: none; white-space: normal; } }
+
+/* Papel "sequencia" no KPI: só o bloco de eficiência da costura (o KPI do corte fica de fora) */
+body.modo-sequencia #aba-kpi > .secao:not(#secaoEficienciaCostura) { display: none; }

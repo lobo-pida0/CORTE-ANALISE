@@ -110,7 +110,7 @@ function htmlCapacidadePlanoCostura(plano) {
     return `<span title="Pessoas, horas por dia e eficiência usadas na SEQUÊNCIA quando o plano foi salvo">${fmt(c.pessoas)} pessoas · ${fmt(c.horas)}h/dia · <strong>${fmt(c.ef)}%</strong> de eficiência</span>`;
 }
 async function adicionarMarcadasAoPlanoCostura() {
-    if (!exigirAdmin('montar o plano da costura')) return;
+    if (!exigirLogadoNaSequencia('montar o plano da costura')) return;
     const marcadas = [...document.querySelectorAll('.check-imprimir-seq:checked')].map(c => c.dataset.id);
     if (!marcadas.length) { showToast('<i class="fas fa-triangle-exclamation"></i> Marque na lista as OPs que quer salvar no plano.', true); return; }
     const dia = hojeISOLocalPlanoCostura();
@@ -136,7 +136,7 @@ async function adicionarMarcadasAoPlanoCostura() {
     await publicarPlanoCosturaNuvem(dia);
 }
 async function tirarOPDoPlanoCostura(op, ciclo) {
-    if (!exigirAdmin('montar o plano da costura')) return;
+    if (!exigirLogadoNaSequencia('montar o plano da costura')) return;
     const dia = hojeISOLocalPlanoCostura();
     const k = montarChaveOP(ciclo, op);
     const planos = obterPlanosCostura();
@@ -152,7 +152,7 @@ async function tirarOPDoPlanoCostura(op, ciclo) {
 // ---- tela
 function renderizarPlanoCostura() {
     const raiz = $('planoCosturaConteudo'); if (!raiz) return;
-    const admin = !!(sessaoAdminAtual && papelUsuarioAtual === 'admin');
+    const admin = !!(sessaoAdminAtual && (papelUsuarioAtual === 'admin' || papelUsuarioAtual === 'sequencia'));
     const fmt = v => Number(v).toLocaleString('pt-BR');
     const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     const dia = ($('planoCosturaData') && $('planoCosturaData').value) || hojeISOLocalPlanoCostura();
