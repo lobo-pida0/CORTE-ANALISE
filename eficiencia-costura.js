@@ -200,6 +200,9 @@ function processarEficienciaCostura() {
                 mv.q += qtd; if (!mv.l.includes(nomeLocal)) mv.l.push(nomeLocal);
                 if (tempo === null) { reg.semTempo += qtd; linhasSemTempo++; } else reg.minutos += qtd * tempo;
             }
+            // o mesmo relatório também alimenta a EFICIÊNCIA DO ACABAMENTO (local PNP ACABAMENTO)
+            let resAcab = null; try { resAcab = importarAcabamentoDasLinhas(linhas); } catch (err) { registrarLogDebug('error', ['[Eficiência acabamento] ' + err.message]); }
+            if (!linhasCostura && resAcab && resAcab.n) { input.value = ''; showToast(`<i class="fas fa-check-double"></i> Esse arquivo não tem costura; ${resAcab.n} linha(s) de acabamento importadas.`, false, 4000); return; }
             if (!linhasCostura) throw new Error('Não achei nenhuma linha de costura (locais PNP/SLV COST SUP, INF ou CEL) nesse arquivo.');
 
             const todos = obterEficienciaCostura();
@@ -214,7 +217,7 @@ function processarEficienciaCostura() {
             popularSeletorMesEfCostura(dias[dias.length - 1].slice(0, 7));
             renderizarEficienciaCostura();
             if (typeof renderizarPlanoCostura === 'function') renderizarPlanoCostura();   // a conferência do plano usa esse relatório
-            showToast(`<i class="fas fa-check-double"></i> ${linhasCostura} linhas de costura em ${dias.length} dia(s) importadas.${linhasParte ? ` ${linhasParte} de PARTE ignorada(s).` : ''}${linhasSemTempo ? ` ⚠ ${linhasSemTempo} sem tempo (contam peças, não minutos).` : ''}`, false, linhasSemTempo ? 7000 : 3000);
+            showToast(`<i class="fas fa-check-double"></i> ${linhasCostura} linhas de costura em ${dias.length} dia(s) importadas.${linhasParte ? ` ${linhasParte} de PARTE ignorada(s).` : ''}${linhasSemTempo ? ` ⚠ ${linhasSemTempo} sem tempo (contam peças, não minutos).` : ''}${resAcab && resAcab.n ? ` Acabamento: ${resAcab.n} linha(s).` : ''}`, false, linhasSemTempo ? 7000 : 3000);
         } catch (err) {
             input.value = '';
             alert('❌ Não foi possível importar a movimentação da costura.\n\n' + err.message);

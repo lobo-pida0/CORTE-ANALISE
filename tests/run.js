@@ -537,6 +537,55 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   igual('saiu sem estar no plano', conf.extras, [['211-999', 50]]);
   igual('tela de conferência mostra o plano', await p.evaluate(() => /54% cumprido/.test(document.getElementById('planoCosturaConferencia').innerText)), true);
 
+  // ---------- 10b. Eficiência do ACABAMENTO (KPI): 1 local só, PNP ACABAMENTO ----------
+  {
+    const CABAC = 'Empresa;Grupo Local;Ds. Descricao;Tp Produto;Cd Local;Ds Local;Ref.;Ciclo;Op;Dt. Movimento;Qt. Movimento;Cod. Tempo;Cod. Tempolocal;Tipo Mov\n';
+    const lac = (local, ciclo, op, qtd, dt, tempo, tipo) => `1;x;desc;CAMISA;1;${local};REF;${ciclo};${op};${dt};${qtd};${tempo};${tempo};${tipo || 'NORMAL'}\n`;
+    const fac = path.join(os.tmpdir(), 'corte-pro-acab.csv');
+    fs.writeFileSync(fac, CABAC + lac('PNP ACABAMENTO', 211, 701, 100, '26/10/2026', '4,5') + lac('PNP ACABAMENTO', 211, 702, 10, '26/10/2026', '') + lac('PNP ACABAMENTO', 211, 703, 50, '27/10/2026', '2')
+      + lac('PNP ACABAMENTO TERCEIROS', 211, 704, 999, '26/10/2026', '9') + lac('SLV ACABAMENTO', 211, 705, 999, '26/10/2026', '9') + lac('PNP ACABAMENTO', 211, 706, 999, '26/10/2026', '9', 'PARTE') + lac('PNP COST SUP CAMISA', 211, 707, 999, '26/10/2026', '9'));
+    await p.evaluate(() => { papelUsuarioAtual = 'admin'; sessaoAdminAtual = sessaoAdminAtual || { user: { email: 'admin@x.com' } }; localStorage.removeItem('eficienciaAcabamento'); });
+    await p.setInputFiles('#inputEfAcab', fac); await p.waitForTimeout(700);
+    igual('acabamento: só o local PNP ACABAMENTO (sem terceiros, Selvíria, parte nem costura)', await p.evaluate(() => { const e = obterEfAcab(); return [Object.keys(e).sort().join(), e['2026-10-26'].pecas, e['2026-10-26'].minutos, e['2026-10-26'].ops, e['2026-10-26'].semTempo, e['2026-10-27'].pecas, e['2026-10-27'].minutos]; }), ['2026-10-26,2026-10-27', 110, 450, 2, 10, 50, 100]);
+    igual('acabamento: eficiência = minutos ÷ (pessoas × 528) e aparece na tela com gráfico', await p.evaluate(() => {
+      popularSeletorMesEfAcab('2026-10'); $('seletorMesEfAcab').value = '2026-10'; definirPessoasEfAcab('2026-10-26', '1');
+      const m = calcularMesEfAcab('2026-10', 528);
+      return [Math.round(m.linhas[0].efic * 10) / 10, m.linhas[1].efic, Math.round(m.tot.efic * 10) / 10, /85,2%/.test($('efAcabCorpo').innerText), graficoEfAcabInstance !== null];
+    }), [85.2, null, 85.2, true, true]);
+    await p.setInputFiles('#inputEfAcab', fac); await p.waitForTimeout(700);
+    igual('acabamento: reimportar o dia mantém as pessoas digitadas', await p.evaluate(() => obterEfAcab()['2026-10-26'].pessoas), 1);
+    igual('acabamento: importar a COSTURA leva o acabamento junto', await p.evaluate(async () => {
+      localStorage.removeItem('eficienciaAcabamento'); return 1;
+    }), 1);
+    await p.setInputFiles('#inputEfCostura', fac); await p.waitForTimeout(700);
+    igual('acabamento: o mesmo CSV importado pelo botão da costura alimenta o acabamento', await p.evaluate(() => [obterEfAcab()['2026-10-26'] && obterEfAcab()['2026-10-26'].pecas, Object.keys(obterEfAcab()).length]), [110, 2]);
+    igual('acabamento na nuvem: sobe só o dia, outro navegador recebe, LIMPAR MÊS vira marca e some de quem abre depois', await p.evaluate(async () => {
+      const velho = supabaseClient, velhaSessao = sessaoAdminAtual, velhoPapel = papelUsuarioAtual, velhoConfirm = window.confirm, bak = localStorage.getItem('eficienciaAcabamento');
+      const nuvem = {};
+      supabaseClient = { from: () => ({
+        upsert: row => { nuvem[row.id] = row; return Promise.resolve({ error: null }); },
+        select: () => ({ eq: (_c, id) => ({ maybeSingle: () => Promise.resolve({ data: nuvem[id] ? { dados: nuvem[id].dados } : null, error: null }) }) }) }) };
+      sessaoAdminAtual = { user: { email: 'admin@x.com' } }; papelUsuarioAtual = 'admin'; window.confirm = () => true;
+      localStorage.setItem('eficienciaAcabamento', JSON.stringify({ '2026-10-26': { pecas: 110, minutos: 450, ops: 2, semTempo: 10, pessoas: 0 }, '2026-11-02': { pecas: 5, minutos: 20, ops: 1, semTempo: 0, pessoas: 0 } }));
+      localStorage.removeItem('eficienciaAcabamentoPend'); localStorage.removeItem('eficienciaAcabamentoApagPend');
+      definirPessoasEfAcab('2026-10-26', '2'); await new Promise(r => setTimeout(r, 100));
+      const r = [nuvem['eficiencia_acabamento'].dados.dias['2026-10-26'].pessoas, '2026-11-02' in nuvem['eficiencia_acabamento'].dados.dias];
+      // outro navegador (vazio) abre a aba e recebe o dia
+      localStorage.setItem('eficienciaAcabamento', '{}'); await carregarEfAcabDaNuvem(); r.push(Object.keys(obterEfAcab()).join());
+      // limpar outubro
+      popularSeletorMesEfAcab('2026-10'); $('seletorMesEfAcab').value = '2026-10'; limparMesEfAcab(); await new Promise(r => setTimeout(r, 100));
+      r.push(Object.keys(obterEfAcab()).length, nuvem['eficiencia_acabamento'].dados.dias['2026-10-26'].apagado === true);
+      // um navegador antigo ainda com outubro: ao abrir a aba, outubro some
+      localStorage.setItem('eficienciaAcabamento', JSON.stringify({ '2026-10-26': { pecas: 1, minutos: 1, ops: 1, semTempo: 0, pessoas: 0 } })); await carregarEfAcabDaNuvem(); r.push(Object.keys(obterEfAcab()).length);
+      // gráfico de mês sem dados não fica na tela
+      $('seletorMesEfAcab').value = '2026-10'; renderizarEficienciaAcabamento(); r.push(graficoEfAcabInstance === null);
+      supabaseClient = velho; sessaoAdminAtual = velhaSessao; papelUsuarioAtual = velhoPapel; window.confirm = velhoConfirm; if (bak) localStorage.setItem('eficienciaAcabamento', bak); else localStorage.removeItem('eficienciaAcabamento'); return r;
+    }), [2, false, '2026-10-26', 0, true, 0, true]);
+    igual('acabamento: o usuário "sequencia" (Luis) não vê o bloco', await p.evaluate(() => {
+      document.body.classList.add('modo-sequencia', 'modo-visitante'); const v = getComputedStyle($('secaoEficienciaAcabamento')).display; document.body.classList.remove('modo-sequencia', 'modo-visitante'); return v;
+    }), 'none');
+  }
+
   // ---------- 11. Fumaça: todas as abas abrem sem erro ----------
   const abas = await p.evaluate(() => [...document.querySelectorAll('[id^=aba-]')].map(e => e.id));
   for (const a of abas) { try { await p.evaluate(id => abrirAba(null, id), a); } catch (e) { falhas.push('abrir aba ' + a + ': ' + e.message.slice(0, 100)); } }

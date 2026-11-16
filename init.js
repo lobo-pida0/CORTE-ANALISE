@@ -111,7 +111,7 @@ function inicializarEventosUI() {
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
-        wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); carregarEfCosturaDaNuvem(); });
+        wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); carregarEfCosturaDaNuvem(); carregarEfAcabDaNuvem(); });
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); carregarEfCosturaDaNuvem().then(() => atualizarEficienciaSeqCostura()); carregarCalendarioProducaoDaNuvem(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('abrirAba-aba-preparacao', 'click', (event) => { abrirAba(event, 'aba-preparacao'); renderizarPreparacao(); carregarUrgentesPreparacaoDaNuvem(); });
         wireEvento('inputPorOPPreparacao', 'change', () => { processarPorOPPreparacao(); });
@@ -148,6 +148,12 @@ function inicializarEventosUI() {
         wireEvento('btnLimparMesEfCostura', 'click', () => { limparMesEfCostura(); });
         wireEvento('efCosturaMinPessoa', 'input', () => { renderizarEficienciaCostura(); });
         popularSeletorMesEfCostura(); renderizarEficienciaCostura();
+        wireEvento('inputEfAcab', 'change', () => { processarEficienciaAcabamento(); });
+        wireEvento('seletorMesEfAcab', 'change', () => { renderizarEficienciaAcabamento(); });
+        wireEvento('btnBaixarMesEfAcab', 'click', () => { baixarMesEfAcabExcel(); });
+        wireEvento('btnLimparMesEfAcab', 'click', () => { limparMesEfAcab(); });
+        wireEvento('efAcabMinPessoa', 'input', () => { renderizarEficienciaAcabamento(); });
+        popularSeletorMesEfAcab(); renderizarEficienciaAcabamento();
         wireEvento('btnLimparMovimentacoesKPI', 'click', () => { limparMovimentacoesKPI(); });
         wireEvento('btnBaixarMesKPI', 'click', () => { baixarMesKPIExcel(); });
         wireEvento('btnSubabaProgramarLote', 'click', () => { abrirSubabaProgramacao('lote'); });
