@@ -1076,6 +1076,11 @@
     </div>
 
     <div id="aba-plano-costura" class="aba-conteudo">
+        <div style="display:flex; gap:8px; margin-bottom:var(--espaco-md);">
+            <button id="btnSubPlanoCostura" class="btn" onclick="abrirSubabaPlano('costura')" style="background:var(--cor-sugestao); color:white;"><i class="fas fa-clipboard-check"></i> COSTURA</button>
+            <button id="btnSubPlanoAcabamento" class="btn" onclick="abrirSubabaPlano('acabamento')" style="background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor);"><i class="fas fa-box-open"></i> ACABAMENTO</button>
+        </div>
+        <div id="subaba-plano-costura">
         <div class="secao" style="margin-bottom:var(--espaco-md);">
             <div class="secao-header" style="background:var(--cor-sugestao);"><span><i class="fas fa-clipboard-check"></i> PLANO DA COSTURA</span></div>
             <div id="planoCosturaConteudo" style="padding:14px 20px;">
@@ -1091,6 +1096,26 @@
         <div class="secao" style="margin-bottom:var(--espaco-md);">
             <div class="secao-header" style="background:#35505C;"><span><i class="fas fa-list-check"></i> CONFERÊNCIA — O QUE SAIU DO QUE FOI PROGRAMADO</span></div>
             <div id="planoCosturaConferencia" style="padding:14px 20px;"></div>
+        </div>
+        </div>
+
+        <div id="subaba-plano-acabamento" style="display:none;">
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:#5C4A35;"><span><i class="fas fa-clipboard-check"></i> PLANO DO ACABAMENTO</span></div>
+            <div id="planoAcabConteudo" style="padding:14px 20px;">
+                <div style="display:flex; align-items:flex-end; gap:var(--espaco-md); flex-wrap:wrap; margin-bottom:10px;">
+                    <div class="campo-meta" style="width:170px;"><label>DIA DO PLANO</label><input type="date" id="planoAcabData"></div>
+                    <span id="planoAcabStatusDia"></span>
+                    <span id="planoAcabContador" style="margin-left:auto; font-size:12px;"></span>
+                </div>
+                <div id="planoAcabAviso" style="font-size:12px; color:var(--texto-secundario); margin-bottom:12px; padding:8px 12px; border-radius:8px; background:var(--bg-painel);"></div>
+                <div id="planoAcabLista"></div>
+            </div>
+        </div>
+        <div class="secao" style="margin-bottom:var(--espaco-md);">
+            <div class="secao-header" style="background:#35505C;"><span><i class="fas fa-list-check"></i> CONFERÊNCIA — O QUE SAIU DO QUE FOI PROGRAMADO (ACABAMENTO)</span></div>
+            <div id="planoAcabConferencia" style="padding:14px 20px;"></div>
+        </div>
         </div>
     </div>
 

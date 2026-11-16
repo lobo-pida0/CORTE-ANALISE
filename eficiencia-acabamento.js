@@ -3,7 +3,7 @@
 // (fora ficam "PNP ACABAMENTO TERCEIROS" e o "SLV ACABAMENTO" de Selvíria). Lê o mesmo relatório de movimentação (CSV com
 // "Ds Local", "Qt. Movimento", "Cod. Tempolocal"); minutos produzidos = peças × tempo por peça; eficiência = minutos ÷ (pessoas × minutos por pessoa).
 // Pessoas é digitado por DIA. Guardado no navegador (localStorage 'eficienciaAcabamento') E na nuvem (tabela destino_producao,
-// linha 'eficiencia_acabamento' — sem SQL novo): { 'AAAA-MM-DD': { pecas, minutos, ops, semTempo, pessoas } }.
+// linha 'eficiencia_acabamento' — sem SQL novo): { 'AAAA-MM-DD': { pecas, minutos, ops, opsMov: { 'ciclo-OP': { q } }, semTempo, pessoas } }.
 // Dia limpo na nuvem vira { apagado:true } (quem abre a aba tira o dia daqui). A importação do relatório da COSTURA também alimenta o acabamento.
 // =========================================================================
 const LOCAL_ACABAMENTO_EF = 'PNP ACABAMENTO';
@@ -95,7 +95,7 @@ function extrairAcabamentoDasLinhas(linhas) {
         const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const qtd = numeroBR(c[iQtd]) || 0, tempo = numeroBR(c[iTempo]);
         const reg = dias[dia] = dias[dia] || { pecas: 0, minutos: 0, ops: {}, semTempo: 0 };
-        reg.pecas += qtd; reg.ops[montarChaveOP(iCiclo !== -1 ? (c[iCiclo] || '').trim() : '', op)] = true; n++;
+        reg.pecas += qtd; { const kOP = montarChaveOP(iCiclo !== -1 ? (c[iCiclo] || '').trim() : '', op); reg.ops[kOP] = (reg.ops[kOP] || 0) + qtd; } n++;   // peças que cada OP movimentou (usado pelo PLANO DO ACABAMENTO)
         if (tempo === null) { reg.semTempo += qtd; semTempo++; } else reg.minutos += qtd * tempo;
     }
     return { dias, n, semTempo, partes };
@@ -104,7 +104,7 @@ function extrairAcabamentoDasLinhas(linhas) {
 function gravarImportacaoAcabamento(res) {
     const todos = obterEfAcab();
     Object.entries(res.dias).forEach(([dia, v]) => {
-        todos[dia] = { pecas: Math.round(v.pecas), minutos: Math.round(v.minutos * 100) / 100, ops: Object.keys(v.ops).length, semTempo: Math.round(v.semTempo), pessoas: todos[dia] ? (todos[dia].pessoas || 0) : 0 };
+        todos[dia] = { pecas: Math.round(v.pecas), minutos: Math.round(v.minutos * 100) / 100, ops: Object.keys(v.ops).length, opsMov: Object.fromEntries(Object.entries(v.ops).map(([k, q]) => [k, { q: Math.round(q) }])), semTempo: Math.round(v.semTempo), pessoas: todos[dia] ? (todos[dia].pessoas || 0) : 0 };
     });
     salvarEfAcab(todos);
     const dias = Object.keys(res.dias).sort();

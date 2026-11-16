@@ -586,6 +586,42 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     }), 'none');
   }
 
+  // ---------- 10c. Plano do ACABAMENTO (sub-aba do plano da costura) ----------
+  {
+    const hoje = await p.evaluate(() => hojeISOLocalPlanoCostura());
+    const CABP = 'Empresa;Grupo Local;Ds. Descricao;Tp Produto;Cd Local;Ds Local;Ref.;Ciclo;Op;Dt. Movimento;Qt. Movimento;Cod. Tempo;Cod. Tempolocal;Tipo Mov\n';
+    const lp = (op, qtd) => `1;x;desc;CAMISA;1;PNP ACABAMENTO;REF;211;${op};${hoje.split('-').reverse().join('/')};${qtd};3;3;NORMAL\n`;
+    await p.evaluate(() => {
+      window.__bakPOC = localStorage.getItem('porOPCosturaDetalhado'); localStorage.removeItem('planoAcabamento'); localStorage.removeItem('eficienciaAcabamento');
+      const base = { local: 'PNP ACABAMENTO', ref: '', descRef: 'CAMISA TESTE', cor: '', tempoPecaCostura: 1, diasLocal: 1, tipoProduto: '', prioridade: 99, minutosCostura: 0, minutosAcabamento: 5, dataFinalizacao: '2026-10-30T12:00:00.000Z' };
+      localStorage.setItem('porOPCosturaDetalhado', JSON.stringify([{ ...base, op: '801', ciclo: '211', qtd: 100 }, { ...base, op: '802', ciclo: '211', qtd: 60 }]));
+      papelUsuarioAtual = 'admin'; sessaoAdminAtual = sessaoAdminAtual || { user: { email: 'admin@x.com' } };
+      abrirAba(null, 'aba-seq-costura'); $('seqCostGrupo').value = 'ACABAMENTO'; renderizarSequenciamentoCostura();
+    });
+    const planoAntes = await p.evaluate(() => JSON.stringify(obterPlanosCostura()));
+    await p.evaluate(async () => { document.querySelectorAll('.check-imprimir-seq').forEach(c => { c.checked = true; }); await adicionarMarcadasAoPlanoCostura(); });
+    igual('plano do acabamento: OPs marcadas com o grupo ACABAMENTO vão pra sub-aba do acabamento e não pro plano da costura', await p.evaluate(() => [obterPlanosCostura('acabamento')[hojeISOLocalPlanoCostura()].ops.map(o => o.op).sort(), obterPlanosCostura('acabamento')[hojeISOLocalPlanoCostura()].ops[0].grupo, opEstaNoPlanoCostura('801', '211')]), [['801', '802'], 'Acabamento', true]);
+    igual('plano da costura não foi mexido', await p.evaluate(() => JSON.stringify(obterPlanosCostura())), planoAntes);
+    await p.setInputFiles('#inputEfAcab', await (async () => { const f = path.join(os.tmpdir(), 'corte-pro-planoacab.csv'); fs.writeFileSync(f, CABP + lp(801, 100) + lp(802, 20) + lp(899, 7)); return f; })()); await p.waitForTimeout(700);
+    igual('plano do acabamento: conferido com a saída do PNP ACABAMENTO (completa, parcial, sem estar no plano)', await p.evaluate(() => { const r = compararPlanoCostura(hojeISOLocalPlanoCostura(), 'acabamento'); return [r.estado, r.itens.map(x => [x.op, x.status, x.saiu]).sort(), r.pecasCumpridas, r.pecasProgramadas, r.pct, r.extras.map(x => [x.chave, x.saiu])]; }), ['conferido', [['801', 'completa', 100], ['802', 'parcial', 20]], 120, 160, 75, [['211-899', 7]]]);
+    igual('sub-aba ACABAMENTO aparece e mostra o plano e a conferência', await p.evaluate(() => {
+      abrirAba(null, 'aba-plano-costura'); abrirSubabaPlano('acabamento');
+      const v = [getComputedStyle($('subaba-plano-acabamento')).display !== 'none', getComputedStyle($('subaba-plano-costura')).display === 'none', /801/.test($('planoAcabLista').innerText), /75% cumprido/.test($('planoAcabConferencia').innerText), $('planoCosturaLista').innerText.includes('801')];
+      abrirSubabaPlano('costura'); return v.concat([getComputedStyle($('subaba-plano-costura')).display !== 'none']);
+    }), [true, true, true, true, false, true]);
+    igual('plano do acabamento: sobe e desce da nuvem com o id acab-AAAA-MM-DD sem misturar com o da costura', await p.evaluate(async () => {
+      const velho = supabaseClient, velhaS = sessaoAdminAtual; const gravado = {}; const dia = hojeISOLocalPlanoCostura();
+      supabaseClient = { from: () => ({ upsert: row => { gravado[row.id] = row.dados; return Promise.resolve({ error: null }); }, select: () => ({ range: () => Promise.resolve({ data: [{ id: 'acab-2026-01-05', dados: { ops: [{ op: '9', ciclo: '211', grupo: 'Acabamento', qtd: 5, desc: 'x' }], salvoEm: '2026-01-05T10:00:00Z' } }, { id: '2026-01-06', dados: { ops: [{ op: '8', ciclo: '211', grupo: 'Calça', qtd: 4, desc: 'y' }], salvoEm: '2026-01-06T10:00:00Z' } }], error: null }) }) }) };
+      sessaoAdminAtual = { user: { email: 'a@x.com' } };
+      await publicarPlanoCosturaNuvem(dia, 'acabamento'); await carregarPlanosCosturaDaNuvem();
+      const r = [Object.keys(gravado)[0] === 'acab-' + dia, !!obterPlanosCostura('acabamento')['2026-01-05'], !!obterPlanosCostura()['2026-01-05'], !!obterPlanosCostura()['2026-01-06'], !!obterPlanosCostura('acabamento')['2026-01-06']];
+      supabaseClient = velho; sessaoAdminAtual = velhaS; return r;
+    }), [true, true, false, true, false]);
+    await p.evaluate(async () => { await tirarOPDoPlanoCostura('801', '211', 'acabamento'); });
+    igual('TIRAR no plano do acabamento tira só dele', await p.evaluate(() => obterPlanosCostura('acabamento')[hojeISOLocalPlanoCostura()].ops.map(o => o.op)), ['802']);
+    await p.evaluate(() => { if (window.__bakPOC) localStorage.setItem('porOPCosturaDetalhado', window.__bakPOC); else localStorage.removeItem('porOPCosturaDetalhado'); localStorage.removeItem('planoAcabamento'); $('seqCostGrupo').value = 'CALCA'; });
+  }
+
   // ---------- 11. Fumaça: todas as abas abrem sem erro ----------
   const abas = await p.evaluate(() => [...document.querySelectorAll('[id^=aba-]')].map(e => e.id));
   for (const a of abas) { try { await p.evaluate(id => abrirAba(null, id), a); } catch (e) { falhas.push('abrir aba ' + a + ': ' + e.message.slice(0, 100)); } }
