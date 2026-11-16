@@ -627,6 +627,23 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       const l = m.detalhe.filter(r => r[0] === dia).map(r => [r[2], r[6], r[7], r[8], r[9], r[10]]);
       return [l, m.resumo.find(r => r[0] === dia).slice(1, 10), !!document.getElementById('btnExportarPlanoAcab'), !!document.getElementById('btnExportarPlanoCostura')];
     }), [[['801', 100, 100, 0, 100, 'SAIU POR COMPLETO'], ['802', 60, 20, 40, 33, 'SAIU PARCIAL'], ['899', 0, 7, '', '', 'SAIU SEM ESTAR NO PLANO']], [2, 160, 120, 75, 1, 1, 0, 1, 7], true, true]);
+    igual('excluir plano: some do navegador, grava marca na nuvem, e navegador antigo também remove ao abrir (sem reenviar)', await p.evaluate(async () => {
+      const velho = supabaseClient, velhaS = sessaoAdminAtual, velhoC = window.confirm, velhoP = papelUsuarioAtual; const nuvem = {};
+      supabaseClient = { from: () => ({ upsert: row => { nuvem[row.id] = row; return Promise.resolve({ error: null }); }, select: () => ({ range: () => Promise.resolve({ data: Object.values(nuvem).map(r => ({ id: r.id, dados: r.dados })), error: null }) }) }) };
+      sessaoAdminAtual = { user: { email: 'luis@x.com' } }; papelUsuarioAtual = 'sequencia'; window.confirm = () => true;
+      const pl = obterPlanosCostura(); pl['2026-11-14'] = { ops: [{ op: '4856', ciclo: '211', grupo: 'Camisa', qtd: 54, desc: 'x' }], salvoEm: '2026-11-14T13:24:28.676Z' }; salvarPlanosCostura(pl);
+      await excluirPlanoCostura('2026-11-14');
+      const r = [!obterPlanosCostura()['2026-11-14'], nuvem['2026-11-14'].dados.apagado === true];
+      // outro navegador ainda com o plano antigo
+      const pl2 = obterPlanosCostura(); pl2['2026-11-14'] = { ops: [{ op: '4856', ciclo: '211', grupo: 'Camisa', qtd: 54, desc: 'x' }], salvoEm: '2026-11-14T13:24:28.676Z' }; salvarPlanosCostura(pl2);
+      await carregarPlanosCosturaDaNuvem();
+      r.push(!obterPlanosCostura()['2026-11-14'], nuvem['2026-11-14'].dados.apagado === true);
+      // alguém salva o dia de novo DEPOIS da exclusão: vale o novo
+      const pl3 = obterPlanosCostura(); pl3['2026-11-14'] = { ops: [{ op: '1', ciclo: '211', grupo: 'Camisa', qtd: 5, desc: 'y' }], salvoEm: new Date(Date.now() + 60000).toISOString() }; salvarPlanosCostura(pl3);
+      await carregarPlanosCosturaDaNuvem(); r.push(!!obterPlanosCostura()['2026-11-14']);
+      const pl4 = obterPlanosCostura(); delete pl4['2026-11-14']; salvarPlanosCostura(pl4);
+      supabaseClient = velho; sessaoAdminAtual = velhaS; window.confirm = velhoC; papelUsuarioAtual = velhoP; return r;
+    }), [true, true, true, true, true]);
     await p.evaluate(async () => { await tirarOPDoPlanoCostura('801', '211', 'acabamento'); });
     igual('TIRAR no plano do acabamento tira só dele', await p.evaluate(() => obterPlanosCostura('acabamento')[hojeISOLocalPlanoCostura()].ops.map(o => o.op)), ['802']);
     await p.evaluate(() => { if (window.__bakPOC) localStorage.setItem('porOPCosturaDetalhado', window.__bakPOC); else localStorage.removeItem('porOPCosturaDetalhado'); localStorage.removeItem('planoAcabamento'); $('seqCostGrupo').value = 'CALCA'; });

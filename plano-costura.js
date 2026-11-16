@@ -51,11 +51,16 @@ async function carregarPlanosCosturaDaNuvem() {
             const doTipo = (linhas || []).filter(l => tipo === 'acabamento' ? String(l.id).startsWith('acab-') : !String(l.id).startsWith('acab-')).map(l => ({ ...l, dia: String(l.id).slice(pref.length) }));
             const locais = obterPlanosCostura(tipo); let mudou = false;
             doTipo.forEach(l => {
+                if (l.dados && l.dados.apagado) {   // plano excluído (marca na nuvem): some daqui também, a não ser que alguém tenha salvo o dia de novo depois
+                    const loc = locais[l.dia];
+                    if (loc && String(loc.salvoEm || '') <= String(l.dados.apagadoEm || '')) { delete locais[l.dia]; mudou = true; }
+                    return;
+                }
                 if (!l.dados || !Array.isArray(l.dados.ops)) return;
                 const local = locais[l.dia];
                 if (!local || String(l.dados.salvoEm || '') > String(local.salvoEm || '')) { locais[l.dia] = l.dados; mudou = true; }   // vale o mais recente
             });
-            const soLocais = Object.keys(locais).filter(d => !doTipo.some(l => l.dia === d));
+            const soLocais = Object.keys(locais).filter(d => !doTipo.some(l => l.dia === d));   // (dia com marca de excluído na nuvem não é "só local": não sobe de novo)
             if (mudou) salvarPlanosCostura(locais, tipo);
             for (const d of soLocais) await publicarPlanoCosturaNuvem(d, tipo);
         }
@@ -201,16 +206,18 @@ function renderizarConferenciaPlanoCostura(tipo) {
     const el = $(C.conf); if (!el) return;
     const fmt = v => Number(v).toLocaleString('pt-BR');
     const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const podeEditar = !!(sessaoAdminAtual && (papelUsuarioAtual === 'admin' || papelUsuarioAtual === 'sequencia'));
     const dias = Object.keys(obterPlanosCostura(tipo)).sort().reverse().slice(0, 15);
     if (!dias.length) { el.innerHTML = '<div style="padding:16px; color:var(--texto-secundario); font-size:12px;">Ainda não há planos salvos. Marque as OPs acima e clique em SALVAR PLANO.</div>'; return; }
     const atuais = mapaFinAtualPlanoCostura(tipo);
     const sel = { completa: ['SAIU POR COMPLETO', 'var(--cor-despacho)'], parcial: ['SAIU PARCIAL', 'var(--cor-sugestao)'], nao: ['NÃO SAIU', 'var(--cor-alerta)'] };
     el.innerHTML = dias.map((d, i) => {
         const r = compararPlanoCostura(d, tipo);
+        const btnExcluir = podeEditar ? `<button type="button" class="btn" style="padding:2px 8px; font-size:11px; margin:0 0 0 auto; background:var(--bg-card); color:var(--cor-alerta); border:1px solid var(--borda-cor);" onclick="event.preventDefault(); event.stopPropagation(); excluirPlanoCostura('${d}', '${tipo}')" title="Excluir este plano (some da nuvem também)"><i class="fas fa-trash"></i> EXCLUIR</button>` : '';
         const cab = `<strong>${formatarChaveDataBR(d)}</strong> <span style="color:var(--texto-secundario); font-size:11px;">(${r.plano.ops.length} OPs, ${fmt(r.plano.ops.reduce((t, o) => t + o.qtd, 0))} peças${r.plano.cap ? ' · ' + htmlCapacidadePlanoCostura(r.plano) : ''})</span>`;
         if (r.estado !== 'conferido') {
             const msg = r.estado === 'aguardando' ? `aguardando o relatório de ${formatarChaveDataBR(r.dataConf)}` : `o relatório de ${formatarChaveDataBR(r.dataConf)} foi importado antes dessa versão (sem o detalhe por OP) — reimporte-o`;
-            return `<div style="border:1px solid var(--borda-cor); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--bg-painel); font-size:12px;">${cab} <span class="pill" style="background:var(--borda-cor); color:var(--texto-cor); margin-left:8px;">${msg}</span></div>`;
+            return `<div style="border:1px solid var(--borda-cor); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--bg-painel); font-size:12px;">${cab} <span class="pill" style="background:var(--borda-cor); color:var(--texto-cor); margin-left:8px;">${msg}</span> ${btnExcluir}</div>`;
         }
         const cor = r.pct >= 80 ? 'var(--cor-despacho)' : (r.pct >= 50 ? 'var(--cor-sugestao)' : 'var(--cor-alerta)');
         const linhas = r.itens.sort((a, b) => ({ nao: 0, parcial: 1, completa: 2 })[a.status] - ({ nao: 0, parcial: 1, completa: 2 })[b.status]).map(x => `<tr>
@@ -226,6 +233,7 @@ function renderizarConferenciaPlanoCostura(tipo) {
                 <span>conferido com <strong>${formatarChaveDataBR(r.dataConf)}</strong></span>
                 <span style="color:${cor}; font-weight:900; font-size:15px;">${r.pct}% cumprido</span>
                 <span>${fmt(r.pecasCumpridas)} de ${fmt(r.pecasProgramadas)} peças</span>
+                ${btnExcluir}
                 <span style="color:var(--cor-despacho);">${r.qtdCompletas} completas</span><span style="color:var(--cor-sugestao);">${r.qtdParciais} parciais</span><span style="color:var(--cor-alerta);">${r.qtdNao} não saíram</span></summary>
             <table class="tabela-dados" style="width:100%; margin-top:8px;"><thead><tr><th>OP</th><th>GRUPO / PRODUTO</th><th>FINALIZAÇÃO (SALVA)</th><th style="text-align:right;">PROGRAMADO</th><th style="text-align:right;">SAIU</th><th>SITUAÇÃO</th></tr></thead><tbody>${linhas}</tbody></table>${extras}
         </details>`;
@@ -275,4 +283,23 @@ function exportarPlanoXRealizadoExcel(tipo) {
     });
     XLSX.writeFile(wb, `Plano_${cfgPlano(tipo).nome}_planejado_x_realizado_${hojeISOLocalPlanoCostura()}.xlsx`);
     showToast(`<i class="fas fa-file-excel"></i> Planejado x realizado do ${cfgPlano(tipo).nome} exportado (${m.dias.length} dia(s)).`);
+}
+
+// ---- EXCLUIR um plano inteiro (ex.: teste). A nuvem não apaga a linha: grava uma marca "apagado" — assim navegadores que ainda têm o plano
+// guardado também o removem ao abrir a aba (apagar a linha faria o navegador antigo mandar o plano de volta).
+async function excluirPlanoCostura(dia, tipo) {
+    if (!exigirLogadoNaSequencia('excluir um plano')) return;
+    const planos = obterPlanosCostura(tipo); if (!planos[dia]) return;
+    const n = planos[dia].ops.length;
+    if (!confirm(`Excluir o plano de ${formatarChaveDataBR(dia)} (${tipo === 'acabamento' ? 'acabamento' : 'costura'}, ${n} OP(s))?\n\nSome também da nuvem, para todo mundo. Não dá pra desfazer.`)) return;
+    delete planos[dia]; salvarPlanosCostura(planos, tipo);
+    renderizarPlanoCostura();
+    showToast(`<i class="fas fa-trash"></i> Plano de ${formatarChaveDataBR(dia)} excluído.`, false, 2500);
+    if (!supabaseClient || !sessaoAdminAtual) return;
+    try {
+        const agora = new Date().toISOString();
+        const por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase();
+        const { error } = await supabaseClient.from('plano_costura').upsert({ id: cfgPlano(tipo).pref + dia, dados: { apagado: true, apagadoEm: agora, ops: [], salvoEm: agora }, atualizado_por: por, atualizado_em: agora }, { onConflict: 'id' });
+        if (error) throw error;
+    } catch (e) { registrarLogDebug('error', ['[PLANO] falha ao excluir na nuvem: ' + e.message]); showToast('<i class="fas fa-triangle-exclamation"></i> Excluí só neste navegador (falhou na nuvem).', true, 6000); }
 }
