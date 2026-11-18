@@ -198,7 +198,7 @@ async function publicarUrgentesPreparacao() {
 }
 async function carregarUrgentesPreparacaoDaNuvem() {
     if (!supabaseClient) return;
-    carregarObsPreparacaoDaNuvem();
+    carregarObsPreparacaoDaNuvem(); carregarOrdemPreparacaoDaNuvem();
     try {
         if (localStorage.getItem('urgentesPendentePublicar') === '1') { if (sessaoAdminAtual) await publicarUrgentesPreparacao(); return; }
         const { data, error } = await supabaseClient.from('destino_producao').select('dados, atualizado_em').eq('id', 'urgentes_preparacao').maybeSingle();
@@ -213,6 +213,11 @@ async function alternarUrgentePreparacao(chave) {
     if (!exigirAdminOuUsuario('marcar OP como urgente')) return;
     const u = obterUrgentesPreparacao(); if (u.has(chave)) u.delete(chave); else u.add(chave);
     localStorage.setItem('urgentesPreparacao', JSON.stringify([...u]));
+    if (u.has(chave)) {   // janela com ordem manual: a urgente vai pro topo (sem ordem manual, a ordem automática já põe urgentes primeiro)
+        const todas = obterOrdemPrep(), mexidos = [];
+        obterOPsPreparacao().filter(o => chaveOPPrep(o) === chave && (todas[o.local] || []).length).forEach(o => { const k = chaveLinhaPrep(o); todas[o.local] = [k, ...todas[o.local].filter(x => x !== k)]; mexidos.push(o.local); });
+        if (mexidos.length) { salvarOrdemPrepLocal(todas); publicarOrdemPrepNaNuvem([...new Set(mexidos)]); }
+    }
     renderizarPreparacao();
     publicarUrgentesPreparacao();
 }
@@ -253,7 +258,7 @@ function buscarOPNaPreparacao(texto) {
     const termo = normLocalPrep(texto); if (termo.length < 2) return [];
     const achados = [];
     GRUPOS_PREPARACAO.forEach(g => g.janelas.forEach((j, ij) => {
-        obterOPsPreparacao().filter(o => o.local === normLocalPrep(j.local)).sort(ordenarPreparacao).forEach((o, i) => {
+        listaDaJanelaPrep(obterOPsPreparacao(), normLocalPrep(j.local), null).forEach((o, i) => {
             if ([o.op, o.ref, o.descRef, o.cor].some(c => normLocalPrep(c).includes(termo))) achados.push({ grupo: g, janela: j, ij, posicao: i + 1, o });
         });
     }));
@@ -281,6 +286,62 @@ function renderizarBuscaPreparacao() {
         : '<div style="padding:8px 12px; font-size:12px; color:var(--texto-secundario);">Nenhuma OP encontrada nas janelas da Preparação.</div>';
 }
 
+// ---- ORDEM MANUAL (setinhas ▲▼): por janela (local). Guarda a lista de chaves de linha na ordem escolhida; OP nova (que não estava na lista)
+// entra no FIM, na ordem automática. Marcar urgente leva a OP pro topo da janela se ela já tem ordem manual. Nuvem: destino_producao 'ordem_preparacao'.
+function obterOrdemPrep() { try { return JSON.parse(localStorage.getItem('ordemPreparacao') || '{}') || {}; } catch (e) { return {}; } }
+function salvarOrdemPrepLocal(o) { try { localStorage.setItem('ordemPreparacao', JSON.stringify(o)); } catch (e) { /* ignora */ } }
+function aplicarOrdemManualPrep(lista, local) {
+    const ord = obterOrdemPrep()[local]; if (!ord || !ord.length) return lista;
+    const pos = new Map(ord.map((k, i) => [k, i])), com = [], sem = [];
+    lista.forEach(o => (pos.has(chaveLinhaPrep(o)) ? com : sem).push(o));
+    com.sort((a, b) => pos.get(chaveLinhaPrep(a)) - pos.get(chaveLinhaPrep(b)));
+    return com.concat(sem);
+}
+function listaDaJanelaPrep(ops, local, filtro) { return aplicarOrdemManualPrep(ops.filter(o => o.local === local && (!filtro || filtro(o))).sort(ordenarPreparacao), local); }
+async function publicarOrdemPrepNaNuvem(locais) {   // lê a linha da nuvem, troca só as janelas mexidas e grava (duas pessoas em janelas diferentes não se sobrescrevem)
+    if (!supabaseClient || !sessaoAdminAtual) return;
+    try {
+        const { data, error: e1 } = await supabaseClient.from('destino_producao').select('dados').eq('id', 'ordem_preparacao').maybeSingle();
+        if (e1) throw e1;
+        const nuvem = { ...((data && data.dados && data.dados.ordem) || {}) }, local = obterOrdemPrep();
+        locais.forEach(l => { if (local[l] && local[l].length) nuvem[l] = local[l]; else delete nuvem[l]; });
+        const agora = new Date().toISOString(), por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0].toUpperCase();
+        const { error } = await supabaseClient.from('destino_producao').upsert({ id: 'ordem_preparacao', dados: { ordem: nuvem }, atualizado_em: agora, atualizado_por: por }, { onConflict: 'id' });
+        if (error) throw error;
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao publicar a ordem da preparação: ' + e.message]);
+        showToast('<i class="fas fa-triangle-exclamation"></i> Salvou aqui, mas não consegui avisar a nuvem — outras pessoas podem não ver essa ordem ainda.', true, 6000);
+    }
+}
+async function carregarOrdemPreparacaoDaNuvem() {
+    if (!supabaseClient) return;
+    try {
+        const { data, error } = await supabaseClient.from('destino_producao').select('dados').eq('id', 'ordem_preparacao').maybeSingle();
+        if (error) throw error;
+        if (!data || !data.dados || !data.dados.ordem) return;
+        const novo = JSON.stringify(data.dados.ordem); if (novo === JSON.stringify(obterOrdemPrep())) return;
+        salvarOrdemPrepLocal(data.dados.ordem); renderizarPreparacao();
+    } catch (e) { registrarLogDebug('error', ['Falha ao carregar a ordem da preparação: ' + e.message]); }
+}
+function moverOPPreparacao(chaveLinha, local, direcao) {
+    if (!exigirAdminOuUsuario('mudar a ordem na preparação')) return;
+    const ops = obterOPsPreparacao();
+    const cheia = listaDaJanelaPrep(ops, local, null).map(chaveLinhaPrep);
+    const visiveis = listaDaJanelaPrep(ops, local, passaFiltroTipoPrep).map(chaveLinhaPrep);   // o que aparece na tela (filtro Todas/Inteiras/Partes)
+    const iv = visiveis.indexOf(chaveLinha), viz = visiveis[iv + direcao];
+    if (iv === -1 || viz === undefined) return;
+    const a = cheia.indexOf(chaveLinha), b = cheia.indexOf(viz);
+    [cheia[a], cheia[b]] = [cheia[b], cheia[a]];
+    const todas = obterOrdemPrep(); todas[local] = cheia; salvarOrdemPrepLocal(todas);
+    renderizarPreparacao();
+    publicarOrdemPrepNaNuvem([local]);
+}
+function voltarOrdemAutomaticaPrep(local) {
+    if (!exigirAdminOuUsuario('voltar a ordem automática da preparação')) return;
+    if (!confirm('Voltar esta janela para a ordem automática (urgentes, depois data de finalização)? A ordem que você montou à mão será descartada.')) return;
+    const todas = obterOrdemPrep(); delete todas[local]; salvarOrdemPrepLocal(todas);
+    renderizarPreparacao(); publicarOrdemPrepNaNuvem([local]);
+}
 function ordenarPreparacao(a, b) {
     const ua = obterUrgentesPreparacao().has(chaveOPPrep(a)), ub = obterUrgentesPreparacao().has(chaveOPPrep(b));
     if (ua !== ub) return ua ? -1 : 1;   // urgentes primeiro
@@ -321,19 +382,20 @@ function renderizarPreparacao() {
         const pessoasGrupo = obterPessoasPreparacao()[g.chave] || 0, minPessoa = obterMinPessoaPreparacao();
         const janelas = g.janelas.map((j, ij) => {
             const cor = g.janelas.length > 1 ? CORES_JANELAS_PREPARACAO[ij % CORES_JANELAS_PREPARACAO.length] : 'var(--cor-primaria)';
-            const lista = ops.filter(o => o.local === normLocalPrep(j.local) && passaFiltroTipoPrep(o)).sort(ordenarPreparacao);
+            const lista = listaDaJanelaPrep(ops, normLocalPrep(j.local), passaFiltroTipoPrep), localJ = normLocalPrep(j.local), temOrdemManual = !!(obterOrdemPrep()[localJ] || []).length;
             const pecas = lista.reduce((t, o) => t + (o.qtd || 0), 0), minJanela = temTempos && j.tempo ? lista.reduce((t, o) => t + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) : 0;
             const dispDia = pessoasGrupo * minPessoa, diasJanela = dispDia && minJanela ? minJanela / dispDia : 0;
             const colTempo = temTempos && !!j.tempo, tp = o => tempoPecaPreparacao(o, j, tempos);
-            const linhas = lista.map(o => { const urg = urgentes.has(chaveOPPrep(o)); return `<tr data-prep-linha="${escPrep(chaveLinhaPrep(o))}" style="${noPlano.has(chaveOPPrep(o)) ? 'opacity:.55;' : ''}${urg ? 'background:rgba(193,68,78,.14);' : ''}">
+            const linhas = lista.map((o, ilinha) => { const urg = urgentes.has(chaveOPPrep(o)); return `<tr data-prep-linha="${escPrep(chaveLinhaPrep(o))}" style="${noPlano.has(chaveOPPrep(o)) ? 'opacity:.55;' : ''}${urg ? 'background:rgba(193,68,78,.14);' : ''}">
                 <td><input type="checkbox" class="check-prep" data-chave="${escPrep(chaveOPPrep(o))}" ${noPlano.has(chaveOPPrep(o)) ? 'checked disabled' : ''}></td>
+                <td class="data-limite-costura-esconde-impressao" style="white-space:nowrap; padding:0 2px;"><span style="display:inline-flex; flex-direction:column; gap:1px; vertical-align:middle;"><button class="btn somente-admin tambem-usuario prep-seta" style="padding:0 4px; font-size:9px; line-height:1.4; background:var(--cor-historico); ${ilinha > 0 ? '' : 'opacity:.25;'}" ${ilinha > 0 ? '' : 'disabled'} onclick="moverOPPreparacao('${escPrep(chaveLinhaPrep(o))}', '${escPrep(localJ)}', -1)" title="Mover pra cima"><i class="fas fa-caret-up"></i></button><button class="btn somente-admin tambem-usuario prep-seta" style="padding:0 4px; font-size:9px; line-height:1.4; background:var(--cor-historico); ${ilinha < lista.length - 1 ? '' : 'opacity:.25;'}" ${ilinha < lista.length - 1 ? '' : 'disabled'} onclick="moverOPPreparacao('${escPrep(chaveLinhaPrep(o))}', '${escPrep(localJ)}', 1)" title="Mover pra baixo"><i class="fas fa-caret-down"></i></button></span></td>
                 <td style="text-align:center;"><i class="fas fa-fire prep-urg${urg ? ' ativa' : ''}" style="cursor:pointer; color:${urg ? 'var(--cor-alerta)' : 'var(--borda-cor)'};" onclick="alternarUrgentePreparacao('${escPrep(chaveOPPrep(o))}')" title="${urg ? 'Tirar urgência' : 'Marcar como urgente'}"></i></td>
                 <td style="white-space:nowrap;"><strong>${escPrep(o.op)}</strong>${o.parte ? ' <span class="pill selo-parte" title="Esta linha é uma PARTE da OP (não a OP inteira)">PARTE</span>' : ''}<div style="font-size:10px; color:var(--texto-secundario);">ciclo ${escPrep(o.ciclo)}</div>${htmlOutrasMetades(o)}</td>
                 <td><div class="prep-produto" title="${escPrep(o.descRef)} ${escPrep(o.ref)}">${escPrep(o.descRef)}</div><div style="font-size:10px; color:var(--texto-secundario);">${escPrep(o.ref)}${o.cor ? ' · ' + escPrep(o.cor) : ''}</div></td>
                 <td>${htmlLocalProd(o)}</td><td style="white-space:nowrap;">${htmlMesDestino(o)}</td><td style="white-space:nowrap;">${dataBRPrep(o.fin)}</td><td style="text-align:right;">${o.dias == null ? '—' : o.dias + 'd'}</td><td class="prep-qtd" style="text-align:right; font-weight:bold;">${o.qtd}</td>${colTempo ? `<td style="text-align:right; white-space:nowrap;">${tp(o) ? tp(o).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'}</td><td class="prep-qtd" style="text-align:right; white-space:nowrap; font-weight:bold;">${fmtMinPrep((o.qtd || 0) * tp(o))}</td>` : ''}<td class="prep-qtd prep-obs-cel"><input type="text" class="prep-obs" maxlength="500" value="${escPrep(obsTodas[chaveLinhaPrep(o)] || '')}" placeholder="observação…" title="${escPrep(obsTodas[chaveLinhaPrep(o)] || '')}" onchange="salvarObsPreparacao('${escPrep(chaveLinhaPrep(o))}', this.value)"></td></tr>`; }).join('');
             return `<div id="prepJanela-${g.chave}-${ij}" style="border:1px solid ${cor}; border-left:6px solid ${cor}; border-radius:6px; overflow:hidden; min-width:0;">
-                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;"><span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s)${lista.some(o => o.parte) ? ` (${lista.filter(o => o.parte).length} parte${lista.filter(o => o.parte).length > 1 ? 's' : ''})` : ''} · ${pecas.toLocaleString('pt-BR')} peças${minJanela ? ' · ⏱ ' + fmtMinPrep(minJanela) : ''}${diasJanela ? ' · 📅 ' + fmtDiasPrep(diasJanela) : ''}${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
-                ${lista.length ? `<div class="prep-rolagem" style="max-height:460px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th title="Urgente"><i class="fas fa-fire"></i></th><th>OP</th><th>Produto</th><th title="Local de produção (Local Obs. da POR_OP, ou da Fila de Corte)">Local prod.</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th>${colTempo ? `<th style="text-align:right;" title="Minutos por peça (${escPrep(j.tempo)})">Min/peça</th><th class="prep-qtd" style="text-align:right;" title="Qtd × minutos por peça">Tempo</th>` : ''}<th class="prep-qtd" style="min-width:220px;">Observação</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
+                <div style="padding:8px 12px; background:${cor}2E; border-bottom:2px solid ${cor}; display:flex; justify-content:space-between; align-items:center; font-size:13px;"><strong style="display:flex; align-items:center; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:${cor}; display:inline-block;"></span>${escPrep(j.rotulo)}</strong><span style="display:flex; align-items:center; gap:8px;">${temOrdemManual ? `<button class="btn somente-admin tambem-usuario data-limite-costura-esconde-impressao" style="padding:1px 8px; font-size:10px; margin:0; background:var(--bg-card); color:var(--texto-cor); border:1px solid var(--borda-cor);" onclick="voltarOrdemAutomaticaPrep('${escPrep(localJ)}')" title="Você mexeu na ordem desta janela. Clique para voltar à ordem automática."><i class="fas fa-rotate-left"></i> ORDEM AUTOMÁTICA</button>` : ''}<span style="background:${cor}; color:white; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:bold;">${lista.length} OP(s)${lista.some(o => o.parte) ? ` (${lista.filter(o => o.parte).length} parte${lista.filter(o => o.parte).length > 1 ? 's' : ''})` : ''} · ${pecas.toLocaleString('pt-BR')} peças${minJanela ? ' · ⏱ ' + fmtMinPrep(minJanela) : ''}${diasJanela ? ' · 📅 ' + fmtDiasPrep(diasJanela) : ''}${lista.filter(o => urgentes.has(chaveOPPrep(o))).length ? ' · 🔥 ' + lista.filter(o => urgentes.has(chaveOPPrep(o))).length : ''}</span><button class="btn imprimir-esconder-sempre" style="padding:3px 10px; font-size:11px; background:var(--cor-historico); color:white;" onclick="imprimirJanelaPreparacao('prepJanela-${g.chave}-${ij}')" title="Imprime só esta janela (só as OPs marcadas)"><i class="fas fa-print"></i> IMPRIMIR</button></span></div>
+                ${lista.length ? `<div class="prep-rolagem" style="max-height:460px; overflow:auto;"><table class="tabela-dados"><thead><tr><th></th><th class="data-limite-costura-esconde-impressao" title="Mudar a ordem"></th><th title="Urgente"><i class="fas fa-fire"></i></th><th>OP</th><th>Produto</th><th title="Local de produção (Local Obs. da POR_OP, ou da Fila de Corte)">Local prod.</th><th>Mês destino</th><th>Final.</th><th>No local</th><th class="prep-qtd" style="text-align:right;">Qtd</th>${colTempo ? `<th style="text-align:right;" title="Minutos por peça (${escPrep(j.tempo)})">Min/peça</th><th class="prep-qtd" style="text-align:right;" title="Qtd × minutos por peça">Tempo</th>` : ''}<th class="prep-qtd" style="min-width:220px;">Observação</th></tr></thead><tbody>${linhas}</tbody></table></div>` : '<div style="padding:14px; text-align:center; color:var(--texto-secundario); font-size:12px;">Nenhuma OP neste local.</div>'}</div>`;
         }).join('');
         const todas = ops.filter(o => g.janelas.some(j => normLocalPrep(j.local) === o.local) && passaFiltroTipoPrep(o));
         const minGrupo = temTempos ? g.janelas.reduce((tt, j) => tt + (j.tempo ? ops.filter(o => o.local === normLocalPrep(j.local) && passaFiltroTipoPrep(o)).reduce((s, o) => s + (o.qtd || 0) * tempoPecaPreparacao(o, j, tempos), 0) : 0), 0) : 0;

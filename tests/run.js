@@ -314,6 +314,35 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     }
     await p.evaluate(() => { abrirAba(null, 'aba-preparacao'); renderizarPreparacao(); });
     igual('janela ordena pela finalização mais próxima', await p.evaluate(() => Array.from(document.querySelectorAll('.check-prep')).slice(0, 2).map(c => c.dataset.chave)), ['211-2', '211-1']);
+    {   // setinhas ▲▼: ordem manual por janela
+      igual('setas: aparecem em cada linha; a 1ª não sobe e a última não desce', await p.evaluate(() => { const t = [...document.querySelectorAll('#prepJanela-SUP-0 tbody tr')]; return [t[0].querySelectorAll('.prep-seta')[0].disabled, t[0].querySelectorAll('.prep-seta')[1].disabled, t[t.length - 1].querySelectorAll('.prep-seta')[1].disabled, document.querySelectorAll('.prep-seta').length > 2]; }), [true, false, true, true]);
+      await p.evaluate(() => { localStorage.removeItem('ordemPreparacao'); window.__ini = Array.from(document.querySelectorAll('#prepJanela-SUP-0 tbody tr')).map(tr => tr.dataset.prepLinha); document.querySelector('#prepJanela-SUP-0 tbody tr .prep-seta:nth-child(2)').click(); });
+      igual('setas: ▼ na 1ª troca com a 2ª e fica guardado', await p.evaluate(() => [Array.from(document.querySelectorAll('#prepJanela-SUP-0 tbody tr')).slice(0, 2).map(tr => tr.dataset.prepLinha).join() === [window.__ini[1], window.__ini[0]].join(), (obterOrdemPrep()['PNP PREP PARTES SUP'] || []).length === window.__ini.length]), [true, true]);
+      igual('setas: aparece o botão ORDEM AUTOMÁTICA só na janela mexida', await p.evaluate(() => [/ORDEM AUTOMÁTICA/.test(document.getElementById('prepJanela-SUP-0').innerText), /ORDEM AUTOMÁTICA/.test(document.getElementById('prepJanela-SUP-1').innerText)]), [true, false]);
+      igual('setas: ▲ desfaz', await p.evaluate(() => { document.querySelectorAll('#prepJanela-SUP-0 tbody tr')[1].querySelectorAll('.prep-seta')[0].click(); return Array.from(document.querySelectorAll('#prepJanela-SUP-0 tbody tr')).map(tr => tr.dataset.prepLinha).join() === window.__ini.join(); }), true);
+      igual('setas: OP marcada urgente com ordem manual vai pro topo da janela', await p.evaluate(async () => {
+        const ult = window.__ini[window.__ini.length - 1], ch = ult.split('|')[0], vel = localStorage.getItem('urgentesPreparacao');
+        await alternarUrgentePreparacao(ch);
+        const topo = document.querySelector('#prepJanela-SUP-0 tbody tr').dataset.prepLinha === ult;
+        localStorage.setItem('urgentesPreparacao', vel || '[]'); return topo;
+      }), true);
+      igual('setas: com filtro "só partes" ou OP nova, a ordem manual continua valendo e OP fora da lista vai pro fim', await p.evaluate(() => {
+        const todas = obterOrdemPrep(); todas['PNP PREP PARTES SUP'] = todas['PNP PREP PARTES SUP'].slice(0, 1); salvarOrdemPrepLocal(todas);   // só a 1ª está "guardada"
+        renderizarPreparacao(); const lin = Array.from(document.querySelectorAll('#prepJanela-SUP-0 tbody tr')).map(tr => tr.dataset.prepLinha);
+        return lin[0] === todas['PNP PREP PARTES SUP'][0] && lin.length === window.__ini.length;
+      }), true);
+      igual('setas: ORDEM AUTOMÁTICA devolve a ordem original', await p.evaluate(() => { const v = window.confirm; window.confirm = () => true; voltarOrdemAutomaticaPrep('PNP PREP PARTES SUP'); window.confirm = v; return [Array.from(document.querySelectorAll('#prepJanela-SUP-0 tbody tr')).map(tr => tr.dataset.prepLinha).join() === window.__ini.join(), !obterOrdemPrep()['PNP PREP PARTES SUP']]; }), [true, true]);
+      igual('setas: ordem sobe e desce da nuvem (outro navegador recebe, só a janela mexida)', await p.evaluate(async () => {
+        const velho = supabaseClient, velhaS = sessaoAdminAtual; const nuvem = {};
+        supabaseClient = { from: () => ({ upsert: row => { nuvem[row.id] = row; return Promise.resolve({ error: null }); }, select: () => ({ eq: (_c, id) => ({ maybeSingle: () => Promise.resolve({ data: nuvem[id] ? { dados: nuvem[id].dados } : null, error: null }) }) }) }) };
+        sessaoAdminAtual = { user: { email: 'raquel@x.com' } };
+        localStorage.removeItem('ordemPreparacao'); document.querySelector('#prepJanela-SUP-0 tbody tr .prep-seta:nth-child(2)').click(); await new Promise(r => setTimeout(r, 150));
+        const gravou = Object.keys((nuvem.ordem_preparacao || { dados: { ordem: {} } }).dados.ordem);
+        const guardada = obterOrdemPrep(); localStorage.removeItem('ordemPreparacao'); await carregarOrdemPreparacaoDaNuvem();
+        const r = [gravou.join(), JSON.stringify(obterOrdemPrep()) === JSON.stringify(guardada)];
+        localStorage.removeItem('ordemPreparacao'); supabaseClient = velho; sessaoAdminAtual = velhaS; renderizarPreparacao(); return r;
+      }), ['PNP PREP PARTES SUP', true]);
+    }
     await p.evaluate(() => { document.querySelectorAll('.check-prep').forEach(c => { if (['211-2', '211-3'].includes(c.dataset.chave)) c.checked = true; }); salvarMarcadasNoPlanoPreparacao(); });
     igual('plano da preparação salva as marcadas', await p.evaluate(() => obterPlanosPreparacao()[hojePreparacao()].ops.map(o => o.op).sort()), ['2', '3']);
     await p.evaluate(() => abrirSubabaPreparacao('LOGO'));
