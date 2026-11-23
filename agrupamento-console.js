@@ -59,7 +59,7 @@ function renderizarAgrupamentoReferencia(grupos) {
         return `
             <div style="border-left:4px solid var(--cor-fila); background:var(--bg-painel); border-radius:8px; padding:12px; margin-bottom:14px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${ref}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${descricaoRef}</span>` : ''}</strong>
+                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${ref}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${escHtml(descricaoRef)}</span>` : ''}</strong>
                     <span style="font-size:11px; color:var(--texto-secundario);">${ops.length} OPs · ${totalPecas} peças no total</span>
                 </div>
                 <table class="tabela-dados">

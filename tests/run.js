@@ -678,6 +678,10 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     await p.evaluate(() => { if (window.__bakPOC) localStorage.setItem('porOPCosturaDetalhado', window.__bakPOC); else localStorage.removeItem('porOPCosturaDetalhado'); localStorage.removeItem('planoAcabamento'); $('seqCostGrupo').value = 'CALCA'; });
   }
 
+  // ---------- 10b. Texto da planilha com aspas/< não quebra o HTML ----------
+  igual('escHtml escapa aspas e tags', await p.evaluate(() => escHtml('TECIDO 1,50" <LISO> & \'X\'')), 'TECIDO 1,50&quot; &lt;LISO&gt; &amp; &#39;X&#39;');
+  igual('escHtml com vazio/null', await p.evaluate(() => [escHtml(null), escHtml(undefined), escHtml(0)]), ['', '', '0']);
+
   // ---------- 11. Fumaça: todas as abas abrem sem erro ----------
   const abas = await p.evaluate(() => [...document.querySelectorAll('[id^=aba-]')].map(e => e.id));
   for (const a of abas) { try { await p.evaluate(id => abrirAba(null, id), a); } catch (e) { falhas.push('abrir aba ' + a + ': ' + e.message.slice(0, 100)); } }

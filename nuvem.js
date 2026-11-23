@@ -1131,7 +1131,7 @@ function mostrarTooltipOP(e, id) {
         <div class="tt-body">
             ${alertaAtraso}
             <div><span class="lbl">Ciclo:</span> <strong>${op.ciclo}</strong></div>
-            <div><span class="lbl">Destino:</span> <strong>${op.localDestino}</strong></div>
+            <div><span class="lbl">Destino:</span> <strong>${escHtml(op.localDestino)}</strong></div>
             <div><span class="lbl">Setor Atual:</span> <strong style="color:var(--cor-sugestao);">${op.localExcel || 'N/D'}</strong></div>
             <div><span class="lbl">Peças:</span> <strong style="color:var(--cor-selecao); font-size:14px;">${op.qtd}</strong></div>
             <div><span class="lbl">Tempo:</span> <strong style="color:var(--cor-alerta);">${Number(op.tempoCorte).toFixed(1)} min</strong></div>
@@ -1140,7 +1140,7 @@ function mostrarTooltipOP(e, id) {
             ${op.mesDestino ? `<div><span class="lbl">Mês Destino:</span> <strong style="color:#B8862A;">${op.mesDestino}</strong></div>` : ''}
             ${op.dataCorteSuposta && formatarDataBR(op.dataCorteSuposta) ? `<div><span class="lbl">Corte Suposto:</span> <strong style="color:var(--cor-roxo);" title="Calculado de trás pra frente a partir da data de finalização no estoque (${formatarDataBR(op.dataFinalizacao)}), descontando ~22 dias de etiquetação+distribuição+estoque. É uma estimativa, não um compromisso.">${formatarDataBR(op.dataCorteSuposta)} <i class="fas fa-circle-question" style="font-size:10px;"></i></strong></div>` : ''}
             ${gradeHtml || pedidosHtml ? `<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--borda-cor);">${gradeHtml}${pedidosHtml}</div>` : ''}
-            <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--borda-cor); color:var(--texto-secundario); font-style:italic;">${op.desc}</div>
+            <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--borda-cor); color:var(--texto-secundario); font-style:italic;">${escHtml(op.desc)}</div>
         </div>
     `;
     tt.style.display = 'block'; tt.dataset.opAtual = id; setTimeout(() => tt.style.opacity = '1', 10);

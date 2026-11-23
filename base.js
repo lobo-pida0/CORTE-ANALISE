@@ -404,6 +404,15 @@ function opPassaFiltroFilaCorte(o) {
         && !tiposProdutoExcluidos.includes(chaveTipoProduto(o.tipo));
 }
 
+// 🛡️ Escapa texto vindo de planilha/nuvem antes de jogar em innerHTML.
+// Sem isso, uma descrição tipo 'TECIDO 1,50" <LISO>' quebra a tabela (aspas
+// fecham o atributo title, < some com o texto) — e abre brecha pra script.
+function escHtml(v) {
+    return String(v === undefined || v === null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // ⏱️ Utilitário de debounce — evita recalcular/re-renderizar a cada tecla digitada
 function debounce(fn, delay = 250) {
     let temporizador;

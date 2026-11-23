@@ -286,7 +286,7 @@ function renderizarAbaPrioridades() {
         <tr style="${destacada ? 'background:rgba(184, 134, 42, 0.15);' : ''}">
             <td>${estrela} <strong>${op.id}</strong>${op.ciclo ? ` <span style="font-size:10px; color:var(--texto-secundario);" title="Ciclo">${op.ciclo}</span>` : ''}${ehManual ? ' <i class="fas fa-hand" style="font-size:9px; color:var(--texto-secundario);" title="Adicionada manualmente"></i>' : ''}${ehAutomatica ? ' <i class="fas fa-file-import" style="font-size:9px; color:var(--texto-secundario);" title="Não existe na Sincronização — montada com dado do Destino"></i>' : ''}</td>
             <td>${op.numeroPrioridade !== null && op.numeroPrioridade !== undefined ? op.numeroPrioridade : '<span style="color:var(--texto-secundario);">—</span>'}</td>
-            <td>${op.desc}</td>
+            <td>${escHtml(op.desc)}</td>
             <td><span class="pill selo-setor">${obterSetorExibicaoPrioridade(op)}</span></td>
             <td style="text-align:right;">${op.qtd}</td>
             <td style="text-align:right; color:${(op.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${op.diasLocal || 0}</td>
@@ -321,7 +321,7 @@ function renderizarNecessidadePorReferencia() {
 
     $('listaNecessidade').innerHTML = linhas.map(l => `
         <tr>
-            <td><strong>${l.referencia}</strong></td>
+            <td><strong>${escHtml(l.referencia)}</strong></td>
             <td>${l.tam || '-'}</td>
             <td style="text-align:right; font-weight:900; color:var(--cor-alerta); font-size:14px;">${l.total.toLocaleString('pt-BR')}</td>
             <td style="text-align:right;">${l.qtdPedidos}</td>
@@ -363,7 +363,7 @@ function pesquisarSequenciamentoOP() {
                 : '<span class="pill" style="background:var(--cor-historico);">grade não conferida</span>';
         return `<tr>
             <td><strong>${m.pedido}</strong></td>
-            <td>${m.cliente}</td>
+            <td>${escHtml(m.cliente)}</td>
             <td>${m.tam}</td>
             <td style="text-align:right;">${m.faltaProduzir}</td>
             <td>${formatarDataBR(m.chegada) || 'S/ DATA'}</td>
@@ -452,7 +452,7 @@ function pesquisarSequenciamentoPedido() {
         return `
             <div style="border-left:4px solid var(--cor-roxo); background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:8px; padding:12px; margin-bottom:14px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${referencia}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${descricaoRef}</span>` : ''}</strong>
+                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${referencia}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${escHtml(descricaoRef)}</span>` : ''}</strong>
                     <span style="font-size:11px; color:var(--texto-secundario);">${jornada.length} OP(s) encontrada(s) na jornada completa</span>
                 </div>
                 <div style="margin-top:8px;">${linhasTamanhoHtml}</div>
@@ -568,7 +568,7 @@ function pesquisarPedido() {
         return `
             <div style="border-left:4px solid var(--cor-roxo); background:var(--bg-card); border:1px solid var(--borda-cor); border-radius:8px; padding:12px; margin-bottom:12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${referencia}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${descricaoRef}</span>` : ''}</strong>
+                    <strong style="font-size:13px;"><i class="fas fa-tag"></i> ${referencia}${descricaoRef ? ` <span style="font-weight:normal; color:var(--texto-secundario); font-size:11px;">— ${escHtml(descricaoRef)}</span>` : ''}</strong>
                     <span style="font-size:11px; color:var(--texto-secundario);">${opsExistentes.length} OP(s) já existente(s) · ${totalOPs} peças já em produção hoje</span>
                 </div>
                 <div style="margin-top:8px;">${linhasTamanhoHtml}</div>
@@ -626,9 +626,9 @@ function renderizarPedidosPendentes() {
             : (atrasado ? `<span class="pill pill-atraso">ATRASO</span>` : `<span class="pill pill-ok">PRAZO</span>`);
         return `<tr style="${tintaLinha}">
             <td>${marcador}</td>
-            <td>${p.cliente}</td>
+            <td>${escHtml(p.cliente)}</td>
             <td>${p.pedido}</td>
-            <td><strong>${p.referencia}</strong></td>
+            <td><strong>${escHtml(p.referencia)}</strong></td>
             <td>${p.tam}</td>
             <td style="color:var(--cor-alerta); font-weight:bold;">${p.faltaProduzir}</td>
             <td>${dataChegada ? dataChegada.toLocaleDateString('pt-BR') : 'S/ DATA'}</td>

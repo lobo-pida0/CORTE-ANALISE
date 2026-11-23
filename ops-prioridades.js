@@ -111,8 +111,8 @@ function pesquisaOmni() {
         : '';
     res.innerHTML = encontradas.slice(0, LIMITE_RESULTADOS).map(op => `
         <div class="omni-item" onclick="abrirAba(null,'aba-programacao'); fecharModais(); setTimeout(()=>alert('OP Localizada:\\n${op.id} - ${nomesEtapas[op.etapa]}'), 300);">
-            <div><strong style="color:var(--texto-cor); font-size:16px;">OP: ${op.id}</strong> <span style="font-size:11px; color:var(--texto-secundario);">(Ciclo ${op.ciclo}${op.referencia ? ' · Ref. ' + op.referencia : ''})</span><div style="font-size:12px; margin-top:4px;">${op.desc.substring(0, 40)}</div></div>
-            <div style="text-align:right;"><span class="pill" style="background:var(--cor-sugestao);">${nomesEtapas[op.etapa]}</span><div style="font-size:11px; margin-top:4px;">${op.qtd} pçs | Local: ${op.localDestino}</div></div>
+            <div><strong style="color:var(--texto-cor); font-size:16px;">OP: ${op.id}</strong> <span style="font-size:11px; color:var(--texto-secundario);">(Ciclo ${op.ciclo}${op.referencia ? ' · Ref. ' + op.referencia : ''})</span><div style="font-size:12px; margin-top:4px;">${escHtml(op.desc.substring(0, 40))}</div></div>
+            <div style="text-align:right;"><span class="pill" style="background:var(--cor-sugestao);">${nomesEtapas[op.etapa]}</span><div style="font-size:11px; margin-top:4px;">${op.qtd} pçs | Local: ${escHtml(op.localDestino)}</div></div>
         </div>`).join('') + avisoLimite;
 }
 
