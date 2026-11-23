@@ -682,6 +682,21 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   igual('escHtml escapa aspas e tags', await p.evaluate(() => escHtml('TECIDO 1,50" <LISO> & \'X\'')), 'TECIDO 1,50&quot; &lt;LISO&gt; &amp; &#39;X&#39;');
   igual('escHtml com vazio/null', await p.evaluate(() => [escHtml(null), escHtml(undefined), escHtml(0)]), ['', '', '0']);
 
+  // ---------- 10c. Estabilidade: dado corrompido e espaço cheio ----------
+  igual('lerJSONLocal: corrompido devolve o padrão e NÃO apaga o valor', await p.evaluate(() => {
+    localStorage.setItem('__testeCorrompido', '{quebrado'); const v = lerJSONLocal('__testeCorrompido', []);
+    const r = [v, localStorage.getItem('__testeCorrompido'), lerJSONLocal('__naoExiste', { a: 1 }), lerJSONLocal('__testeCorrompido2', 5)];
+    localStorage.removeItem('__testeCorrompido'); return r;
+  }), [[], '{quebrado', { a: 1 }, 5]);
+  igual('espaço cheio: avisa na tela e continua lançando o erro', await p.evaluate(() => {
+    const orig = Object.getPrototypeOf(localStorage).setItem; let avisou = false; const velhoToast = showToast;
+    showToast = (h, err) => { avisou = /cheio/i.test(h) && err; }; ultimoAvisoEspacoCheio = 0;
+    let lancou = false;
+    try { localStorage.setItem('__grande', 'x'.repeat(12 * 1024 * 1024)); } catch (e) { lancou = ehErroDeEspacoCheio(e); }
+    showToast = velhoToast; localStorage.removeItem('__grande'); return [lancou, avisou, Object.getPrototypeOf(localStorage).setItem === orig];
+  }), [true, true, true]);
+  igual('ExcelJS sob demanda: já carregado devolve true', await p.evaluate(() => garantirExcelJS()), true);
+
   // ---------- 11. Fumaça: todas as abas abrem sem erro ----------
   const abas = await p.evaluate(() => [...document.querySelectorAll('[id^=aba-]')].map(e => e.id));
   for (const a of abas) { try { await p.evaluate(id => abrirAba(null, id), a); } catch (e) { falhas.push('abrir aba ' + a + ': ' + e.message.slice(0, 100)); } }

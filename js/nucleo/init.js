@@ -361,8 +361,8 @@ function verificarBackupSexta() {
 function executarDownloadBackup(dataHoje) {
     // 1. Pega os dados vitais do seu sistema no localStorage
     const dadosBackup = {
-        bancoOPs: JSON.parse(localStorage.getItem('bancoOPs')) || [],
-        historicoLotes: JSON.parse(localStorage.getItem('historicoLotes')) || []
+        bancoOPs: lerJSONLocal('bancoOPs', []),
+        historicoLotes: lerJSONLocal('historicoLotes', [])
     };
 
     // 2. Transforma tudo num arquivo JSON legível

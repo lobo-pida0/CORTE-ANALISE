@@ -1,8 +1,8 @@
 // -------------------------------------------------------------------------
 // (separado de nuvem.js) Estado global do sistema (bancoDadosOPs, seleções, undo/redo) e plugins do Chart.js.
 // -------------------------------------------------------------------------
-let bancoDadosOPs = JSON.parse(localStorage.getItem('bancoOPs')) || [];
-let historicoLotes = JSON.parse(localStorage.getItem('historicoLotes')) || [];
+let bancoDadosOPs = lerJSONLocal('bancoOPs', []);
+let historicoLotes = lerJSONLocal('historicoLotes', []);
 
 // A aba de KPI/Gestão Mensal foi removida pra ser refeita do zero — uma
 // coisa de FORA dela ainda lê esse dado (calcularMediaDiariaCorte, usada na
@@ -22,7 +22,9 @@ let opContextoId = null, opFracionarOrigem = null;
 let selecaoLoteOPs = new Set();
 let pilhaUndo = [], pilhaRedo = []; const MAX_HISTORICO = 30;
 
-Chart.register(ChartDataLabels);
+// Se a biblioteca de gráficos não carregou (CDN fora/bloqueada), NÃO pode parar aqui: o resto deste arquivo
+// (e o sistema todo) depende das variáveis abaixo. Só os gráficos ficam sem funcionar.
+if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
 
 const pluginFundoSolido = {
     id: 'fundoSolido',

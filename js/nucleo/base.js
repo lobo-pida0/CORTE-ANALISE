@@ -133,7 +133,7 @@ function calcularDataCorteSuposta(dataFinalizacao) {
 // Evita confiar sem perceber num dado de dias atrás.
 // =========================================================================
 function registrarAtualizacao(chave) {
-    const registro = JSON.parse(localStorage.getItem('ultimasAtualizacoes') || '{}');
+    const registro = lerJSONLocal('ultimasAtualizacoes', {});
     registro[chave] = new Date().toISOString();
     localStorage.setItem('ultimasAtualizacoes', JSON.stringify(registro));
     agendarPublicacaoAutomatica();
@@ -197,7 +197,7 @@ function agendarPublicacaoAutomatica() {
 }
 
 function obterUltimaAtualizacao(chave) {
-    const registro = JSON.parse(localStorage.getItem('ultimasAtualizacoes') || '{}');
+    const registro = lerJSONLocal('ultimasAtualizacoes', {});
     return registro[chave] || null;
 }
 
@@ -393,7 +393,7 @@ function obterLocalProducaoPorOP() {
     // visitante) — usa a versão enxuta publicada na nuvem só pra esse
     // cruzamento (não duplica a Fila de Corte inteira lá).
     try {
-        const daNuvem = JSON.parse(localStorage.getItem('localProducaoPorOPNuvem') || '{}');
+        const daNuvem = lerJSONLocal('localProducaoPorOPNuvem', {});
         Object.entries(daNuvem).forEach(([op, local]) => { if (!mapa.has(op)) mapa.set(op, local); });
     } catch (e) { /* ignora, só não usa o fallback */ }
     return mapa;
@@ -411,6 +411,71 @@ function escHtml(v) {
     return String(v === undefined || v === null ? '' : v)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 💾 Lê um JSON do localStorage sem derrubar o sistema: se o dado estiver
+// corrompido (gravação interrompida, edição manual), devolve o padrão e
+// avisa no console — o valor ruim fica guardado lá (não apaga), pra dar
+// pra recuperar depois se precisar.
+function lerJSONLocal(chave, padrao) {
+    let bruto = null;
+    try { bruto = localStorage.getItem(chave); } catch (e) { return padrao; }
+    if (bruto === null || bruto === '') return padrao;
+    try { const v = JSON.parse(bruto); return v === null || v === undefined ? padrao : v; }
+    catch (e) {
+        registrarLogDebug('error', [`Dado salvo "${chave}" está corrompido (${e.message}) — usando vazio no lugar. O valor original continua guardado no navegador.`]);
+        return padrao;
+    }
+}
+
+// 💾 Espaço do navegador cheio: o localStorage tem limite (~5 MB, menos no
+// celular). Quando estoura, o setItem dá erro e a ação para no meio sem a
+// pessoa saber por quê. Aqui TODO setItem passa a avisar na tela (no máximo
+// 1 aviso a cada 30s) e no console — e o erro continua sendo lançado, pra
+// quem já trata (ex: restaurar backup) seguir funcionando igual.
+function ehErroDeEspacoCheio(e) {
+    return !!e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014 || /quota/i.test(e.message || ''));
+}
+let ultimoAvisoEspacoCheio = 0;
+(function protegerGravacaoLocal() {
+    if (typeof Storage === 'undefined' || Storage.prototype.__protegidoCortePro) return;
+    const setItemOriginal = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (chave, valor) {
+        try { return setItemOriginal.call(this, chave, valor); }
+        catch (e) {
+            if (ehErroDeEspacoCheio(e)) {
+                const kb = Math.round(String(valor).length / 1024);
+                registrarLogDebug('error', [`Espaço do navegador CHEIO — não consegui salvar "${chave}" (${kb} KB). Limpe dados antigos (ex: meses que não usa mais) ou use o sistema num computador.`]);
+                if (Date.now() - ultimoAvisoEspacoCheio > 30000 && typeof showToast === 'function') {
+                    ultimoAvisoEspacoCheio = Date.now();
+                    showToast('<i class="fas fa-triangle-exclamation"></i> Espaço do navegador cheio — essa alteração NÃO foi salva aqui. Veja o console de depuração.', true, 8000);
+                }
+            }
+            throw e;
+        }
+    };
+    Storage.prototype.__protegidoCortePro = true;
+})();
+
+// 📦 Carrega um script da internet só quando for usar (ex: ExcelJS, que só
+// serve pra BAIXAR Excel — não precisa pesar na abertura da página).
+// Devolve true se carregou, false se falhou (sem internet, CDN fora, bloqueio).
+const scriptsCarregando = {};
+function carregarScriptSobDemanda(url, prontoSe, tempoLimiteMs = 20000) {
+    if (prontoSe()) return Promise.resolve(true);
+    if (scriptsCarregando[url]) return scriptsCarregando[url];
+    scriptsCarregando[url] = new Promise(resolve => {
+        const s = document.createElement('script');
+        const fim = ok => { clearTimeout(t); if (!ok) { delete scriptsCarregando[url]; s.remove(); registrarLogDebug('error', ['Não consegui carregar ' + url + ' (sem internet ou bloqueado).']); } resolve(ok && prontoSe()); };
+        const t = setTimeout(() => fim(false), tempoLimiteMs);
+        s.src = url; s.async = true;
+        s.onload = () => fim(true); s.onerror = () => fim(false);
+        document.head.appendChild(s);
+    });
+    return scriptsCarregando[url];
+}
+function garantirExcelJS() {
+    return carregarScriptSobDemanda('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js', () => typeof ExcelJS !== 'undefined');
 }
 
 // ⏱️ Utilitário de debounce — evita recalcular/re-renderizar a cada tecla digitada
