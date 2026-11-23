@@ -10,5 +10,5 @@ CHROMIUM_PATH=/caminho/do/chrome node run.js
 ```
 
 Saída: "N verificações passaram, 0 falharam". Se falhar, a lista mostra o que era esperado e o que saiu.
-Rode antes de publicar qualquer mudança em `kpi.js`, `kpi-detalhe.js`, `eficiencia-costura.js` ou `nuvem.js`.
+Rode antes de publicar qualquer mudança em `js/kpi/`, `js/nuvem/` ou `js/importacao/`.
 Para cobrir uma regra nova, acrescente um bloco em `run.js` (use `L(...)` para montar linhas de relatório).

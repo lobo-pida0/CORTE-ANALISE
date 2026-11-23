@@ -107,7 +107,7 @@ window.addEventListener('beforeprint', () => {
 
     // Clona a seção pedida (já com a filtragem de linhas acima aplicada,
     // já que isso roda primeiro nesse mesmo evento) pra dentro da área
-    // dedicada de impressão — ver comentário longo no style.css sobre por
+    // dedicada de impressão — ver comentário longo no css/style.css sobre por
     // que isso é mais robusto que o esquema antigo de visibility+position.
     if (idSecaoParaImprimir) {
         const el = document.getElementById(idSecaoParaImprimir);
