@@ -51,7 +51,10 @@ function inicializarEventosUI() {
         wireEvento('btnMenuMaisOpcoes', 'click', () => { toggleDropdown('menuMaisOpcoes'); });
         wireEvento('analisarGargalo', 'click', () => { analisarGargalo(); });
         wireEvento('verificarEspacoNuvemBtn', 'click', () => { verificarEspacoNuvem(true); });
-        wireEvento('ativarModoTV', 'click', () => { ativarModoTV(); });
+        wireEvento('ativarModoTV', 'click', () => { ativarModoTV(false); });
+        wireEvento('btnSairTV', 'click', () => { desativarModoTV(); });
+        wireEvento('btnTelaCheiaTV', 'click', () => { alternarTelaCheiaTV(); });
+        wireEvento('telaLoginForm', 'submit', (e) => { e.preventDefault(); enviarTelaLogin(); });
         wireEvento('toggleTema', 'click', () => { toggleTema(); });
         wireEvento('toggleDensidade', 'click', () => { toggleDensidadeTabelas(); });
         wireEvento('abrirBuscaGlobal', 'click', () => { abrirBuscaGlobal(); });
@@ -319,19 +322,21 @@ window.onload = function () {
     // entre visitas); se não tiver, carrega as OPs direto da nuvem pra quem
     // só visualiza — em vez de depender do que esse navegador já tinha salvo
     verificarSessaoSupabase().then(() => {
-        carregarTudoDaNuvemParaVisitante();
+        if (!supabaseClient) { mostrarErroTelaLogin('Não foi possível conectar à nuvem (biblioteca não carregou). Confira a internet e recarregue a página (F5).'); return; }
+        if (!sessaoAdminAtual) { aplicarTelaDeLogin(); }   // sem login: só a tela de login, nada é carregado da nuvem
+        else carregarTudoDaNuvemParaVisitante();
         // Visitante atualiza sozinho a cada 3 minutos — sem precisar recarregar
         // a página na mão pra ver publicação nova. Admin não precisa disso (usa
         // o dado local, ao vivo).
-        setInterval(() => { if (papelUsuarioAtual !== 'admin') carregarTudoDaNuvemParaVisitante(); }, 3 * 60 * 1000);
+        setInterval(() => { if (sessaoAdminAtual && papelUsuarioAtual !== 'admin') carregarTudoDaNuvemParaVisitante(); }, 3 * 60 * 1000);
         // Remoções do Seq. Costura são diferentes — precisam ficar iguais em
         // QUALQUER computador, admin incluído, já que o objetivo é o admin
         // conseguir ver o que outra pessoa removeu de outro lugar.
-        carregarOpsRemovidasSeqCosturaDaNuvem();
-        setInterval(carregarOpsRemovidasSeqCosturaDaNuvem, 3 * 60 * 1000);
+        if (sessaoAdminAtual) carregarOpsRemovidasSeqCosturaDaNuvem();
+        setInterval(() => { if (sessaoAdminAtual) carregarOpsRemovidasSeqCosturaDaNuvem(); }, 3 * 60 * 1000);
         // Mesma lógica pra ordem manual do Enfesto — todo mundo carrega.
-        carregarOrdemManualEnfestoDaNuvem();
-        setInterval(carregarOrdemManualEnfestoDaNuvem, 3 * 60 * 1000);
+        if (sessaoAdminAtual) carregarOrdemManualEnfestoDaNuvem();
+        setInterval(() => { if (sessaoAdminAtual) carregarOrdemManualEnfestoDaNuvem(); }, 3 * 60 * 1000);
     });
     atualizarBadgeConsoleDebug();
 };

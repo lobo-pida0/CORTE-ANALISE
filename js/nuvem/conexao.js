@@ -25,7 +25,7 @@ try {
 registrarLogDebug('log', ['[NUVEM v2] window.supabase = ' + (typeof window.supabase) + ' | cliente montado = ' + (supabaseClient ? 'SIM' : 'NÃO')]);
 
 let sessaoAdminAtual = null; // guarda a sessão do usuário logado (null = visitante)
-let papelUsuarioAtual = null; // 'admin', 'usuario' ou 'sequencia' — só tem valor quando sessaoAdminAtual existe
+let papelUsuarioAtual = null; // 'admin', 'usuario', 'sequencia' ou 'tv' — só tem valor quando sessaoAdminAtual existe
 
 // Converte uma OP do formato usado no sistema (bancoDadosOPs) pro formato de
 // colunas da tabela "ops" no Supabase (snake_case)
@@ -83,11 +83,11 @@ async function verificarSessaoSupabase() {
     }
 }
 
-// Depois de logado, descobre se a pessoa é admin ou só "usuario" (acesso
-// restrito, só pra importar planilha) — consultando a tabela
-// papeis_usuario pelo e-mail de quem entrou. Quem não estiver cadastrado
-// lá é tratado como admin, de propósito — assim o acesso do admin original
-// nunca quebra só por essa tabela não ter uma linha pra ele.
+// Depois de logado, descobre o papel da pessoa na tabela papeis_usuario (pelo e-mail):
+// 'admin', 'usuario' (importa planilhas), 'sequencia' (Sequência da costura) ou 'tv'.
+// Quem NÃO está cadastrado lá (ou se a consulta falhar) vira 'tv': só vê o modo TV.
+// Antes virava admin — qualquer conta nova ganhava acesso total.
+const PAPEIS_CONHECIDOS = ['admin', 'usuario', 'sequencia', 'tv'];
 async function verificarPapelUsuario() {
     papelUsuarioAtual = null;
     if (!sessaoAdminAtual || !supabaseClient) return;
@@ -95,17 +95,18 @@ async function verificarPapelUsuario() {
         const email = sessaoAdminAtual.user.email;
         const { data, error } = await supabaseClient.from('papeis_usuario').select('papel').eq('email', email).maybeSingle();
         if (error) throw error;
-        papelUsuarioAtual = data && data.papel === 'usuario' ? 'usuario' : (data && data.papel === 'sequencia' ? 'sequencia' : 'admin');
+        papelUsuarioAtual = data && PAPEIS_CONHECIDOS.includes(data.papel) ? data.papel : 'tv';
+        if (!data) registrarLogDebug('log', [`A conta ${email} não está cadastrada em papeis_usuario — entrou só com acesso ao modo TV.`]);
     } catch (e) {
-        registrarLogDebug('error', ['Não consegui checar o papel do usuário, tratando como admin: ' + e.message]);
-        papelUsuarioAtual = 'admin'; // mesma lógica de segurança: se der erro, não bloqueia o admin original
+        registrarLogDebug('error', ['Não consegui checar o papel do usuário, liberando só o modo TV: ' + e.message]);
+        papelUsuarioAtual = 'tv'; // na dúvida, o MENOR acesso (saia e entre de novo pra tentar outra vez)
     }
     // Checagem silenciosa do espaço da nuvem — só incomoda com um toast se
     // estiver alto (80%+); senão não aparece nada, pra não virar barulho
     // toda vez que o admin entra.
     if (papelUsuarioAtual === 'admin') { verificarEspacoNuvem(false); verificarBackupNuvemAutomatico(); }
     carregarDestinoDaNuvem(); carregarUrgentesPreparacaoDaNuvem(); carregarCalendarioProducaoDaNuvem();
-    if (papelUsuarioAtual === 'sequencia') { try { localStorage.removeItem('porOPCosturaImportadaLocal'); } catch (e) { /* ignora */ } carregarTudoDaNuvemParaVisitante(); }   // só consulta: recebe os dados publicados
+    if (papelUsuarioAtual === 'sequencia' || papelUsuarioAtual === 'tv') { try { localStorage.removeItem('porOPCosturaImportadaLocal'); } catch (e) { /* ignora */ } carregarTudoDaNuvemParaVisitante(); }   // só consulta: recebe os dados publicados
 }
 
 function atualizarIndicadorLogin() {
@@ -115,15 +116,34 @@ function atualizarIndicadorLogin() {
     document.body.classList.toggle('modo-sequencia', papelUsuarioAtual === 'sequencia');
     if (sessaoAdminAtual) {
         const nome = sessaoAdminAtual.user.email.split('@')[0].toUpperCase();
-        txt.innerText = papelUsuarioAtual === 'usuario' ? `${nome} (USUÁRIO)` : (papelUsuarioAtual === 'sequencia' ? `${nome} (SEQUÊNCIA)` : nome);
+        txt.innerText = papelUsuarioAtual === 'usuario' ? `${nome} (USUÁRIO)` : (papelUsuarioAtual === 'sequencia' ? `${nome} (SEQUÊNCIA)` : (papelUsuarioAtual === 'tv' ? `${nome} (TV)` : nome));
         $('btnLoginAdmin').title = papelUsuarioAtual === 'usuario' ? 'Logado — só pode importar planilhas. Clique pra sair.' : (papelUsuarioAtual === 'sequencia' ? 'Logado — só consulta a Sequência da costura. Clique pra sair.' : 'Logado como admin — clique pra sair');
         if ($('indicadorUltimaPublicacao')) $('indicadorUltimaPublicacao').innerText = ''; // não faz sentido pro admin, ele usa o dado local ao vivo
     } else {
         txt.innerText = 'VISITANTE';
         $('btnLoginAdmin').title = 'Entrar como admin';
-        atualizarIndicadorUltimaPublicacao();
     }
     aplicarRestricaoDeAbaVisitante();
+    aplicarTelaDeLogin();
+}
+
+// 🔒 TELA DE LOGIN NA ENTRADA — sem login não aparece NADA do sistema (o <body> já nasce com a classe
+// "sem-login" no index.html, então nem pisca antes de conferir a sessão). Papel 'tv' cai direto no modo TV.
+function aplicarTelaDeLogin() {
+    const logado = !!sessaoAdminAtual;
+    document.body.classList.toggle('sem-login', !logado);
+    if (!logado) { if ($('telaLoginSenha')) $('telaLoginSenha').value = ''; setTimeout(() => $('telaLoginEmail') && $('telaLoginEmail').focus(), 50); return; }
+    if (papelUsuarioAtual === 'tv') ativarModoTV(true);
+}
+function mostrarErroTelaLogin(msg) {
+    const el = $('telaLoginErro'); if (!el) return;
+    el.textContent = msg || ''; el.style.display = msg ? 'block' : 'none';
+}
+async function enviarTelaLogin() {
+    const email = ($('telaLoginEmail').value || '').trim(), senha = $('telaLoginSenha').value || '';
+    if (!email || !senha) { mostrarErroTelaLogin('Preencha o e-mail e a senha.'); return; }
+    const btn = $('telaLoginEntrar'); btn.disabled = true; mostrarErroTelaLogin('');
+    try { await fazerLoginAdmin(email, senha); } finally { btn.disabled = false; }
 }
 
 // Sem login, só a aba Sequenciamento fica disponível — as outras somem do
@@ -133,11 +153,19 @@ function atualizarIndicadorLogin() {
 const ABAS_LIBERADAS_PARA_VISITANTE = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura'];
 const ABAS_LIBERADAS_PARA_SEQUENCIA = ['aba-seq-costura', 'aba-kpi', 'aba-plano-costura', 'aba-producao-grupo'];   // papel "sequencia" (Luis): Sequência da costura + só o bloco de eficiência da costura no KPI + Plano da costura
 const ABAS_LIBERADAS_PARA_USUARIO = ['aba-prioridades', 'aba-kpi', 'aba-seq-costura', 'aba-urgencias', 'aba-producao-grupo', 'aba-preparacao'];
+const ABAS_LIBERADAS_PARA_TV = ['aba-fila'];   // papel 'tv' (e conta sem papel): só a Fila Geral, em modo TV
 function abaLiberadaAgora(idAba) {
+    if (!sessaoAdminAtual) return false;   // sem login não vê nenhuma aba (fica na tela de login)
     if (papelUsuarioAtual === 'admin') return true;
     if (papelUsuarioAtual === 'usuario') return ABAS_LIBERADAS_PARA_USUARIO.includes(idAba);
     if (papelUsuarioAtual === 'sequencia') return ABAS_LIBERADAS_PARA_SEQUENCIA.includes(idAba);
-    return ABAS_LIBERADAS_PARA_VISITANTE.includes(idAba); // visitante — nem logado
+    return ABAS_LIBERADAS_PARA_TV.includes(idAba);
+}
+// Primeira aba que o papel pode ver — pra onde vai quando tenta abrir uma aba proibida.
+function abaInicialDoPapel() {
+    if (papelUsuarioAtual === 'tv') return 'aba-fila';
+    if (papelUsuarioAtual === 'sequencia') return 'aba-seq-costura';
+    return 'aba-prioridades';
 }
 function aplicarRestricaoDeAbaVisitante() {
     document.body.classList.toggle('modo-visitante', !sessaoAdminAtual || papelUsuarioAtual === 'sequencia');   // o papel "sequencia" vê a tela como visitante (sem botões de admin)
@@ -157,9 +185,9 @@ function aplicarRestricaoDeAbaVisitante() {
     // Se a aba aberta agora não é mais permitida (ex: era admin e deslogou),
     // joga pra Prioridades em vez de deixar a tela numa aba escondida.
     const abaAtivaEl = document.querySelector('.aba-conteudo.ativa');
-    if (abaAtivaEl && !abaLiberadaAgora(abaAtivaEl.id)) {
+    if (sessaoAdminAtual && abaAtivaEl && !abaLiberadaAgora(abaAtivaEl.id)) {
         if (papelUsuarioAtual === 'sequencia' && $('abrirAba-aba-seq-costura')) $('abrirAba-aba-seq-costura').click();   // abre a única aba dele (o clique também carrega a tela)
-        else abrirAba(null, 'aba-prioridades');
+        else abrirAba(null, abaInicialDoPapel());
     }
 }
 
@@ -170,12 +198,14 @@ async function fazerLoginAdmin(email, senha) {
         resultado = await supabaseClient.auth.signInWithPassword({ email, password: senha });
     } catch (e) {
         registrarLogDebug('error', ['Login falhou (erro de rede/conexão): ' + e.message]);
+        mostrarErroTelaLogin('Sem conexão com a nuvem. Confira a internet e tente de novo.');
         showToast('<i class="fas fa-triangle-exclamation"></i> Falha de conexão com a nuvem. Veja o console de depuração.', true);
         return;
     }
     const { data, error } = resultado;
     if (error) {
         registrarLogDebug('error', ['Login recusado pelo Supabase: ' + error.message]);
+        mostrarErroTelaLogin(/invalid login credentials/i.test(error.message) ? 'E-mail ou senha incorretos.' : error.message);
         showToast('<i class="fas fa-triangle-exclamation"></i> ' + error.message, true);
         return;
     }
@@ -183,25 +213,31 @@ async function fazerLoginAdmin(email, senha) {
     await verificarPapelUsuario();
     atualizarIndicadorLogin();
     fecharModais();
+    if (papelUsuarioAtual !== 'admin') carregarTudoDaNuvemParaVisitante();   // quem não é admin vê o que foi publicado
     showToast(papelUsuarioAtual === 'usuario'
         ? "<i class='fas fa-check'></i> Login feito — você pode importar planilhas."
-        : (papelUsuarioAtual === 'sequencia' ? "<i class='fas fa-check'></i> Login feito — acesso à Sequência da costura." : "<i class='fas fa-check'></i> Login feito — você é admin agora."));
+        : (papelUsuarioAtual === 'sequencia' ? "<i class='fas fa-check'></i> Login feito — acesso à Sequência da costura."
+        : (papelUsuarioAtual === 'tv' ? "<i class='fas fa-tv'></i> Login feito — modo TV." : "<i class='fas fa-check'></i> Login feito — você é admin agora.")));
 }
 
+// Sair recarrega a página: volta limpo pra tela de login, sem sobrar nada do que estava na tela.
 async function fazerLogoutAdmin() {
     if (!supabaseClient) return;
-    await supabaseClient.auth.signOut();
+    try { await supabaseClient.auth.signOut(); } catch (e) { registrarLogDebug('error', ['Falha ao sair: ' + e.message]); }
     sessaoAdminAtual = null;
     papelUsuarioAtual = null;
-    atualizarIndicadorLogin();
-    showToast("Saiu do modo admin.");
+    location.reload();
 }
+// Se a sessão acabar por fora (saiu em outra aba, login expirou), volta pra tela de login.
+if (supabaseClient) supabaseClient.auth.onAuthStateChange(evento => {
+    if (evento === 'SIGNED_OUT' && sessaoAdminAtual) { sessaoAdminAtual = null; papelUsuarioAtual = null; location.reload(); }
+});
 
 // Envia o bancoDadosOPs atual (o que está na tela agora) pra nuvem, de uma
 // vez, em lotes de 500 (limite prático de uma chamada só). Só funciona
 // logado — sem login, o Supabase já bloqueia isso sozinho (RLS).
 function abrirModalLoginAdmin() {
-    if (sessaoAdminAtual) { fazerLogoutAdmin(); return; }
+    if (sessaoAdminAtual) { if (confirm('Sair do sistema?')) fazerLogoutAdmin(); return; }
     $('modalLoginAdmin').innerHTML = `
         <div class="modal-card" style="width:340px; max-width:90vw; border-top:5px solid var(--cor-roxo);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">

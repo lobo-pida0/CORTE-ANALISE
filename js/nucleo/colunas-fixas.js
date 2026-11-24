@@ -171,7 +171,7 @@ function importarBackup(e) {
 
 const ABAS_DENTRO_DO_MENU_MAIS = ['aba-fila', 'aba-pedidos', 'aba-filacorte', 'aba-sequenciamento', 'aba-necessidade', 'aba-plano-costura', 'aba-producao-grupo'];
 function abrirAba(ev, id) {
-    if (!abaLiberadaAgora(id)) { id = 'aba-prioridades'; ev = null; }
+    if (!abaLiberadaAgora(id)) { if (!sessaoAdminAtual) return; id = abaInicialDoPapel(); ev = null; }
     $$('.aba-conteudo').forEach(a => a.classList.remove('ativa'));
     $$('.tab-btn').forEach(b => b.classList.remove('ativo'));
     $(id).classList.add('ativa');

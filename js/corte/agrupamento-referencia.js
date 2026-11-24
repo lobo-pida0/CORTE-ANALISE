@@ -294,10 +294,53 @@ function renderizarSidebarPrioridades() {
     }
 }
 
-let scInt = null;
-function ativarModoTV() { document.body.classList.add('modo-tv'); if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { }); abrirAba(null, 'aba-fila'); initScrollV('#aba-fila .secao-corpo'); }
-function initScrollV(sel) { const e = document.querySelector(sel); if (!e) return; e.scrollTop = 0; let d = 1; scInt = setInterval(() => { if (e.scrollHeight <= e.clientHeight) return; e.scrollTop += d; if (e.scrollTop >= (e.scrollHeight - e.clientHeight - 1)) d = -1; if (e.scrollTop <= 0) d = 1; }, 40); }
-document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('modo-tv')) { document.body.classList.remove('modo-tv'); clearInterval(scInt); abrirAba(null, 'aba-programacao'); } });
+// 📺 MODO TV — Fila Geral em tela cheia, rolando sozinha, pra deixar numa TV da fábrica.
+// fixo = true: conta com papel 'tv' (ou sem papel) — não tem como sair pro resto do sistema, só "SAIR" (logout).
+// fixo = false: admin testando/usando — "FECHAR TV" (ou ESC) volta pro sistema.
+let scInt = null, relogioTVInt = null;
+function ativarModoTV(fixo) {
+    fixo = fixo === true;
+    document.body.classList.add('modo-tv');
+    document.body.classList.toggle('modo-tv-fixo', fixo);
+    if (!fixo && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { });
+    abrirAba(null, 'aba-fila');
+    if (typeof renderizarTudoImediato === 'function') renderizarTudoImediato();
+    if ($('btnSairTV')) $('btnSairTV').innerHTML = fixo ? '<i class="fas fa-right-from-bracket"></i> SAIR' : '<i class="fas fa-xmark"></i> FECHAR TV';
+    clearInterval(scInt); initScrollV('#aba-fila .secao-corpo');
+    clearInterval(relogioTVInt); atualizarRelogioTV(); relogioTVInt = setInterval(atualizarRelogioTV, 30000);
+}
+function desativarModoTV() {
+    if (document.body.classList.contains('modo-tv-fixo')) { if (confirm('Sair do sistema?')) fazerLogoutAdmin(); return; }
+    document.body.classList.remove('modo-tv');
+    clearInterval(scInt); clearInterval(relogioTVInt);
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => { });
+    abrirAba(null, 'aba-programacao');
+}
+function alternarTelaCheiaTV() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
+    else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => { });
+}
+function atualizarRelogioTV() {
+    const el = $('relogioTV'); if (!el) return;
+    const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const pub = $('indicadorUltimaPublicacao') && $('indicadorUltimaPublicacao').innerText.trim();
+    el.textContent = agora + (pub ? ' · ' + pub : '');
+}
+// Rola a tabela devagar pra baixo e volta pra cima. Mede de novo a cada passo (a tabela é redesenhada a cada 3 min).
+function initScrollV(sel) {
+    let d = 1, pausa = 0;
+    scInt = setInterval(() => {
+        const e = document.querySelector(sel); if (!e || e.scrollHeight <= e.clientHeight) return;
+        if (pausa > 0) { pausa--; return; }
+        e.scrollTop += d;
+        if (e.scrollTop >= (e.scrollHeight - e.clientHeight - 1)) { d = -1; pausa = 75; }   // para ~3s no fim
+        if (e.scrollTop <= 0) { d = 1; pausa = 75; }                                        // e ~3s no começo
+    }, 40);
+}
+// ESC (saiu da tela cheia): admin volta pro sistema; no modo fixo continua na TV, só sem tela cheia.
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && document.body.classList.contains('modo-tv') && !document.body.classList.contains('modo-tv-fixo')) desativarModoTV();
+});
 
 // SISTEMA (TEMA, BACKUP, START)
 

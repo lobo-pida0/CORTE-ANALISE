@@ -1019,10 +1019,41 @@ body.tabelas-densas .tabela-dados .selo-icone { width: 16px; height: 16px; }
     color: white;
 }
 
+/* ===================== 🔒 TELA DE LOGIN ===================== */
+#telaLogin { display: none; }
+body.sem-login { overflow: hidden; }
+body.sem-login > *:not(#telaLogin) { display: none !important; }
+body.sem-login #telaLogin {
+    display: flex; position: fixed; inset: 0; z-index: 1000000;
+    align-items: center; justify-content: center; padding: 16px;
+    background: var(--bg-painel);
+}
+.tela-login-card {
+    width: 360px; max-width: 100%; background: var(--bg-card); border-radius: 12px;
+    border-top: 5px solid var(--cor-roxo); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    padding: 28px 26px 22px; display: flex; flex-direction: column; gap: 6px;
+}
+.tela-login-logo {
+    width: 52px; height: 52px; border-radius: 50%; margin: 0 auto 4px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--cor-roxo); color: white; font-size: 22px;
+}
+.tela-login-card h1 { margin: 0; text-align: center; font-family: 'Oswald', sans-serif; letter-spacing: 1px; font-size: 26px; color: var(--texto-cor); }
+.tela-login-sub { margin: 0 0 10px; text-align: center; font-size: 13px; color: var(--texto-secundario); }
+.tela-login-card label { font-size: 11px; font-weight: 700; color: var(--texto-secundario); margin-top: 6px; }
+.tela-login-card input { padding: 11px 12px; font-size: 15px; border: 1px solid var(--borda-cor); border-radius: 8px; background: var(--bg-painel); color: var(--texto-cor); }
+.tela-login-card input:focus { outline: 2px solid var(--cor-roxo); outline-offset: 1px; }
+#telaLoginErro { display: none; margin-top: 8px; padding: 9px 11px; border-radius: 8px; font-size: 13px; font-weight: 600; background: rgba(193, 68, 78, 0.12); color: var(--cor-alerta); }
+#telaLoginEntrar { margin-top: 14px; padding: 12px; font-size: 15px; justify-content: center; }
+#telaLoginEntrar:disabled { opacity: 0.6; cursor: wait; }
+.tela-login-rodape { margin: 12px 0 0; text-align: center; font-size: 12px; color: var(--texto-secundario); }
+
+/* ===================== 📺 MODO TV ===================== */
 body.modo-tv .header-main,
 body.modo-tv .tabs-container,
 body.modo-tv .painel-montador,
-body.modo-tv .kpi-card {
+body.modo-tv .kpi-card,
+body.modo-tv .console-debug {
     display: none !important;
 }
 
@@ -1035,18 +1066,38 @@ body.modo-tv {
 body.modo-tv .aba-conteudo.ativa {
     height: 100vh;
     overflow: hidden;
-    padding: 20px;
+    padding: 20px 20px 62px;   /* embaixo: faixa dos controles (relógio, tela cheia, sair), sem cobrir a tabela */
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
 }
+
+/* A tabela ocupa todo o resto da tela (antes ficava presa em ~500px e sobrava metade da TV vazia) */
+body.modo-tv #aba-fila .secao { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
+body.modo-tv #aba-fila .secao-corpo { flex: 1; min-height: 0; max-height: none; overflow: hidden; }
+/* Letra maior pra ler de longe */
+body.modo-tv #aba-fila .tabela-dados th { font-size: 15px; padding-top: 12px; padding-bottom: 12px; }
+body.modo-tv #aba-fila .tabela-dados td { font-size: 19px; padding-top: 12px; padding-bottom: 12px; }
+body.modo-tv #aba-fila .tabela-dados .pill { font-size: 14px; }
+body.modo-tv #aba-fila .secao-header { font-size: 22px; }
+body.modo-tv #painel-visao-geral .cr-numero { font-size: 40px; }
+body.modo-tv #painel-visao-geral .cr-rotulo { font-size: 14px; }
+body.modo-tv #painel-visao-geral .cr-detalhe { font-size: 14px; }
+/* Na TV os cartões não levam pra outras abas */
+body.modo-tv-fixo #painel-visao-geral .card-resumo { pointer-events: none; }
 
 #controles-tv {
     display: none;
     position: fixed;
-    bottom: 30px;
-    right: 30px;
+    bottom: 12px;
+    right: 20px;
     z-index: 10000;
-    gap: 15px;
+    gap: 10px;
+    align-items: center;
 }
+#controles-tv .btn { background: var(--bg-card); color: var(--texto-cor); border: 1px solid var(--borda-cor); opacity: 0.5; transition: opacity 0.2s; }
+#controles-tv .btn:hover, #controles-tv .btn:focus-visible { opacity: 1; }
+#relogioTV { font-size: 14px; font-weight: 700; color: var(--texto-secundario); background: var(--bg-card); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--borda-cor); }
 
 body.modo-tv #controles-tv {
     display: flex;

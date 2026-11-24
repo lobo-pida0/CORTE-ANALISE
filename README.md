@@ -69,7 +69,21 @@ tests/                  testes automáticos (ver tests/README.md)
   chamadas depois (ao clicar, ao importar) podem estar em qualquer arquivo.
 - Texto que vem de planilha ou da nuvem e vai para `innerHTML` deve passar por `escHtml(...)`.
 - Ações que mudam dado começam com `exigirAdmin(...)` (ou a variante do papel certo). Isso só esconde/bloqueia
-  na tela — a proteção real dos dados é a regra de acesso (RLS) no Supabase.
+  na tela — a proteção real dos dados é a regra de acesso (RLS) no Supabase (`supabase/seguranca-login-obrigatorio.sql`).
+
+## Acesso e papéis
+
+Ninguém vê nada sem login: o site abre na tela de login (`body.sem-login`). Depois de entrar, o papel vem da
+tabela `papeis_usuario` (pelo e-mail):
+
+| papel | vê |
+|---|---|
+| `admin` | tudo |
+| `usuario` | Prioridades, KPI, Sequência da costura, Urgências, Produção por grupo, Preparação (importa planilhas) |
+| `sequencia` | Sequência da costura, KPI, Plano da costura, Produção por grupo |
+| `tv` — e qualquer conta **sem papel** | só o **modo TV** (Fila Geral em tela cheia, atualiza a cada 3 min) |
+
+Para dar acesso a alguém: crie a conta em Supabase → Authentication → Users e cadastre o e-mail em `papeis_usuario`.
 - Rode os testes antes de publicar:
 
 ```bash
