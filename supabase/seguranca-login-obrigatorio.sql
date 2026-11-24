@@ -15,6 +15,7 @@
 -- papeis_usuario (hoje ela não tem — o site antigo tratava "sem papel" como
 -- admin). O passo 1 abaixo faz isso; confira o e-mail antes.
 -- Tudo roda numa transação: se algo falhar, nada muda.
+-- ✅ APLICADO no Supabase em 24/11/2026 (migração "seguranca_login_obrigatorio"; admin cadastrado antes).
 -- =========================================================================
 begin;
 
