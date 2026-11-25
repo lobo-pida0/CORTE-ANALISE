@@ -1468,3 +1468,5 @@ body.modo-sequencia #aba-kpi > .secao:not(#secaoEficienciaCostura):not(#secaoEfi
 .ap-modo button:disabled { opacity: 0.45; cursor: not-allowed; }
 .ap-modo-nota { padding: 10px 14px; margin-bottom: 12px; border-radius: 8px; background: var(--bg-card); border-left: 4px solid var(--cor-fila); font-size: 12.5px; line-height: 1.5; color: var(--texto-cor); }
 .ap-modo-nota.simulacao { border-left-color: var(--cor-despacho); }
+.ap-chip { border: 1px solid var(--borda-cor); background: var(--bg-painel); color: var(--texto-cor); border-radius: 16px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ap-chip.ativo { background: var(--cor-despacho); border-color: var(--cor-despacho); color: white; }
