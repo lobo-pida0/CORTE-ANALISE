@@ -113,6 +113,8 @@ function inicializarEventosUI() {
         wireEvento('marcarTodosTipoProd', 'click', () => { tiposProdutoExcluidos = []; salvarFiltrosFilaCorte(); renderizarFilaCorte(); });
         wireEvento('abrirAba-aba-necessidade', 'click', (event) => { abrirAba(event, 'aba-necessidade'); renderizarNecessidadePorReferencia(); });
         wireEvento('abrirAba-aba-prioridades', 'click', (event) => { abrirAba(event, 'aba-prioridades'); reconstruirFiltrosPrioridades(); renderizarAbaPrioridades(); });
+        wireEvento('abrirAba-aba-analise-pedidos', 'click', (event) => { abrirAba(event, 'aba-analise-pedidos'); abrirAbaAnalisePedidos(); });
+        executarSeguro('ligar eventos da análise de pedidos', ligarEventosAnalisePedidos);
         wireEvento('abrirAba-aba-kpi', 'click', (event) => { abrirAba(event, 'aba-kpi'); renderizarGraficoKPI(); carregarEfCosturaDaNuvem(); carregarEfAcabDaNuvem(); });
         wireEvento('abrirAba-aba-seq-costura', 'click', (event) => { abrirAba(event, 'aba-seq-costura'); renderizarSequenciamentoCostura(); carregarEfCosturaDaNuvem().then(() => atualizarEficienciaSeqCostura()); carregarCalendarioProducaoDaNuvem(); renderizarOpsRemovidasSeqCostura(); renderizarOpsOcultasSeqCostura(); carregarOpsRemovidasSeqCosturaDaNuvem(); carregarOrdemManualEnfestoDaNuvem(); });
         wireEvento('abrirAba-aba-preparacao', 'click', (event) => { abrirAba(event, 'aba-preparacao'); renderizarPreparacao(); carregarUrgentesPreparacaoDaNuvem(); });

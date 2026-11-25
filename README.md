@@ -58,6 +58,16 @@ tests/                  testes automáticos (ver tests/README.md)
 `sequenciamento-costura.js`, `cronograma-costura.js`, `busca-sequencia-costura.js`, `calendario-producao.js`
 (feriados e dias extras), `plano-costura.js`, `preparacao.js`, `producao-grupo.js`, `elaboracao-costura.js`.
 
+### js/analise-pedidos
+Transposição da **PLANILHA_ANALISE_PEDIDOS.xlsx** (aba ANÁLISE PEDIDOS, só admin): itens de pedido com falta de
+estoque × OPs que atendem, com alocação sem contar a mesma peça duas vezes.
+
+| arquivo | o que faz |
+|---|---|
+| `motor.js` | todo o cálculo, sem tela (CALC, ALOCAÇÃO, PAINEL ATRASOS, FALTAS SEM OP, OPs A PROGRAMAR, CONSULTA). Funciona no navegador e no Node. Validado contra os resultados do Excel: todas as abas iguais, linha por linha |
+| `dados.js` | importa as bases (a planilha inteira ou os dois relatórios), acha as colunas pelo nome e guarda no IndexedDB; configuração no localStorage |
+| `tela.js` | as visões, busca, BAIXAR EXCEL, consulta de pedido e a tela de configuração (campos amarelos + etapas) |
+
 ### js/kpi
 `kpi.js` (movimentação por setor), `kpi-detalhe.js` (detalhe do setor), `eficiencia-costura.js`,
 `eficiencia-acabamento.js`.

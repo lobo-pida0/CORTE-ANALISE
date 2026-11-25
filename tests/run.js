@@ -697,6 +697,39 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   }), [true, true, true]);
   igual('ExcelJS sob demanda: já carregado devolve true', await p.evaluate(() => garantirExcelJS()), true);
 
+  // ---------- 10e. Análise de pedidos (falta de estoque × OPs) ----------
+  {
+    const ExcelJSnode = require('exceljs'); const wb = new ExcelJSnode.Workbook();
+    const d = (dia, mes) => new Date(Date.UTC(2026, mes - 1, dia));
+    const wp = wb.addWorksheet('BASE PEDIDOS');
+    wp.addRow(['Cliente', 'Nome', 'Emp', 'Pedido', 'Situação', 'Bandeira', 'Prior', 'Inclusão', 'Chegada', 'Prev. Fat.', 'NECESSIDADE FAT.', 'Estimativa Fat.', 'Referência', 'Descrição', 'Produto', 'Cor', 'Tam', 'R$ Pendente', 'Pendente', 'Fecha Fisico', '% Fecha', 'Status', 'Falta Estoque', '% Falta Estoque', 'Fecha OP', '% Fecha OP', 'Falta OP', '% Falta OP', 'OPs Fecha', 'Finalizacao OP Origem', 'OPs do Pedido', 'Coligador', 'RESTRICAO DE FATURAMENTO']);
+    const ped = (p, sit, prev, nec, ref, tam, pend, fis, falta, cli) => wp.addRow(['1', cli, '2', p, sit, '', 0, d(1, 7), d(1, 7), prev, nec, '', ref, 'DESC ' + ref, '9', 'AZ', tam, pend * 10, pend, fis, '', '', falta, '', '', '', '', '', '', '', '', cli, '']);
+    ped('900001', 'Em andamento', d(1, 10), null, 'REFA', 'M', 5, 0, 5, 'CLIENTE UM');
+    ped('900002', 'Em andamento', d(1, 11), '15/09/2026', 'REFA', 'M', 4, 0, 4, 'CLIENTE DOIS');   // Necessidade Fat. (texto) vale mais que a Prev. Fat.
+    ped('900003', 'Bloqueado', d(1, 8), null, 'REFA', 'M', 3, 0, 3, 'CLIENTE TRES');
+    ped('900004', 'Em andamento', d(1, 9), null, 'REFB', 'G', 2, 0, 2, 'CLIENTE UM');
+    const wo = wb.addWorksheet('BASE OCUPAÇÃO');
+    wo.addRow(['Empresa', 'Ciclo', 'OP', 'Inclusão', 'Situacao', 'Prioridade', 'Referência', 'Descrição Referência', 'Produto', 'Cor', 'Tam', 'Unid', 'Qt OP Local', 'Entrada', 'Local', 'Descrição Local', 'Dias Local', 'Tipo Produto']);
+    const op = (cic, n, qtd, loc) => wo.addRow(['1', cic, n, d(1, 6), 'Em Andamento', '99', 'REFA', 'DESC REFA', '9', 'AZ', 'M', 'UNI', qtd, d(1, 9), '1', loc, 3, 'CAMISA']);
+    op('211', '100', 6, 'PNP CORTE');              // etapa 10
+    op('211', '200', 4, 'PNP ACABAMENTO');         // etapa 18 → gasta primeiro
+    op('110', '300', 50, 'PNP PPCP - PROGRAMACAO'); // ciclo 110 + local da lista → não alocável
+    op('611', '400', 50, 'PNP AGUARD FINALIZACAO'); // ciclo excluído
+    const arqAP = path.join(os.tmpdir(), 'corte-pro-analise-pedidos.xlsx'); await wb.xlsx.writeFile(arqAP);
+    await p.evaluate(() => { localStorage.removeItem('configAnalisePedidos'); $('abrirAba-aba-analise-pedidos').click(); });
+    await p.waitForTimeout(400);
+    await p.setInputFiles('#inputAnalisePedidos', arqAP);
+    await p.waitForFunction(() => estadoAP.resultado && estadoAP.resultado.alocacao.length === 4, null, { timeout: 15000 });
+    const resumoAP = () => p.evaluate(() => { const R = estadoAP.resultado; return { linhas: R.alocacao.map(a => [a.pedido, a.alocado, a.status, a.opsUsadas]), ind: [R.indicadores.pecasEmFalta, R.indicadores.pecasCobertas, R.indicadores.pecasDescobertas], faltas: R.faltasSemOP.map(f => [f.ref, f.descoberto, f.situacao]), ops: R.opsAProgramar.map(o => [o.op, o.alocado, o.pedidos]) }; });
+    igual('análise de pedidos: fila pela data, etapa mais avançada primeiro, sem contar peça duas vezes', await resumoAP(), {
+      linhas: [['900003', 3, 'Coberto', '211-200-3'], ['900004', 0, 'Sem OP', ''], ['900002', 4, 'Coberto', '211-200-1, 211-100-3'], ['900001', 3, 'Parcial', '211-100-3']],
+      ind: [14, 10, 4], faltas: [['REFA', 2, 'OP insuficiente'], ['REFB', 2, 'Sem nenhuma OP']], ops: [['200', 4, '900003, 900002'], ['100', 6, '900002, 900001']] });
+    await p.evaluate(() => { const c = obterConfigAnalisePedidos(); c.incluirBloqueados = false; salvarConfigAnalisePedidos(c); recalcularAnalisePedidos(); });
+    igual('análise de pedidos: sem os bloqueados, as OPs vão pros liberados', (await resumoAP()).linhas, [['900004', 0, 'Sem OP', ''], ['900002', 4, 'Coberto', '211-200-4'], ['900001', 5, 'Coberto', '211-100-5']]);
+    igual('análise de pedidos: consulta mostra todas as OPs do item (sem alocação)', await p.evaluate(() => { const r = MotorAnalisePedidos.consultarPedido(estadoAP.pedidos, estadoAP.ocupacao, '900001', '211 811'); return [r.encontrado, r.cliente, r.itens[0].emOPs, r.itens[0].status, r.resumo.map(x => x.op)]; }), [true, 'CLIENTE UM', 110, 'Fecha', ['100', '200', '300', '400']]);
+    await p.evaluate(() => { localStorage.removeItem('configAnalisePedidos'); for (const v of ['painel', 'alocacao', 'faltas', 'ops', 'consulta', 'config']) { estadoAP.visao = v; renderizarAnalisePedidos(); } estadoAP.visao = 'painel'; });
+  }
+
   // ---------- 10d. Login obrigatório e papel TV ----------
   {
     const p2 = await b.newPage({ viewport: { width: 1400, height: 1000 } });

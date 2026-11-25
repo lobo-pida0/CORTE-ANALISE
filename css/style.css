@@ -1415,3 +1415,48 @@ body.dark-mode #efCosturaCorpo tr.ef-dia-total td:first-child { box-shadow: inse
 
 /* Papel "sequencia" no KPI: só o bloco de eficiência da costura (o KPI do corte fica de fora) */
 body.modo-sequencia #aba-kpi > .secao:not(#secaoEficienciaCostura):not(#secaoEficienciaAcabamento) { display: none; }
+
+/* ===================== 📦 ANÁLISE DE PEDIDOS ===================== */
+.ap-topo { margin-bottom: 14px; }
+.ap-barra { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 16px; background: var(--bg-painel); }
+.ap-bases { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--texto-secundario); }
+.ap-nav { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 16px 12px; border-top: 1px solid var(--borda-cor); }
+.ap-nav button { border: 1px solid var(--borda-cor); background: var(--bg-card); color: var(--texto-cor); border-radius: 18px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ap-nav button:hover { border-color: var(--cor-roxo); }
+.ap-nav button.ativo { background: var(--cor-roxo); border-color: var(--cor-roxo); color: white; }
+.ap-cartoes { display: flex; gap: var(--espaco-md, 12px); flex-wrap: wrap; margin-bottom: 14px; }
+.ap-cartoes .card-resumo { flex: 1 1 200px; }
+.ap-duas-colunas { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
+.ap-secao { margin-bottom: 14px; }
+.ap-ferramentas { display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--bg-painel); flex-wrap: wrap; }
+.ap-busca { flex: 1 1 260px; max-width: 460px; padding: 8px 10px; border: 1px solid var(--borda-cor); border-radius: 6px; background: var(--bg-card); color: var(--texto-cor); }
+.ap-tabela-wrap { max-height: 620px; }
+.ap-tabela td { white-space: nowrap; }
+.ap-tabela td:nth-last-child(-n+2) { white-space: normal; min-width: 220px; }
+.ap-aviso-limite { padding: 10px 14px; font-size: 12px; color: var(--texto-secundario); background: var(--bg-painel); }
+.ap-nota { font-size: 12px; color: var(--texto-secundario); margin: 0 0 12px; line-height: 1.5; }
+.ap-alerta { padding: 10px 14px; margin-bottom: 12px; border-radius: 8px; background: rgba(184, 134, 42, 0.14); color: var(--texto-cor); font-size: 13px; }
+.ap-alerta .btn { padding: 3px 8px; font-size: 11px; margin: 3px 2px; }
+.ap-vazio { padding: 40px 20px; text-align: center; color: var(--texto-cor); background: var(--bg-card); border-radius: 10px; border: 1px dashed var(--borda-cor); }
+.ap-vazio p { max-width: 640px; margin: 8px auto; }
+.ap-filtros { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; padding: 12px 14px; background: var(--bg-card); border-radius: 10px; border: 1px solid var(--borda-cor); }
+.ap-filtros label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 700; color: var(--texto-secundario); }
+.ap-filtros input, .ap-filtros select, .ap-config input, .ap-config select, .ap-config textarea { padding: 7px 9px; border: 1px solid var(--borda-cor); border-radius: 6px; background: var(--bg-painel); color: var(--texto-cor); font: inherit; font-size: 13px; }
+.ap-link-pedido { color: var(--cor-roxo); font-weight: 700; text-decoration: none; border-bottom: 1px dotted currentColor; }
+.ap-config { background: var(--bg-card); border-radius: 10px; border: 1px solid var(--borda-cor); padding: 16px; }
+.ap-config-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.ap-config fieldset { border: 1px solid var(--borda-cor); border-radius: 8px; padding: 10px 14px 14px; margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ap-config legend { font-weight: 800; font-size: 12px; color: var(--cor-roxo); padding: 0 6px; }
+.ap-config label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--texto-cor); }
+.ap-config label.ap-check { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; }
+.ap-config label.ap-check input { flex: none; }
+.ap-config label.ap-faixa { flex-direction: row; align-items: center; gap: 6px; font-weight: 500; }
+.ap-config label.ap-faixa .ap-faixa-nome { flex: 1 1 auto; min-width: 0; }
+.ap-config label.ap-faixa .ap-faixa-de { width: 64px; flex: none; }
+.ap-config label.ap-faixa span { white-space: nowrap; }
+.ap-config small { font-weight: 400; color: var(--texto-secundario); font-size: 11px; }
+.ap-config textarea { resize: vertical; }
+#apTabEtapas td { padding: 4px 8px; }
+#apTabEtapas select { width: 100%; }
+.ap-config-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+@media (max-width: 700px) { .ap-duas-colunas { grid-template-columns: 1fr; } .ap-busca { max-width: none; } }
