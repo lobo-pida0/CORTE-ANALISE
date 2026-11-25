@@ -1460,3 +1460,11 @@ body.modo-sequencia #aba-kpi > .secao:not(#secaoEficienciaCostura):not(#secaoEfi
 #apTabEtapas select { width: 100%; }
 .ap-config-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
 @media (max-width: 700px) { .ap-duas-colunas { grid-template-columns: 1fr; } .ap-busca { max-width: none; } }
+.ap-modo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 0 16px 12px; }
+.ap-modo-rotulo { font-size: 11px; font-weight: 800; color: var(--texto-secundario); }
+.ap-modo button { border: 1px solid var(--borda-cor); background: var(--bg-painel); color: var(--texto-cor); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.ap-modo button.ativo { background: var(--cor-fila); border-color: var(--cor-fila); color: white; }
+.ap-modo button[data-modo="simulacao"].ativo { background: var(--cor-despacho); border-color: var(--cor-despacho); }
+.ap-modo button:disabled { opacity: 0.45; cursor: not-allowed; }
+.ap-modo-nota { padding: 10px 14px; margin-bottom: 12px; border-radius: 8px; background: var(--bg-card); border-left: 4px solid var(--cor-fila); font-size: 12.5px; line-height: 1.5; color: var(--texto-cor); }
+.ap-modo-nota.simulacao { border-left-color: var(--cor-despacho); }

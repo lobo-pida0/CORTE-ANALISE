@@ -5,7 +5,7 @@
 // Tabelas grandes mostram as primeiras linhas (LIMITE_LINHAS_AP) — a busca filtra tudo e o BAIXAR EXCEL leva tudo.
 // =========================================================================
 const LIMITE_LINHAS_AP = 400;
-const estadoAP = { carregado: false, pedidos: null, ocupacao: null, meta: {}, configNuvem: null, nuvem: '', resultado: null, visao: 'painel', busca: {}, posDe: 0, posAte: 19, consulta: { pedido: '', ciclos: null, res: null } };
+const estadoAP = { carregado: false, pedidos: null, ocupacao: null, saldo: null, modo: null, simulacao: null, pedidosEfetivos: null, meta: {}, configNuvem: null, nuvem: '', resultado: null, visao: 'painel', busca: {}, posDe: 0, posAte: 19, consulta: { pedido: '', ciclos: null, res: null } };
 
 // ---------- formatação ----------
 const fmtNAP = (v, dec = 0) => (v === '' || v === null || v === undefined || !isFinite(v)) ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -72,8 +72,8 @@ const cartaoAP = (rotulo, numero, detalhe, cor) => `<div class="card-resumo" sty
 async function abrirAbaAnalisePedidos() {
     if (!estadoAP.carregado) {
         $('apConteudo').innerHTML = '<div class="ap-vazio"><i class="fas fa-spinner fa-spin"></i> Carregando as bases salvas…</div>';
-        const [p, o, m, cn] = await Promise.all([lerBaseAnalisePedidos('pedidos'), lerBaseAnalisePedidos('ocupacao'), lerBaseAnalisePedidos('meta'), lerBaseAnalisePedidos('configNuvem')]);
-        estadoAP.pedidos = p; estadoAP.ocupacao = o; estadoAP.meta = m || {}; estadoAP.configNuvem = cn; estadoAP.carregado = true;
+        const [p, o, m, cn, sd] = await Promise.all([lerBaseAnalisePedidos('pedidos'), lerBaseAnalisePedidos('ocupacao'), lerBaseAnalisePedidos('meta'), lerBaseAnalisePedidos('configNuvem'), lerBaseAnalisePedidos('saldo')]);
+        estadoAP.pedidos = p; estadoAP.ocupacao = o; estadoAP.meta = m || {}; estadoAP.configNuvem = cn; estadoAP.saldo = sd; estadoAP.carregado = true;
     }
     recalcularAnalisePedidos();
     renderizarAnalisePedidos();
@@ -88,7 +88,7 @@ async function atualizarAnalisePedidosDaNuvem() {
     const r = await carregarAnalisePedidosDaNuvem({ publicadoEm: m.publicadoEm, basesEm: m.basesEm, temBases: !!(estadoAP.pedidos && estadoAP.ocupacao) });
     estadoAP.nuvem = r ? (r.vazio ? 'vazia' : 'ok') : 'erro';
     if (r && r.atualizou) {
-        if (r.pedidos) { estadoAP.pedidos = r.pedidos; estadoAP.ocupacao = r.ocupacao; }
+        if (r.pedidos) { estadoAP.pedidos = r.pedidos; estadoAP.ocupacao = r.ocupacao; estadoAP.saldo = r.saldo || null; }
         estadoAP.meta = r.meta; estadoAP.configNuvem = r.config || null;
         await salvarBaseAnalisePedidos('meta', estadoAP.meta); await salvarBaseAnalisePedidos('configNuvem', estadoAP.configNuvem);
         if (ehAdminAP() && r.config && !localStorage.getItem('configAnalisePedidos')) salvarConfigAnalisePedidos(r.config);
@@ -100,18 +100,24 @@ async function publicarAnalisePedidosAP(oQue) {
     if (!ehAdminAP()) return;
     estadoAP.nuvem = 'publicando'; $('apStatusImport').innerHTML = infoBasesAP();
     const cfg = obterConfigAnalisePedidos();
-    const r = await publicarAnalisePedidosNuvem(oQue, estadoAP.meta, estadoAP.pedidos, estadoAP.ocupacao, cfg);
+    const r = await publicarAnalisePedidosNuvem(oQue, estadoAP.meta, estadoAP.pedidos, estadoAP.ocupacao, cfg, estadoAP.saldo);
     if (r.ok) { estadoAP.meta = r.meta; estadoAP.configNuvem = cfg; estadoAP.nuvem = 'ok'; await salvarBaseAnalisePedidos('meta', estadoAP.meta); await salvarBaseAnalisePedidos('configNuvem', cfg); }
     else { estadoAP.nuvem = 'falhou'; showToast('<i class="fas fa-triangle-exclamation"></i> Salvo neste computador, mas a publicação na nuvem falhou — clique em PUBLICAR NA NUVEM para tentar de novo.', true, 7000); }
     $('apStatusImport').innerHTML = infoBasesAP();
 }
+// Modo 'simulacao' (saldo físico redistribuído pela Necessidade Fat.) só existe com o saldo importado; senão 'erp'.
+const modoEfetivoAP = () => (estadoAP.saldo && estadoAP.saldo.length && estadoAP.modo !== 'erp') ? 'simulacao' : 'erp';
 function recalcularAnalisePedidos() {
-    estadoAP.resultado = null;
+    estadoAP.resultado = null; estadoAP.simulacao = null; estadoAP.pedidosEfetivos = estadoAP.pedidos;
     if (!estadoAP.pedidos || !estadoAP.ocupacao) return;
     const cfg = { ...configAP(), posicaoDe: estadoAP.posDe, posicaoAte: estadoAP.posAte };
     const t0 = performance.now();
-    estadoAP.resultado = MotorAnalisePedidos.calcular(estadoAP.pedidos, estadoAP.ocupacao, cfg, hojeSerialAP());
-    registrarLogDebug('log', [`Análise de pedidos recalculada em ${Math.round(performance.now() - t0)} ms`]);
+    if (modoEfetivoAP() === 'simulacao') {
+        estadoAP.simulacao = MotorAnalisePedidos.simularEstoque(estadoAP.pedidos, estadoAP.saldo, cfg);
+        estadoAP.pedidosEfetivos = estadoAP.simulacao.pedidos;
+        estadoAP.resultado = MotorAnalisePedidos.calcular(estadoAP.pedidosEfetivos, estadoAP.ocupacao, { ...cfg, desempateERP: true }, hojeSerialAP());
+    } else estadoAP.resultado = MotorAnalisePedidos.calcular(estadoAP.pedidos, estadoAP.ocupacao, cfg, hojeSerialAP());
+    registrarLogDebug('log', [`Análise de pedidos (${modoEfetivoAP()}) recalculada em ${Math.round(performance.now() - t0)} ms`]);
 }
 async function importarAnalisePedidos(input) {
     if (!exigirAdmin('importar as bases da análise de pedidos')) { input.value = ''; return; }
@@ -124,7 +130,8 @@ async function importarAnalisePedidos(input) {
             const r = await lerArquivoAnalisePedidosAP(arq);
             if (r.pedidos) { estadoAP.pedidos = r.pedidos; estadoAP.meta.pedidos = { arquivo: arq.name, aba: r.abaPedidos, linhas: r.pedidos.length, em: agora }; await salvarBaseAnalisePedidos('pedidos', r.pedidos); msgs.push(`BASE PEDIDOS: ${fmtNAP(r.pedidos.length)} linhas`); }
             if (r.ocupacao) { estadoAP.ocupacao = r.ocupacao; estadoAP.meta.ocupacao = { arquivo: arq.name, aba: r.abaOcupacao, linhas: r.ocupacao.length, em: agora }; await salvarBaseAnalisePedidos('ocupacao', r.ocupacao); msgs.push(`BASE OCUPAÇÃO: ${fmtNAP(r.ocupacao.length)} linhas`); }
-            if (!r.pedidos && !r.ocupacao) {
+            if (r.saldo) { estadoAP.saldo = r.saldo; estadoAP.meta.saldo = { arquivo: arq.name, aba: r.abaSaldo, linhas: r.saldo.length, em: agora }; await salvarBaseAnalisePedidos('saldo', r.saldo); msgs.push(`SALDO FÍSICO: ${fmtNAP(r.saldo.length)} linhas`); estadoAP.modo = null; }
+            if (!r.pedidos && !r.ocupacao && !r.saldo) {
                 const falt = [...(r.erroPedidos || []), ...(r.erroOcupacao || [])].map(c => NOMES_CAMPOS_AP[c] || c);
                 msgs.push(`"${arq.name}": não reconheci nenhuma das bases${falt.length ? ' — faltou a coluna ' + falt.join(', ') : ''}.`);
             }
@@ -151,28 +158,38 @@ function infoBasesAP() {
         falhou: '<span style="color:var(--cor-alerta);">publicação falhou</span>', vazia: 'nada publicado ainda' }[estadoAP.nuvem]
         || (m.publicadoEm ? `publicado ${quando(m.publicadoEm)}${m.publicadoPor ? ' por ' + escHtml(m.publicadoPor) : ''}` : 'não publicado');
     const botaoPublicar = ehAdminAP() && estadoAP.pedidos && estadoAP.ocupacao ? ' <button class="btn" id="apBtnPublicar" style="padding:3px 9px; font-size:11px;"><i class="fas fa-cloud-arrow-up"></i> PUBLICAR NA NUVEM</button>' : '';
-    return `<div class="ap-bases"><span><strong>BASE PEDIDOS:</strong> ${f(m.pedidos)}</span><span><strong>BASE OCUPAÇÃO:</strong> ${f(m.ocupacao)}</span><span><strong>NUVEM:</strong> ${nuvem}${botaoPublicar}</span></div>`;
+    return `<div class="ap-bases"><span><strong>BASE PEDIDOS:</strong> ${f(m.pedidos)}</span><span><strong>BASE OCUPAÇÃO:</strong> ${f(m.ocupacao)}</span><span><strong>SALDO FÍSICO:</strong> ${m.saldo ? f(m.saldo) : '<em>não importado (opcional — habilita a simulação)</em>'}</span><span><strong>NUVEM:</strong> ${nuvem}${botaoPublicar}</span></div>`;
 }
 function renderizarAnalisePedidos() {
     const el = $('apConteudo'); if (!el) return;
+    const modo = modoEfetivoAP(), temSaldo = !!(estadoAP.saldo && estadoAP.saldo.length);
+    if (estadoAP.visao === 'comparacao' && modo !== 'simulacao') estadoAP.visao = 'painel';
     $$('.ap-nav button').forEach(b => b.classList.toggle('ativo', b.dataset.visao === estadoAP.visao));
+    if ($('apNavComparacao')) $('apNavComparacao').style.display = modo === 'simulacao' ? '' : 'none';
     $('apStatusImport').innerHTML = infoBasesAP();
+    if ($('apModo')) $('apModo').innerHTML = `<span class="ap-modo-rotulo">BASE DO CÁLCULO:</span>
+        <button data-modo="simulacao" class="${modo === 'simulacao' ? 'ativo' : ''}"${temSaldo ? '' : ' disabled title="Importe o saldo físico (relatório POR_REFERENCIA_PRODUTO) para habilitar"'}><i class="fas fa-flask"></i> SIMULAÇÃO: saldo físico por Necessidade Fat.</button>
+        <button data-modo="erp" class="${modo === 'erp' ? 'ativo' : ''}"><i class="fas fa-building"></i> ERP: falta de estoque do ERP (planilha original)</button>`;
     if (estadoAP.visao === 'config') { el.innerHTML = htmlConfigAP(); return; }
     const R = estadoAP.resultado;
     if (!R) {
         el.innerHTML = ehAdminAP()
             ? `<div class="ap-vazio"><i class="fas fa-file-import" style="font-size:28px; color:var(--cor-roxo);"></i>
                 <p><strong>Importe as duas bases para começar.</strong></p>
-                <p>Pode ser a própria <strong>PLANILHA_ANALISE_PEDIDOS.xlsx</strong> (o sistema pega as abas BASE PEDIDOS e BASE OCUPAÇÃO) ou os dois relatórios separados — selecione os dois arquivos de uma vez. Ao importar, a análise é publicada na nuvem para quem tem acesso.</p>
-                <p style="color:var(--texto-secundario); font-size:12px;">BASE PEDIDOS precisa das colunas Pedido, Situação, Referência, Cor, Tam, Pendente e Falta Estoque. BASE OCUPAÇÃO precisa de Ciclo, OP, Referência, Cor, Tam, Qt OP Local e Descrição Local.</p></div>`
+                <p>Pode ser a própria <strong>PLANILHA_ANALISE_PEDIDOS.xlsx</strong> (o sistema pega as abas BASE PEDIDOS e BASE OCUPAÇÃO) ou os dois relatórios separados — selecione os dois arquivos de uma vez. Junto pode ir o <strong>saldo físico</strong> (relatório POR_REFERENCIA_PRODUTO), que habilita a simulação por Necessidade de Faturamento. Ao importar, a análise é publicada na nuvem para quem tem acesso.</p>
+                <p style="color:var(--texto-secundario); font-size:12px;">BASE PEDIDOS precisa das colunas Pedido, Situação, Referência, Cor, Tam, Pendente e Falta Estoque. BASE OCUPAÇÃO precisa de Ciclo, OP, Referência, Cor, Tam, Qt OP Local e Descrição Local. SALDO precisa de Produto e Estoque Físico (exporte com "in_matprima é F ou T" para vir a revenda).</p></div>`
             : `<div class="ap-vazio"><i class="fas fa-cloud" style="font-size:28px; color:var(--cor-roxo);"></i>
                 <p><strong>${estadoAP.nuvem === 'verificando' ? 'Buscando a análise publicada…' : (estadoAP.nuvem === 'erro' ? 'Não consegui buscar a análise na nuvem.' : 'O admin ainda não publicou a análise de pedidos.')}</strong></p>
                 <p style="color:var(--texto-secundario);">${estadoAP.nuvem === 'erro' ? 'Confira a internet e abra a aba de novo.' : 'Assim que ele importar as bases, ela aparece aqui.'}</p></div>`;
         return;
     }
     const aviso = R.locaisSemEtapa.length && ehAdminAP() ? `<div class="ap-alerta"><i class="fas fa-triangle-exclamation"></i> ${R.locaisSemEtapa.length} local(is) da BASE OCUPAÇÃO sem etapa cadastrada (contam como posição 0, gastos por último): ${escHtml(R.locaisSemEtapa.slice(0, 6).join(', '))}${R.locaisSemEtapa.length > 6 ? '…' : ''} — ajuste em <a href="#" data-ir-visao="config">CONFIGURAÇÃO</a>.</div>` : '';
-    const html = { painel: htmlPainelAP, alocacao: htmlAlocacaoAP, faltas: htmlFaltasAP, ops: htmlOPsAP, consulta: htmlConsultaAP }[estadoAP.visao] || htmlPainelAP;
-    el.innerHTML = aviso + html(R);
+    const html = { painel: htmlPainelAP, alocacao: htmlAlocacaoAP, faltas: htmlFaltasAP, ops: htmlOPsAP, consulta: htmlConsultaAP, comparacao: htmlComparacaoAP }[estadoAP.visao] || htmlPainelAP;
+    const sim = estadoAP.simulacao;
+    const notaModo = modo === 'simulacao'
+        ? `<div class="ap-modo-nota simulacao"><i class="fas fa-flask"></i> <strong>Simulação:</strong> o saldo físico (todas as empresas somadas) foi redistribuído entre <strong>todos</strong> os pedidos pendentes pela <strong>Necessidade Fat.</strong> (ou Prev. Fat.; empate pela ordem do ERP), ignorando o "Fecha Físico" do ERP. O que continua faltando vai para as OPs na mesma ordem. ${sim.resumo.skusEstimados ? `${fmtNAP(sim.resumo.skusEstimados)} produto(s) fora do relatório de saldo usaram o Fecha Físico do ERP como estimativa.` : ''} <a href="#" data-ir-visao="comparacao">Ver o que muda em relação ao ERP →</a></div>`
+        : `<div class="ap-modo-nota"><i class="fas fa-building"></i> <strong>ERP:</strong> falta de estoque calculada pelo ERP (estoque reservado pela Chegada → Prioridade → Inclusão), OPs distribuídas pela Necessidade Fat. — igual à planilha original.</div>`;
+    el.innerHTML = notaModo + aviso + html(R);
     Object.keys(tabelasAP).forEach(id => { if ($('apTab-' + id)) desenharTabelaAP(id); });
 }
 
@@ -268,7 +285,7 @@ function htmlConsultaAP() {
     if (c.ciclos === null) c.ciclos = cfg.ciclosPreferenciais;
     let res = '';
     if (c.pedido) {
-        const r = MotorAnalisePedidos.consultarPedido(estadoAP.pedidos, estadoAP.ocupacao, c.pedido, c.ciclos, cfg);
+        const r = MotorAnalisePedidos.consultarPedido(estadoAP.pedidosEfetivos || estadoAP.pedidos, estadoAP.ocupacao, c.pedido, c.ciclos, cfg);
         if (!r.encontrado) res = `<div class="ap-vazio">Pedido <strong>${escHtml(c.pedido)}</strong> não encontrado na BASE PEDIDOS.</div>`;
         else {
             registrarTabelaAP('cItens', [
@@ -301,6 +318,33 @@ function htmlConsultaAP() {
             <label>CICLOS PREFERENCIAIS <input type="text" id="apConsultaCiclos" value="${escHtml(c.ciclos)}" style="width:120px;" title="Separados por espaço — o primeiro tem prioridade"></label>
             <button class="btn btn-acao" id="apBtnConsultar"><i class="fas fa-magnifying-glass"></i> CONSULTAR</button>
         </div>${res}`;
+}
+
+// ---------- SIMULAÇÃO × ERP ----------
+function htmlComparacaoAP() {
+    const s = estadoAP.simulacao; if (!s) return '';
+    const r = s.resumo;
+    const lista = s.comparacao.filter(c => c.mudanca !== 'Igual');
+    const ordemMud = { 'Passa a fechar': 0, 'Deixa de fechar': 1, 'Ganha peças': 2, 'Perde peças': 3 };
+    const ord = [...lista].sort((a, b) => (ordemMud[a.mudanca] - ordemMud[b.mudanca]) || ((a.prev || 99999) - (b.prev || 99999)));
+    const corMud = { 'Passa a fechar': 'var(--cor-despacho)', 'Ganha peças': '#4C8A6A', 'Deixa de fechar': 'var(--cor-alerta)', 'Perde peças': '#B8862A' };
+    registrarTabelaAP('comparacao', [
+        { t: 'Mudança', v: c => c.mudanca, h: c => `<span class="pill" style="background:${corMud[c.mudanca]}; color:white;">${escHtml(c.mudanca)}</span>` },
+        { t: 'Pedido', v: c => c.pedido, h: c => linkPedidoAP(c.pedido) }, { t: 'Cliente (Coligador)', v: c => c.cliente }, { t: 'Situação', v: c => c.situacao },
+        { t: 'Nec. Fat. (ou Prev.)', v: c => c.prev, f: 'data' }, { t: 'Chegada', v: c => c.chegada, f: 'data' }, { t: 'Prior', v: c => c.prior, num: 1 },
+        { t: 'Peças pendentes', v: c => c.pendente, f: 'n', num: 1 }, { t: 'Fecha no ERP', v: c => c.erpFecha, f: 'n', num: 1 }, { t: 'Fecha na simulação', v: c => c.simFecha, f: 'n', num: 1 },
+        { t: '% ERP', v: c => c.erpPct, f: 'pct', num: 1 }, { t: '% simulação', v: c => c.simPct, f: 'pct', num: 1 }, { t: 'Diferença (peças)', v: c => c.diferenca, f: 'n', num: 1 },
+        { t: 'Itens que mudam', v: c => c.itensMudam, num: 1 }, { t: 'R$ pendente', v: c => c.rsPendente, f: 'rs', num: 1 }
+    ], ord, 'Simulação x ERP');
+    return `<div class="ap-cartoes">
+            ${cartaoAP('PASSAM A FECHAR 100%', fmtNAP(r.passamAFechar), 'pedidos mais urgentes que o ERP não fecha hoje', 'var(--cor-despacho)')}
+            ${cartaoAP('DEIXAM DE FECHAR', fmtNAP(r.deixamDeFechar), 'cedem peças para pedidos mais urgentes', 'var(--cor-alerta)')}
+            ${cartaoAP('GANHAM / PERDEM PEÇAS', `${fmtNAP(r.ganhamPecas)} / ${fmtNAP(r.perdemPecas)}`, 'pedidos parciais que mudam de quantidade', '#B8862A')}
+            ${cartaoAP('PEÇAS QUE MUDAM DE PEDIDO', fmtNAP(r.pecasRedistribuidas), `estoque usado: ${fmtNAP(r.fechaSim)} (ERP: ${fmtNAP(r.fechaERP)})`, 'var(--cor-roxo)')}
+        </div>
+        <p class="ap-nota">Esta lista é o que o ERP precisaria fazer diferente para atender pela urgência: os pedidos "Passa a fechar" deveriam receber o estoque que hoje o ERP reserva para pedidos que chegaram antes, mas têm necessidade de faturamento mais distante.
+        A soma usada pode passar um pouco do ERP porque aqui o estoque das empresas é somado (dá pra transferir), e o ERP reserva por empresa.</p>
+        ${blocoTabelaAP('comparacao', 'PEDIDOS QUE MUDAM — SIMULAÇÃO × ERP', tabelasAP.comparacao.cols, ord, 'var(--cor-roxo)')}`;
 }
 
 // ---------- configuração ----------
@@ -365,6 +409,8 @@ function ligarEventosAnalisePedidos() {
     raiz.addEventListener('click', e => {
         const nav = e.target.closest('.ap-nav button');
         if (nav) { estadoAP.visao = nav.dataset.visao; renderizarAnalisePedidos(); return; }
+        const md = e.target.closest('#apModo button[data-modo]');
+        if (md && !md.disabled) { estadoAP.modo = md.dataset.modo; recalcularAnalisePedidos(); renderizarAnalisePedidos(); return; }
         const ir = e.target.closest('[data-ir-visao]'); if (ir) { e.preventDefault(); estadoAP.visao = ir.dataset.irVisao; renderizarAnalisePedidos(); return; }
         const lp = e.target.closest('.ap-link-pedido');
         if (lp) { e.preventDefault(); estadoAP.consulta.pedido = lp.dataset.pedido; estadoAP.visao = 'consulta'; renderizarAnalisePedidos(); window.scrollTo({ top: 0 }); return; }

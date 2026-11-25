@@ -12,7 +12,7 @@ const normCabAP = s => String(s === undefined || s === null ? '' : s).normalize(
     .toUpperCase().replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
 
 const COLUNAS_PEDIDOS_AP = {
-    pedido: ['PEDIDO'], nome: ['NOME'], coligador: ['COLIGADOR'], situacao: ['SITUACAO'], prior: ['PRIOR'], chegada: ['CHEGADA'],
+    pedido: ['PEDIDO'], nome: ['NOME'], coligador: ['COLIGADOR'], situacao: ['SITUACAO'], prior: ['PRIOR'], chegada: ['CHEGADA'], inclusao: ['INCLUSAO'],
     prevFat: ['PREV FAT'], necFat: ['NECESSIDADE FAT'], ref: ['REFERENCIA'], desc: ['DESCRICAO'], produto: ['PRODUTO'], cor: ['COR'], tam: ['TAM'],
     rsPendente: ['R$ PENDENTE'], pendente: ['PENDENTE'], fechaFisico: ['FECHA FISICO'], faltaEstoque: ['FALTA ESTOQUE'], restricao: ['RESTRICAO DE FATURAMENTO', 'RESTRICAO FATURAMENTO']
 };
@@ -23,8 +23,11 @@ const COLUNAS_OCUPACAO_AP = {
 };
 const OBRIGATORIAS_OCUPACAO_AP = ['ciclo', 'op', 'ref', 'tam', 'qtd', 'local'];
 const CAMPOS_TEXTO_AP = ['pedido', 'nome', 'coligador', 'situacao', 'ref', 'desc', 'produto', 'cor', 'tam', 'restricao', 'empresa', 'ciclo', 'op', 'descRef', 'local'];
-const CAMPOS_DATA_AP = ['chegada', 'prevFat', 'entrada'];
-const NOMES_CAMPOS_AP = { pedido: 'Pedido', situacao: 'Situação', ref: 'Referência', tam: 'Tam', pendente: 'Pendente', faltaEstoque: 'Falta Estoque', ciclo: 'Ciclo', op: 'OP', qtd: 'Qt OP Local', local: 'Descrição Local' };
+const CAMPOS_DATA_AP = ['chegada', 'prevFat', 'entrada', 'inclusao'];
+// SALDO FÍSICO (relatório POR_REFERENCIA_PRODUTO, com "in_matprima é F ou T" pra trazer as peças de revenda) — por SKU
+const COLUNAS_SALDO_AP = { produto: ['PRODUTO'], ref: ['REFERENCIA'], desc: ['DESCRICAO'], estoque: ['ESTOQUE FISICO'] };
+const OBRIGATORIAS_SALDO_AP = ['produto', 'estoque'];
+const NOMES_CAMPOS_AP = { produto: 'Produto', estoque: 'Estoque Físico', pedido: 'Pedido', situacao: 'Situação', ref: 'Referência', tam: 'Tam', pendente: 'Pendente', faltaEstoque: 'Falta Estoque', ciclo: 'Ciclo', op: 'OP', qtd: 'Qt OP Local', local: 'Descrição Local' };
 
 // Acha a linha de cabeçalho (nas 15 primeiras) e o índice de cada campo. null se não for essa base.
 function mapearColunasAP(linhas, mapa, obrigatorias) {
@@ -59,7 +62,7 @@ function serialDeTextoAP(s) {
     return Math.round((Date.UTC(+m[3], +m[2] - 1, +m[1]) - Date.UTC(1899, 11, 30)) / 86400000);
 }
 
-// Lê um arquivo e devolve { pedidos?, ocupacao? } com o que achou nele.
+// Lê um arquivo e devolve { pedidos?, ocupacao?, saldo? } com o que achou nele.
 async function lerArquivoAnalisePedidosAP(arquivo) {
     const buf = await arquivo.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array', cellDates: false, cellFormula: false, cellHTML: false, cellStyles: false, raw: /\.csv$/i.test(arquivo.name) ? true : undefined });   // CSV: lê tudo como texto (senão 26/11 vira data americana)
@@ -69,7 +72,7 @@ async function lerArquivoAnalisePedidosAP(arquivo) {
     const porNome = n => nomes.find(x => normCabAP(x) === n);
     const ordem = [porNome('BASE PEDIDOS'), porNome('BASE OCUPACAO'), ...nomes].filter((x, i, a) => x && a.indexOf(x) === i);
     for (const nome of ordem) {
-        if (achado.pedidos && achado.ocupacao) break;
+        if (achado.pedidos && achado.ocupacao && achado.saldo) break;
         const ws = wb.Sheets[nome]; if (!ws || !ws['!ref']) continue;
         const linhas = ler(ws);
         if (!achado.pedidos) {
@@ -81,6 +84,14 @@ async function lerArquivoAnalisePedidosAP(arquivo) {
             const m = mapearColunasAP(linhas, COLUNAS_OCUPACAO_AP, OBRIGATORIAS_OCUPACAO_AP);
             if (m && !m.faltando.length) { achado.ocupacao = converterLinhasAP(linhas, m).filter(l => l.ref || l.ciclo || l.op); achado.abaOcupacao = nome; continue; }
             if (m && m.faltando.length) achado.erroOcupacao = m.faltando;
+        }
+        if (!achado.saldo) {
+            const m = mapearColunasAP(linhas, COLUNAS_SALDO_AP, OBRIGATORIAS_SALDO_AP);
+            if (m && !m.faltando.length && m.idx.produto !== undefined && m.idx.estoque !== undefined) {
+                achado.saldo = converterLinhasAP(linhas, m).filter(l => l.produto && normCabAP(l.ref) !== 'TOTAL' && !/^FILTROS/i.test(String(l.ref || '')));
+                achado.saldo.forEach(l => { l.estoque = MotorAnalisePedidos.num(l.estoque); });
+                achado.abaSaldo = nome;
+            }
         }
     }
     return achado;
@@ -122,7 +133,7 @@ function salvarConfigAnalisePedidos(cfg) { localStorage.setItem('configAnalisePe
 // Só o ADMIN publica (as duas bases compactadas + a configuração). Quem tem a liberação individual
 // (papeis_usuario.ve_analise_pedidos — hoje Luis e Raquel) só lê; a regra está no banco (RLS), não só na tela.
 // As bases vão em formato enxuto (lista de campos + linhas) e compactadas com gzip: ~0,5 MB no total.
-const CAMPOS_NUVEM_PEDIDOS_AP = Object.keys(COLUNAS_PEDIDOS_AP), CAMPOS_NUVEM_OCUPACAO_AP = Object.keys(COLUNAS_OCUPACAO_AP);
+const CAMPOS_NUVEM_PEDIDOS_AP = Object.keys(COLUNAS_PEDIDOS_AP), CAMPOS_NUVEM_OCUPACAO_AP = Object.keys(COLUNAS_OCUPACAO_AP), CAMPOS_NUVEM_SALDO_AP = ['produto', 'estoque'];
 async function compactarBaseAP(linhas, campos) {
     return comprimirTextoBackup(JSON.stringify({ campos, linhas: linhas.map(l => campos.map(c => l[c] === undefined ? null : l[c])) }));
 }
@@ -131,12 +142,15 @@ async function descompactarBaseAP(texto) {
     return linhas.map(v => { const o = {}; campos.forEach((c, i) => { if (v[i] !== null) o[c] = v[i]; }); return o; });
 }
 // oQue: 'tudo' (bases + config) ou 'config'
-async function publicarAnalisePedidosNuvem(oQue, meta, pedidos, ocupacao, config) {
+async function publicarAnalisePedidosNuvem(oQue, meta, pedidos, ocupacao, config, saldo) {
     if (!supabaseClient || !sessaoAdminAtual || papelUsuarioAtual !== 'admin') return { ok: false, motivo: 'só o admin publica' };
     try {
         const agora = new Date().toISOString(), por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0];
         const linha = { id: 'atual', config, publicado_em: agora, publicado_por: por, meta: { ...meta, publicadoEm: agora } };
-        if (oQue === 'tudo') { linha.pedidos = await compactarBaseAP(pedidos, CAMPOS_NUVEM_PEDIDOS_AP); linha.ocupacao = await compactarBaseAP(ocupacao, CAMPOS_NUVEM_OCUPACAO_AP); }
+        if (oQue === 'tudo') {
+            linha.pedidos = await compactarBaseAP(pedidos, CAMPOS_NUVEM_PEDIDOS_AP); linha.ocupacao = await compactarBaseAP(ocupacao, CAMPOS_NUVEM_OCUPACAO_AP);
+            linha.saldo = saldo && saldo.length ? await compactarBaseAP(saldo, CAMPOS_NUVEM_SALDO_AP) : null;
+        }
         const { error } = oQue === 'tudo'
             ? await supabaseClient.from('analise_pedidos').upsert(linha)
             : await supabaseClient.from('analise_pedidos').update({ config, publicado_em: agora, publicado_por: por, meta: linha.meta }).eq('id', 'atual');
@@ -159,12 +173,13 @@ async function carregarAnalisePedidosDaNuvem(local) {
         const meta = { ...(cab.meta || {}), publicadoEm: cab.publicado_em, publicadoPor: cab.publicado_por };
         if (local.publicadoEm && new Date(local.publicadoEm) >= new Date(cab.publicado_em)) return { atualizou: false, config: cab.config, meta };
         if (local.temBases && meta.basesEm && local.basesEm === meta.basesEm) return { atualizou: true, config: cab.config, meta };
-        const { data, error } = await supabaseClient.from('analise_pedidos').select('pedidos, ocupacao').eq('id', 'atual').single();
+        const { data, error } = await supabaseClient.from('analise_pedidos').select('pedidos, ocupacao, saldo').eq('id', 'atual').single();
         if (error) throw error;
         if (!data.pedidos || !data.ocupacao) return { atualizou: false, config: cab.config, meta };
         const pedidos = await descompactarBaseAP(data.pedidos), ocupacao = await descompactarBaseAP(data.ocupacao);
-        await salvarBaseAnalisePedidos('pedidos', pedidos); await salvarBaseAnalisePedidos('ocupacao', ocupacao);
-        return { atualizou: true, pedidos, ocupacao, config: cab.config, meta };
+        const saldo = data.saldo ? await descompactarBaseAP(data.saldo) : null;
+        await salvarBaseAnalisePedidos('pedidos', pedidos); await salvarBaseAnalisePedidos('ocupacao', ocupacao); await salvarBaseAnalisePedidos('saldo', saldo);
+        return { atualizou: true, pedidos, ocupacao, saldo, config: cab.config, meta };
     } catch (e) {
         registrarLogDebug('error', ['Falha ao carregar a análise de pedidos da nuvem: ' + e.message]);
         return null;

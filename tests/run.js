@@ -728,6 +728,25 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('análise de pedidos: sem os bloqueados, as OPs vão pros liberados', (await resumoAP()).linhas, [['900004', 0, 'Sem OP', ''], ['900002', 4, 'Coberto', '211-200-4'], ['900001', 5, 'Coberto', '211-100-5']]);
     igual('análise de pedidos: consulta mostra todas as OPs do item (sem alocação)', await p.evaluate(() => { const r = MotorAnalisePedidos.consultarPedido(estadoAP.pedidos, estadoAP.ocupacao, '900001', '211 811'); return [r.encontrado, r.cliente, r.itens[0].emOPs, r.itens[0].status, r.resumo.map(x => x.op)]; }), [true, 'CLIENTE UM', 110, 'Fecha', ['100', '200', '300', '400']]);
     await p.evaluate(() => { localStorage.removeItem('configAnalisePedidos'); for (const v of ['painel', 'alocacao', 'faltas', 'ops', 'consulta', 'config']) { estadoAP.visao = v; renderizarAnalisePedidos(); } estadoAP.visao = 'painel'; });
+    igual('simulação: saldo físico vai primeiro pro mais urgente (Nec. Fat.), não pra quem chegou antes', await p.evaluate(() => {
+      const s = d => Math.round((Date.UTC(2026, d[1] - 1, d[0]) - Date.UTC(1899, 11, 30)) / 864e5);
+      const L = (pedido, produto, pend, fecha, prev, nec, cheg, sit) => ({ pedido, produto, ref: 'R' + produto, cor: 'AZ', tam: 'M', pendente: pend, fechaFisico: fecha, faltaEstoque: pend - fecha, prevFat: s(prev), necFat: nec, chegada: s(cheg), inclusao: s(cheg), prior: 99, situacao: sit || 'Em andamento', coligador: 'C' + pedido, rsPendente: pend * 10 });
+      const peds = [L('1', 'S1', 5, 5, [10, 12], null, [1, 9]), L('2', 'S1', 4, 0, [20, 12], '15/11/2026', [1, 10]), L('3', 'S2', 3, 2, [1, 12], null, [1, 9], 'Bloqueado'), L('4', 'S1', 2, 0, [30, 12], null, [2, 10])];
+      const r = MotorAnalisePedidos.simularEstoque(peds, [{ produto: 'S1', estoque: 6 }], {});
+      return { linhas: r.pedidos.map(l => [l.pedido, l.fechaFisico, l.faltaEstoque, l.erpFecha]), mudancas: r.comparacao.map(c => [c.pedido, c.mudanca]), estimados: r.estimados, usado: r.resumo.fechaSim };
+    }), { linhas: [['1', 2, 3, 5], ['2', 4, 0, 0], ['3', 2, 1, 2], ['4', 0, 2, 0]], mudancas: [['1', 'Deixa de fechar'], ['2', 'Passa a fechar'], ['3', 'Igual'], ['4', 'Igual']], estimados: ['S2'], usado: 8 });
+    {
+      const wbS = new ExcelJSnode.Workbook(), ws = wbS.addWorksheet('Export');
+      ws.addRow(['Referência', 'Produto', 'Descrição', 'Qt Vendas', '% Partic', 'Média Vendas', 'Estoque Minimo', 'Estoque Físico']);
+      ws.addRow(['REFA', '9', 'DESC REFA', 10, 0.1, 1, 0, 7]); ws.addRow(['REFB', '8', 'DESC REFB', 5, 0.1, 1, 0, 1]); ws.addRow(['Total', '', '', 15, 1, 2, 0, 8]); ws.addRow([]); ws.addRow(['Filtros aplicados:\nTipo Saldo é 1 - FISICO']);
+      const arqS = path.join(os.tmpdir(), 'corte-pro-saldo.xlsx'); await wbS.xlsx.writeFile(arqS);
+      await p.setInputFiles('#inputAnalisePedidos', arqS);
+      await p.waitForFunction(() => estadoAP.simulacao, null, { timeout: 15000 });
+      igual('simulação: importa o saldo (sem a linha Total/filtros) e liga a simulação sozinho', await p.evaluate(() => [estadoAP.saldo.map(s => [s.produto, s.estoque]), modoEfetivoAP(), getComputedStyle($('apNavComparacao')).display !== 'none']), [[['9', 7], ['8', 1]], 'simulacao', true]);
+      await p.evaluate(() => { estadoAP.visao = 'comparacao'; renderizarAnalisePedidos(); $('apModo').querySelector('[data-modo=erp]').click(); });
+      igual('simulação: voltar pro modo ERP esconde a comparação e usa a falta do ERP', await p.evaluate(() => [modoEfetivoAP(), estadoAP.visao, estadoAP.resultado.indicadores.pecasEmFalta]), ['erp', 'painel', 14]);
+      await p.evaluate(() => { estadoAP.modo = null; recalcularAnalisePedidos(); });
+    }
     igual('análise de pedidos: só admin e quem tem a liberação individual veem a aba', await p.evaluate(() => {
       const r = [], velhoP = papelUsuarioAtual, velhoV = veAnalisePedidosAtual;
       for (const [papel, libera] of [['admin', false], ['usuario', true], ['usuario', false], ['sequencia', true], ['sequencia', false], ['tv', true]]) { papelUsuarioAtual = papel; veAnalisePedidosAtual = papel === 'admin' || libera; r.push(abaLiberadaAgora('aba-analise-pedidos')); }
@@ -751,10 +770,11 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       // admin muda a config e publica só a config: quem vê recalcula sem baixar as bases de novo
       papelUsuarioAtual = 'admin'; const c = obterConfigAnalisePedidos(); c.incluirBloqueados = false; salvarConfigAnalisePedidos(c);
       await new Promise(r => setTimeout(r, 5)); await publicarAnalisePedidosAP('config');
+      recalcularAnalisePedidos(); const doAdmin = JSON.stringify(estadoAP.resultado.alocacao);
       papelUsuarioAtual = 'usuario'; Object.assign(estadoAP, computadorDoUsuario); const basesAntes = estadoAP.pedidos; await atualizarAnalisePedidosDaNuvem();
-      const r = [publicado, igualAoAdmin, estadoAP.pedidos === basesAntes, estadoAP.resultado.alocacao.length];
+      const r = [publicado, igualAoAdmin, estadoAP.pedidos === basesAntes, JSON.stringify(estadoAP.resultado.alocacao) === doAdmin && !!(estadoAP.saldo && estadoAP.saldo.length) && modoEfetivoAP() === 'simulacao'];
       localStorage.removeItem('configAnalisePedidos'); supabaseClient = velho; sessaoAdminAtual = velhaS; papelUsuarioAtual = velhoP; return r;
-    }), [['ok', true, 'admin', true], true, true, 3]);
+    }), [['ok', true, 'admin', true], true, true, true]);
   }
 
   // ---------- 10d. Login obrigatório e papel TV ----------

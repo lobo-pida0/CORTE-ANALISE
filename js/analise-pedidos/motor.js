@@ -13,6 +13,13 @@
 // i ocupa o intervalo (L, K] da chave e a oferta j ocupa (AB, AA]; o que se sobrepõe é o que a OP j dá
 // ao pedido i. Assim nenhuma peça é contada duas vezes.
 //
+// DOIS MODOS (a tela escolhe):
+//   • ERP (planilha original): a falta de cada linha é a "Falta Estoque" que o ERP calculou — o ERP reserva o estoque
+//     pela Chegada → Prior → Inclusão. Exatamente a lógica da planilha (validada linha a linha contra o Excel).
+//   • SIMULAÇÃO (simularEstoque + calcular): ignora o Fecha Físico/Falta Estoque do ERP e redistribui o SALDO FÍSICO
+//     (relatório POR_REFERENCIA_PRODUTO, por SKU, todas as empresas somadas — dá pra transferir entre elas) entre TODOS
+//     os pedidos pendentes pela Necessidade Fat. (ou Prev. Fat.); o que continuar faltando vai pras OPs na mesma fila.
+//
 // Datas: número de série do Excel (dias desde 30/12/1899), pra conta de dias ficar igual à planilha.
 // Funciona no navegador (variável global MotorAnalisePedidos) e no Node (module.exports) — os testes
 // comparam este motor com os resultados que o próprio Excel calculou.
@@ -125,6 +132,64 @@ const MotorAnalisePedidos = (() => {
         posicaoDe: 0, posicaoAte: 19
     };
 
+    const criteriosERP = ls => [[ls.map(d => d.chegada > 0 ? d.chegada : 99999), 1], [ls.map(d => d.prior), 1], [ls.map(d => d.inclusao > 0 ? d.inclusao : 99999), 1], [ls.map(d => d.pedido), 1]];
+
+    // =====================================================================
+    // SIMULAÇÃO DO ESTOQUE — redistribui o saldo físico pela Necessidade Fat.
+    // Devolve uma CÓPIA dos pedidos com fechaFisico/faltaEstoque simulados (e os do ERP guardados em erpFecha/erpFalta),
+    // pronta pra entrar no calcular() — assim o painel, a alocação de OPs, as faltas e a consulta passam a refletir a simulação.
+    // saldo: [{ produto, estoque }]. SKU que não vier no saldo usa a soma do Fecha Físico do ERP como estimativa.
+    // =====================================================================
+    function simularEstoque(pedidos, saldo, cfgEntrada) {
+        const cfg = { ...CONFIG_PADRAO, ...(cfgEntrada || {}) };
+        const estoque = new Map();
+        (saldo || []).forEach(s => { const k = up(s.produto); if (k) estoque.set(k, (estoque.get(k) || 0) + num(s.estoque)); });
+        const chaveSKU = l => txt(l.produto) !== '' ? up(l.produto) : '';
+        const estimados = new Map();   // SKU fora do saldo → estoque estimado (Fecha Físico do ERP)
+        pedidos.forEach(l => { const k = chaveSKU(l); if (k && !estoque.has(k)) estimados.set(k, (estimados.get(k) || 0) + num(l.fechaFisico)); });
+        const disponivel = new Map([...estoque, ...estimados]);
+        const total = new Map(disponivel);
+        const copia = pedidos.map(l => ({ ...l, erpFecha: num(l.fechaFisico), erpFalta: num(l.faltaEstoque) }));
+        const fila = [];
+        copia.forEach((l, i) => {
+            const pend = num(l.pendente);
+            l.fechaFisico = 0; l.faltaEstoque = pend > 0 ? pend : 0;
+            if (txt(l.pedido) === '' || !(pend > 0)) return;
+            if (eqi(l.situacao, 'Bloqueado') && !cfg.incluirBloqueados) return;
+            fila.push({ i, prev: dataDoPedido(l), chegada: num(l.chegada), prior: num(l.prior), inclusao: num(l.inclusao), pedido: l.pedido });
+        });
+        const ord = ordenarIndices(fila.length, [[fila.map(f => f.prev > 0 ? f.prev : 99999), 1], ...criteriosERP(fila)]);
+        for (const j of ord) {
+            const l = copia[fila[j].i], k = chaveSKU(l), pend = num(l.pendente);
+            const tem = k ? (disponivel.get(k) || 0) : 0;
+            const da = Math.max(0, Math.min(pend, tem));
+            l.fechaFisico = da; l.faltaEstoque = pend - da;
+            if (k) disponivel.set(k, tem - da);
+        }
+        // comparação ERP × simulação, por pedido
+        const porPed = new Map(), ordemPed = [];
+        copia.forEach(l => {
+            const p = txt(l.pedido); if (!p) return;
+            let a = porPed.get(up(p)); if (!a) { a = { pedido: l.pedido, l, pend: 0, erp: 0, sim: 0, itensMudam: 0, rs: 0 }; porPed.set(up(p), a); ordemPed.push(up(p)); }
+            const pend = num(l.pendente); a.pend += pend; a.erp += l.erpFecha; a.sim += l.fechaFisico; a.rs += num(l.rsPendente);
+            if (Math.abs(l.erpFecha - l.fechaFisico) > 1e-9) a.itensMudam++;
+        });
+        const comparacao = ordemPed.map(k => porPed.get(k)).filter(a => a.pend > 0).map(a => {
+            const erp100 = a.erp >= a.pend - 1e-9, sim100 = a.sim >= a.pend - 1e-9, dif = a.sim - a.erp;
+            const mudanca = erp100 === sim100 ? (Math.abs(dif) < 1e-9 ? 'Igual' : (dif > 0 ? 'Ganha peças' : 'Perde peças')) : (sim100 ? 'Passa a fechar' : 'Deixa de fechar');
+            return { pedido: a.pedido, cliente: a.l.coligador ?? '', situacao: a.l.situacao, chegada: num(a.l.chegada) || '', prior: a.l.prior, prev: dataDoPedido(a.l),
+                pendente: a.pend, erpFecha: a.erp, simFecha: a.sim, erpPct: a.erp / a.pend, simPct: a.sim / a.pend, diferenca: dif, itensMudam: a.itensMudam, mudanca, rsPendente: a.rs };
+        });
+        const conta = m => comparacao.filter(c => c.mudanca === m).length;
+        let estoqueUsado = 0, estoqueTotal = 0; for (const [k, v] of total) { estoqueTotal += v; estoqueUsado += v - (disponivel.get(k) || 0); }
+        return {
+            pedidos: copia, comparacao, estimados: [...estimados.keys()],
+            resumo: { passamAFechar: conta('Passa a fechar'), deixamDeFechar: conta('Deixa de fechar'), ganhamPecas: conta('Ganha peças'), perdemPecas: conta('Perde peças'),
+                pecasRedistribuidas: comparacao.reduce((s, c) => s + (c.diferenca > 0 ? c.diferenca : 0), 0), skusEstimados: estimados.size, estoqueUsado, estoqueTotal,
+                fechaERP: copia.reduce((s, l) => s + (txt(l.pedido) ? l.erpFecha : 0), 0), fechaSim: copia.reduce((s, l) => s + (txt(l.pedido) ? l.fechaFisico : 0), 0) }   // sem a linha "Total" do relatório
+        };
+    }
+
     function chave(ref, cor, tam, considerarCor) { return up(ref) + '|' + (considerarCor ? up(cor) : '*') + '|' + up(tam); }
 
     // =====================================================================
@@ -146,9 +211,12 @@ const MotorAnalisePedidos = (() => {
             const f = num(l.faltaEstoque);
             if (!(f > 0) || txt(l.pedido) === '') continue;
             if (eqi(l.situacao, 'Bloqueado') && !cfg.incluirBloqueados) continue;
-            dem0.push({ pedido: l.pedido, ref: l.ref, cor: l.cor, tam: l.tam, falta: f, prev: dataDoPedido(l), situacao: l.situacao, desc: l.desc });
+            dem0.push({ pedido: l.pedido, ref: l.ref, cor: l.cor, tam: l.tam, falta: f, prev: dataDoPedido(l), situacao: l.situacao, desc: l.desc, chegada: num(l.chegada), prior: num(l.prior), inclusao: num(l.inclusao) });
         }
-        const ordD = ordenarIndices(dem0.length, [[dem0.map(d => d.prev > 0 ? d.prev : 99999), 1], [dem0.map(d => d.pedido), 1]]);
+        // Empate na data: a planilha original desempata só pelo nº do pedido; na simulação usa a ordem do ERP (chegada, prior, inclusão)
+        const ordD = ordenarIndices(dem0.length, cfg.desempateERP
+            ? [[dem0.map(d => d.prev > 0 ? d.prev : 99999), 1], ...criteriosERP(dem0)]
+            : [[dem0.map(d => d.prev > 0 ? d.prev : 99999), 1], [dem0.map(d => d.pedido), 1]]);
         const dem = ordD.map(i => dem0[i]);
         const chavesDem = new Set();
         const acumD = new Map();
@@ -401,6 +469,6 @@ const MotorAnalisePedidos = (() => {
         };
     }
 
-    return { calcular, consultarPedido, CONFIG_PADRAO, NOMES_POSICAO, serialDeData, dataDeSerial, num, listaDe, _cmpExcel: cmpExcel };
+    return { calcular, consultarPedido, simularEstoque, CONFIG_PADRAO, NOMES_POSICAO, serialDeData, dataDeSerial, num, listaDe, _cmpExcel: cmpExcel };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = MotorAnalisePedidos;

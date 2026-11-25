@@ -1134,7 +1134,7 @@
         <div class="secao ap-topo">
             <div class="secao-header" style="background:var(--cor-roxo);"><span><i class="fas fa-boxes-stacked"></i> ANÁLISE DE PEDIDOS — FALTA DE ESTOQUE × OPs</span></div>
             <div class="ap-barra">
-                <label class="btn btn-acao somente-admin" style="margin:0; cursor:pointer;" title="A PLANILHA_ANALISE_PEDIDOS.xlsx inteira, ou os dois relatórios (pedidos e ocupação) — pode selecionar os dois juntos">
+                <label class="btn btn-acao somente-admin" style="margin:0; cursor:pointer;" title="A PLANILHA_ANALISE_PEDIDOS.xlsx inteira, ou os relatórios separados (pedidos, ocupação e saldo físico) — pode selecionar todos juntos">
                     <i class="fas fa-file-import"></i> IMPORTAR BASES
                     <input id="inputAnalisePedidos" type="file" accept=".xlsx,.xls,.csv" multiple style="display:none;">
                 </label>
@@ -1146,8 +1146,10 @@
                 <button data-visao="faltas"><i class="fas fa-circle-exclamation"></i> FALTAS SEM OP</button>
                 <button data-visao="ops"><i class="fas fa-list-ol"></i> OPs A PROGRAMAR</button>
                 <button data-visao="consulta"><i class="fas fa-magnifying-glass"></i> CONSULTA PEDIDO</button>
+                <button data-visao="comparacao" id="apNavComparacao" style="display:none;"><i class="fas fa-code-compare"></i> SIMULAÇÃO × ERP</button>
                 <button data-visao="config" class="somente-admin"><i class="fas fa-sliders"></i> CONFIGURAÇÃO</button>
             </div>
+            <div class="ap-modo" id="apModo"></div>
         </div>
         <div id="apConteudo"></div>
     </div>

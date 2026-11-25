@@ -62,6 +62,15 @@ tests/                  testes automáticos (ver tests/README.md)
 Transposição da **PLANILHA_ANALISE_PEDIDOS.xlsx** (aba ANÁLISE PEDIDOS): itens de pedido com falta de
 estoque × OPs que atendem, com alocação sem contar a mesma peça duas vezes.
 
+**Dois modos de cálculo** (botões "BASE DO CÁLCULO" na aba):
+- **ERP (planilha original):** usa a "Falta Estoque" que o ERP calculou (o ERP reserva o estoque pela Chegada → Prioridade →
+  Inclusão) e distribui as OPs pela Necessidade Fat. Igual ao Excel, validado linha a linha.
+- **Simulação:** com o **saldo físico** importado (relatório POR_REFERENCIA_PRODUTO, exportado com "in_matprima é F ou T"
+  para trazer a revenda), ignora o Fecha Físico do ERP e redistribui o saldo (todas as empresas somadas, porque dá para
+  transferir) entre todos os pedidos pendentes pela **Necessidade Fat.** (ou Prev. Fat.; empate pela ordem do ERP). O que
+  continua faltando vai para as OPs na mesma ordem. A visão SIMULAÇÃO × ERP lista os pedidos que passam a fechar ou deixam de
+  fechar. Produto que não vier no saldo usa o Fecha Físico do ERP como estimativa. Exporte os 3 relatórios no mesmo momento.
+
 **Acesso:** o admin importa, configura e publica (tabela `analise_pedidos` no Supabase, bases compactadas ~0,5 MB).
 Quem tem `ve_analise_pedidos = true` em `papeis_usuario` só vê (hoje Luis e Raquel). A regra está no banco (RLS):
 ninguém mais lê, e só o admin grava. Para liberar outra pessoa:
