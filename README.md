@@ -10,6 +10,7 @@ Para usar: abra o `index.html` no navegador (ou publique a pasta como site está
 
 ```
 index.html              a página (todas as abas e modais)
+vercel.json             cabeçalhos de segurança do site publicado
 favicon.svg
 css/style.css           todo o visual
 js/lib/                 bibliotecas de terceiros guardadas no projeto (SheetJS para ler Excel)
@@ -83,6 +84,9 @@ tabela `papeis_usuario` (pelo e-mail):
 | `tv` — e qualquer conta **sem papel** | só o **modo TV** (Fila Geral em tela cheia, atualiza a cada 3 min) |
 
 Para dar acesso a alguém: crie a conta em Supabase → Authentication → Users e cadastre o e-mail em `papeis_usuario`.
+- **`vercel.json` define os cabeçalhos de segurança** (CSP e outros). Se acrescentar uma biblioteca ou serviço
+  de outro endereço, inclua o endereço lá (`script-src`, `style-src`, `font-src` ou `connect-src`), senão o navegador
+  bloqueia. Os bloqueios aparecem no console do navegador como "Content Security Policy".
 - Rode os testes antes de publicar:
 
 ```bash
