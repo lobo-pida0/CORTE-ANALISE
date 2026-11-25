@@ -184,7 +184,7 @@ function renderizarAnalisePedidos() {
         return;
     }
     const aviso = R.locaisSemEtapa.length && ehAdminAP() ? `<div class="ap-alerta"><i class="fas fa-triangle-exclamation"></i> ${R.locaisSemEtapa.length} local(is) da BASE OCUPAÇÃO sem etapa cadastrada (contam como posição 0, gastos por último): ${escHtml(R.locaisSemEtapa.slice(0, 6).join(', '))}${R.locaisSemEtapa.length > 6 ? '…' : ''} — ajuste em <a href="#" data-ir-visao="config">CONFIGURAÇÃO</a>.</div>` : '';
-    const html = { painel: htmlPainelAP, alocacao: htmlAlocacaoAP, faltas: htmlFaltasAP, ops: htmlOPsAP, consulta: htmlConsultaAP, comparacao: htmlComparacaoAP }[estadoAP.visao] || htmlPainelAP;
+    const html = { painel: htmlPainelAP, alocacao: htmlAlocacaoAP, faltas: htmlFaltasAP, ops: htmlOPsAP, consulta: htmlConsultaAP, comparacao: htmlComparacaoAP, fechados: htmlFechadosAP }[estadoAP.visao] || htmlPainelAP;
     const sim = estadoAP.simulacao;
     const notaModo = modo === 'simulacao'
         ? `<div class="ap-modo-nota simulacao"><i class="fas fa-flask"></i> <strong>Simulação:</strong> o saldo físico (todas as empresas somadas) foi redistribuído entre <strong>todos</strong> os pedidos pendentes pela <strong>Necessidade Fat.</strong> (ou Prev. Fat.; empate pela ordem do ERP), ignorando o "Fecha Físico" do ERP. O que continua faltando vai para as OPs na mesma ordem. ${sim.resumo.skusEstimados ? `${fmtNAP(sim.resumo.skusEstimados)} produto(s) fora do relatório de saldo usaram o Fecha Físico do ERP como estimativa.` : ''} <a href="#" data-ir-visao="comparacao">Ver o que muda em relação ao ERP →</a></div>`
@@ -320,6 +320,38 @@ function htmlConsultaAP() {
         </div>${res}`;
 }
 
+// ---------- PEDIDOS 100% ----------
+function htmlFechadosAP(R) {
+    const sim = modoEfetivoAP() === 'simulacao';
+    const todos = MotorAnalisePedidos.situacaoPedidos(estadoAP.pedidosEfetivos || estadoAP.pedidos, R);
+    const filtro = estadoAP.filtroFechados || 'todos';
+    const fechados = todos.filter(p => p.status === 'Fecha com estoque' || p.status === 'Fecha com estoque + OPs').sort((a, b) => ((a.prev || 99999) - (b.prev || 99999)) || ((a.chegada || 99999) - (b.chegada || 99999)));
+    const mostrar = filtro === 'estoque' ? fechados.filter(p => p.status === 'Fecha com estoque') : (filtro === 'ops' ? fechados.filter(p => p.status === 'Fecha com estoque + OPs') : fechados);
+    const soma = (ls, f) => ls.reduce((s, p) => s + p[f], 0);
+    const est = fechados.filter(p => p.status === 'Fecha com estoque'), comOP = fechados.filter(p => p.status === 'Fecha com estoque + OPs');
+    const corSt = { 'Fecha com estoque': 'var(--cor-despacho)', 'Fecha com estoque + OPs': 'var(--cor-sugestao)' };
+    const cols = [
+        { t: 'Como fecha', v: p => p.status, h: p => `<span class="pill" style="background:${corSt[p.status]}; color:white;">${escHtml(p.status)}</span>` },
+        { t: 'Pedido', v: p => p.pedido, h: p => linkPedidoAP(p.pedido) }, { t: 'Cliente (Coligador)', v: p => p.cliente }, { t: 'Situação', v: p => p.situacao },
+        { t: 'Nec. Fat. (ou Prev.)', v: p => p.prev, f: 'data' }, { t: 'Chegada', v: p => p.chegada, f: 'data' }, { t: 'Prior', v: p => p.prior, num: 1 },
+        { t: 'Peças pendentes', v: p => p.pendente, f: 'n', num: 1 }, { t: 'Do estoque', v: p => p.doEstoque, f: 'n', num: 1 }, { t: 'Das OPs', v: p => p.dasOPs, f: 'n', num: 1 },
+        { t: 'R$ pendente', v: p => p.rsPendente, f: 'rs', num: 1 }
+    ];
+    if (sim) cols.push({ t: 'Fecha no ERP?', v: p => p.fechaNoERP ? 'Sim' : 'Não', h: p => p.fechaNoERP ? 'Sim' : '<strong style="color:var(--cor-despacho);">Não — só na simulação</strong>' });
+    cols.push({ t: 'OPs que completam (ciclo-OP)', v: p => p.ops });
+    registrarTabelaAP('fechados', cols, mostrar, 'Pedidos 100%');
+    const chip = (v, t) => `<button class="ap-chip${filtro === v ? ' ativo' : ''}" data-filtro-fechados="${v}">${t}</button>`;
+    return `<div class="ap-cartoes">
+            ${cartaoAP('FECHAM COM ESTOQUE', fmtNAP(est.length), `${fmtNAP(soma(est, 'pendente'))} peças · ${fmtRSAP(soma(est, 'rsPendente'))}`, 'var(--cor-despacho)')}
+            ${cartaoAP('FECHAM COM ESTOQUE + OPs', fmtNAP(comOP.length), `${fmtNAP(soma(comOP, 'dasOPs'))} peças vêm das OPs`, 'var(--cor-sugestao)')}
+            ${cartaoAP('PEDIDOS PENDENTES', fmtNAP(todos.length), `${fmtPctAP(todos.length ? fechados.length / todos.length : 0)} fecham 100% (estoque ou estoque + OPs)`, 'var(--cor-fila)')}
+            ${sim ? cartaoAP('FECHAM SÓ NA SIMULAÇÃO', fmtNAP(est.filter(p => !p.fechaNoERP).length), 'com estoque, mas não fecham no ERP hoje', 'var(--cor-roxo)') : ''}
+        </div>
+        <div class="ap-filtros" style="align-items:center;">${chip('todos', `Todos (${fmtNAP(fechados.length)})`)}${chip('estoque', `Só com estoque (${fmtNAP(est.length)})`)}${chip('ops', `Precisam de OP (${fmtNAP(comOP.length)})`)}
+            <span class="ap-nota" style="margin:0;">${sim ? 'Estoque da simulação (saldo físico pela Necessidade Fat.).' : 'Estoque calculado pelo ERP (Fecha Físico).'} "Precisam de OP" fecham quando as OPs da última coluna ficarem prontas. Ordenado pela Necessidade Fat.</span></div>
+        ${blocoTabelaAP('fechados', 'PEDIDOS QUE FECHAM 100%', tabelasAP.fechados.cols, mostrar, 'var(--cor-despacho)')}`;
+}
+
 // ---------- SIMULAÇÃO × ERP ----------
 function htmlComparacaoAP() {
     const s = estadoAP.simulacao; if (!s) return '';
@@ -409,6 +441,7 @@ function ligarEventosAnalisePedidos() {
     raiz.addEventListener('click', e => {
         const nav = e.target.closest('.ap-nav button');
         if (nav) { estadoAP.visao = nav.dataset.visao; renderizarAnalisePedidos(); return; }
+        const ff = e.target.closest('[data-filtro-fechados]'); if (ff) { estadoAP.filtroFechados = ff.dataset.filtroFechados; renderizarAnalisePedidos(); return; }
         const md = e.target.closest('#apModo button[data-modo]');
         if (md && !md.disabled) { estadoAP.modo = md.dataset.modo; recalcularAnalisePedidos(); renderizarAnalisePedidos(); return; }
         const ir = e.target.closest('[data-ir-visao]'); if (ir) { e.preventDefault(); estadoAP.visao = ir.dataset.irVisao; renderizarAnalisePedidos(); return; }

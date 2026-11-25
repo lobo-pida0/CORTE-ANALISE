@@ -746,6 +746,13 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
       await p.evaluate(() => { estadoAP.visao = 'comparacao'; renderizarAnalisePedidos(); $('apModo').querySelector('[data-modo=erp]').click(); });
       igual('simulação: voltar pro modo ERP esconde a comparação e usa a falta do ERP', await p.evaluate(() => [modoEfetivoAP(), estadoAP.visao, estadoAP.resultado.indicadores.pecasEmFalta]), ['erp', 'painel', 14]);
       await p.evaluate(() => { estadoAP.modo = null; recalcularAnalisePedidos(); });
+      igual('pedidos 100%: separa quem fecha com estoque, com estoque + OPs e quem não fecha', await p.evaluate(() => {
+        const S = MotorAnalisePedidos.situacaoPedidos(estadoAP.pedidosEfetivos, estadoAP.resultado);
+        estadoAP.visao = 'fechados'; renderizarAnalisePedidos(); document.querySelector('[data-filtro-fechados=ops]').click();
+        return [S.map(x => [x.pedido, x.status, x.doEstoque, x.dasOPs, x.ops]), tabelasAP.fechados.linhas.map(x => x.pedido)];
+      }), [[['900001', 'Fecha com estoque + OPs', 0, 5, '211-200, 211-100'], ['900002', 'Fecha com estoque + OPs', 2, 2, '211-200'], ['900003', 'Fecha com estoque', 3, 0, ''], ['900004', 'Fecha com estoque', 2, 0, '']],
+          ['900002', '900001']]);   // estoque 7 do SKU 9 pela Nec. Fat.: 900003 (3) → 900004 (2) → 900002 (2 de 4); o resto vem das OPs (200 primeiro, etapa 18)
+      await p.evaluate(() => { estadoAP.visao = 'painel'; estadoAP.filtroFechados = 'todos'; });
     }
     igual('análise de pedidos: só admin e quem tem a liberação individual veem a aba', await p.evaluate(() => {
       const r = [], velhoP = papelUsuarioAtual, velhoV = veAnalisePedidosAtual;

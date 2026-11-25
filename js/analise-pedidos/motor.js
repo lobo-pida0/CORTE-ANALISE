@@ -190,6 +190,32 @@ const MotorAnalisePedidos = (() => {
         };
     }
 
+    // =====================================================================
+    // SITUAÇÃO DE CADA PEDIDO (visão PEDIDOS 100%): quanto fecha com o ESTOQUE e quanto com as OPs já alocadas.
+    // pedidos: os pedidos efetivos do modo (na simulação, os de simularEstoque — com erpFecha guardado).
+    // R: resultado do calcular() com esses mesmos pedidos.
+    // =====================================================================
+    function situacaoPedidos(pedidos, R) {
+        const porPed = new Map(), ordem = [];
+        for (const l of pedidos) {
+            const p = txt(l.pedido); if (!p) continue;
+            const k = up(p); let a = porPed.get(k);
+            if (!a) { a = { l, pend: 0, estoque: 0, erp: 0, rs: 0, op: 0, ops: [] }; porPed.set(k, a); ordem.push(k); }
+            a.pend += num(l.pendente); a.estoque += num(l.fechaFisico); a.erp += (l.erpFecha !== undefined ? num(l.erpFecha) : num(l.fechaFisico)); a.rs += num(l.rsPendente);
+        }
+        for (const x of (R ? R.alocacao : [])) {
+            const a = porPed.get(up(x.pedido)); if (!a) continue;
+            a.op += x.alocado;
+            for (const parte of txt(x.opsUsadas).split(', ')) { const m = parte.match(/^(.*)-\d+(?:\.\d+)?$/); if (m && !a.ops.includes(m[1])) a.ops.push(m[1]); }
+        }
+        return ordem.map(k => porPed.get(k)).filter(a => a.pend > 0).map(a => {
+            const l = a.l, eps = 1e-9, falta = Math.max(0, a.pend - a.estoque - a.op);
+            const status = a.estoque >= a.pend - eps ? 'Fecha com estoque' : (a.estoque + a.op >= a.pend - eps ? 'Fecha com estoque + OPs' : ((a.estoque + a.op) > eps ? 'Parcial' : 'Sem estoque e sem OP'));
+            return { pedido: l.pedido, cliente: l.coligador ?? '', situacao: l.situacao, prev: dataDoPedido(l), chegada: num(l.chegada) || '', prior: l.prior,
+                pendente: a.pend, doEstoque: a.estoque, dasOPs: a.op, falta, ops: a.ops.join(', '), rsPendente: a.rs, status, fechaNoERP: a.erp >= a.pend - eps };
+        });
+    }
+
     function chave(ref, cor, tam, considerarCor) { return up(ref) + '|' + (considerarCor ? up(cor) : '*') + '|' + up(tam); }
 
     // =====================================================================
@@ -469,6 +495,6 @@ const MotorAnalisePedidos = (() => {
         };
     }
 
-    return { calcular, consultarPedido, simularEstoque, CONFIG_PADRAO, NOMES_POSICAO, serialDeData, dataDeSerial, num, listaDe, _cmpExcel: cmpExcel };
+    return { calcular, consultarPedido, simularEstoque, situacaoPedidos, CONFIG_PADRAO, NOMES_POSICAO, serialDeData, dataDeSerial, num, listaDe, _cmpExcel: cmpExcel };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = MotorAnalisePedidos;
