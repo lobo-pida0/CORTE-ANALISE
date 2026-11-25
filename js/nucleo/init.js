@@ -23,7 +23,6 @@ function inicializarEventosUI() {
         wireEvento('abrirGuiaSequenciamento-pedidos', 'click', () => { abrirGuiaSequenciamento(); });
         wireEvento('abrirGuiaSequenciamento-menu', 'click', () => { abrirGuiaSequenciamento(); });
         wireEvento('abrirAgrupamentoReferencia', 'click', () => { abrirAgrupamentoReferencia(); });
-        wireEvento('abrirModalPerguntarIA', 'click', () => { abrirModalPerguntarIA(); });
         wireEvento('abrirModalPrioridadeManual', 'click', () => { abrirModalPrioridadeManual(); });
         wireEvento('alcaConsoleDebug', 'click', () => { toggleConsoleDebug(); });
         wireEvento('btnCopiarConsoleDebug', 'click', () => { copiarLogsConsoleDebug(); });

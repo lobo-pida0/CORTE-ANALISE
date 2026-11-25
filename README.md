@@ -42,7 +42,6 @@ tests/                  testes automáticos (ver tests/README.md)
 | `permissoes.js` | `exigirAdmin`, `exigirAdminOuUsuario`, `exigirLogadoNaSequencia` |
 | `backup-manual.js` | espaço usado, baixar e restaurar backup |
 | `backup-automatico.js` | backup semanal guardado na própria nuvem |
-| `perguntar-ia.js` | modal de pergunta à IA |
 
 ### js/importacao
 `sincronizacao.js` (OPs + balanço do que mudou), `grades.js` (grade P/M/G por OP), `pedidos-pendentes.js`,
