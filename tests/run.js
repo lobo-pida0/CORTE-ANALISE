@@ -728,6 +728,33 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('análise de pedidos: sem os bloqueados, as OPs vão pros liberados', (await resumoAP()).linhas, [['900004', 0, 'Sem OP', ''], ['900002', 4, 'Coberto', '211-200-4'], ['900001', 5, 'Coberto', '211-100-5']]);
     igual('análise de pedidos: consulta mostra todas as OPs do item (sem alocação)', await p.evaluate(() => { const r = MotorAnalisePedidos.consultarPedido(estadoAP.pedidos, estadoAP.ocupacao, '900001', '211 811'); return [r.encontrado, r.cliente, r.itens[0].emOPs, r.itens[0].status, r.resumo.map(x => x.op)]; }), [true, 'CLIENTE UM', 110, 'Fecha', ['100', '200', '300', '400']]);
     await p.evaluate(() => { localStorage.removeItem('configAnalisePedidos'); for (const v of ['painel', 'alocacao', 'faltas', 'ops', 'consulta', 'config']) { estadoAP.visao = v; renderizarAnalisePedidos(); } estadoAP.visao = 'painel'; });
+    igual('análise de pedidos: só admin e quem tem a liberação individual veem a aba', await p.evaluate(() => {
+      const r = [], velhoP = papelUsuarioAtual, velhoV = veAnalisePedidosAtual;
+      for (const [papel, libera] of [['admin', false], ['usuario', true], ['usuario', false], ['sequencia', true], ['sequencia', false], ['tv', true]]) { papelUsuarioAtual = papel; veAnalisePedidosAtual = papel === 'admin' || libera; r.push(abaLiberadaAgora('aba-analise-pedidos')); }
+      papelUsuarioAtual = velhoP; veAnalisePedidosAtual = velhoV; return r;
+    }), [true, true, false, true, false, false]);
+    igual('análise de pedidos: admin publica, quem só vê baixa da nuvem e chega no mesmo resultado', await p.evaluate(async () => {
+      const velho = supabaseClient, velhaS = sessaoAdminAtual, velhoP = papelUsuarioAtual; let guardado = null;
+      const consulta = cols => ({ eq: () => ({ maybeSingle: async () => ({ data: guardado && { ...guardado }, error: null }), single: async () => ({ data: guardado && { ...guardado }, error: null }) }) });
+      supabaseClient = { from: () => ({ upsert: async l => { guardado = { ...l }; return { error: null }; }, update: v => ({ eq: async () => { Object.assign(guardado, v); return { error: null }; } }), select: consulta }) };
+      sessaoAdminAtual = { user: { email: 'admin@x.com' } }; papelUsuarioAtual = 'admin';
+      localStorage.removeItem('configAnalisePedidos'); recalcularAnalisePedidos();
+      const esperado = JSON.stringify(estadoAP.resultado.alocacao);
+      estadoAP.meta.basesEm = new Date().toISOString();
+      await publicarAnalisePedidosAP('tudo');
+      const publicado = [estadoAP.nuvem, guardado.pedidos.startsWith('gz:'), guardado.publicado_por, !!guardado.meta.basesEm];
+      // quem só vê, num computador sem nada salvo
+      papelUsuarioAtual = 'usuario'; estadoAP.pedidos = null; estadoAP.ocupacao = null; estadoAP.meta = {}; estadoAP.configNuvem = null;
+      await atualizarAnalisePedidosDaNuvem();
+      const igualAoAdmin = JSON.stringify(estadoAP.resultado.alocacao) === esperado;
+      const computadorDoUsuario = { pedidos: estadoAP.pedidos, ocupacao: estadoAP.ocupacao, meta: estadoAP.meta, configNuvem: estadoAP.configNuvem };
+      // admin muda a config e publica só a config: quem vê recalcula sem baixar as bases de novo
+      papelUsuarioAtual = 'admin'; const c = obterConfigAnalisePedidos(); c.incluirBloqueados = false; salvarConfigAnalisePedidos(c);
+      await new Promise(r => setTimeout(r, 5)); await publicarAnalisePedidosAP('config');
+      papelUsuarioAtual = 'usuario'; Object.assign(estadoAP, computadorDoUsuario); const basesAntes = estadoAP.pedidos; await atualizarAnalisePedidosDaNuvem();
+      const r = [publicado, igualAoAdmin, estadoAP.pedidos === basesAntes, estadoAP.resultado.alocacao.length];
+      localStorage.removeItem('configAnalisePedidos'); supabaseClient = velho; sessaoAdminAtual = velhaS; papelUsuarioAtual = velhoP; return r;
+    }), [['ok', true, 'admin', true], true, true, 3]);
   }
 
   // ---------- 10d. Login obrigatório e papel TV ----------

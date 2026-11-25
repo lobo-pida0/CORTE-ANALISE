@@ -59,8 +59,13 @@ tests/                  testes automáticos (ver tests/README.md)
 (feriados e dias extras), `plano-costura.js`, `preparacao.js`, `producao-grupo.js`, `elaboracao-costura.js`.
 
 ### js/analise-pedidos
-Transposição da **PLANILHA_ANALISE_PEDIDOS.xlsx** (aba ANÁLISE PEDIDOS, só admin): itens de pedido com falta de
+Transposição da **PLANILHA_ANALISE_PEDIDOS.xlsx** (aba ANÁLISE PEDIDOS): itens de pedido com falta de
 estoque × OPs que atendem, com alocação sem contar a mesma peça duas vezes.
+
+**Acesso:** o admin importa, configura e publica (tabela `analise_pedidos` no Supabase, bases compactadas ~0,5 MB).
+Quem tem `ve_analise_pedidos = true` em `papeis_usuario` só vê (hoje Luis e Raquel). A regra está no banco (RLS):
+ninguém mais lê, e só o admin grava. Para liberar outra pessoa:
+`update papeis_usuario set ve_analise_pedidos = true where email = '...';`
 
 | arquivo | o que faz |
 |---|---|

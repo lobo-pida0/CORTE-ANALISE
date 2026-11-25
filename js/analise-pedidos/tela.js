@@ -5,7 +5,7 @@
 // Tabelas grandes mostram as primeiras linhas (LIMITE_LINHAS_AP) — a busca filtra tudo e o BAIXAR EXCEL leva tudo.
 // =========================================================================
 const LIMITE_LINHAS_AP = 400;
-const estadoAP = { carregado: false, pedidos: null, ocupacao: null, meta: {}, resultado: null, visao: 'painel', busca: {}, posDe: 0, posAte: 19, consulta: { pedido: '', ciclos: null, res: null } };
+const estadoAP = { carregado: false, pedidos: null, ocupacao: null, meta: {}, configNuvem: null, nuvem: '', resultado: null, visao: 'painel', busca: {}, posDe: 0, posAte: 19, consulta: { pedido: '', ciclos: null, res: null } };
 
 // ---------- formatação ----------
 const fmtNAP = (v, dec = 0) => (v === '' || v === null || v === undefined || !isFinite(v)) ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -16,6 +16,9 @@ const COR_STATUS_AP = { 'Coberto': 'var(--cor-despacho)', 'Coberto por OP': 'var
 const pillAP = s => s ? `<span class="pill" style="background:${COR_STATUS_AP[s] || 'var(--cor-historico)'}; color:white;">${escHtml(s)}</span>` : '';
 const linkPedidoAP = p => `<a href="#" class="ap-link-pedido" data-pedido="${escHtml(p)}" title="Consultar este pedido">${escHtml(p)}</a>`;
 const hojeSerialAP = () => MotorAnalisePedidos.serialDeData(new Date());
+const ehAdminAP = () => papelUsuarioAtual === 'admin';
+// Configuração usada no cálculo: o admin usa a dele (é quem decide); quem só vê usa a que o admin publicou.
+function configAP() { return (!ehAdminAP() && estadoAP.configNuvem) ? obterConfigAnalisePedidos(estadoAP.configNuvem) : obterConfigAnalisePedidos(); }
 
 // Colunas: { t: título, v: linha => valor bruto (vai pro Excel), h?: linha => html, f?: 'n'|'n1'|'data'|'pct'|'rs', num?: alinhar à direita }
 function celulaAP(c, r) {
@@ -69,16 +72,43 @@ const cartaoAP = (rotulo, numero, detalhe, cor) => `<div class="card-resumo" sty
 async function abrirAbaAnalisePedidos() {
     if (!estadoAP.carregado) {
         $('apConteudo').innerHTML = '<div class="ap-vazio"><i class="fas fa-spinner fa-spin"></i> Carregando as bases salvas…</div>';
-        const [p, o, m] = await Promise.all([lerBaseAnalisePedidos('pedidos'), lerBaseAnalisePedidos('ocupacao'), lerBaseAnalisePedidos('meta')]);
-        estadoAP.pedidos = p; estadoAP.ocupacao = o; estadoAP.meta = m || {}; estadoAP.carregado = true;
+        const [p, o, m, cn] = await Promise.all([lerBaseAnalisePedidos('pedidos'), lerBaseAnalisePedidos('ocupacao'), lerBaseAnalisePedidos('meta'), lerBaseAnalisePedidos('configNuvem')]);
+        estadoAP.pedidos = p; estadoAP.ocupacao = o; estadoAP.meta = m || {}; estadoAP.configNuvem = cn; estadoAP.carregado = true;
     }
     recalcularAnalisePedidos();
     renderizarAnalisePedidos();
+    await atualizarAnalisePedidosDaNuvem();
+}
+// Confere se tem versão mais nova publicada. Quem só vê sempre segue a nuvem; o admin só baixa se não tiver as bases aqui
+// (ex.: abriu de outro computador) — senão a versão dele é a que vale.
+async function atualizarAnalisePedidosDaNuvem() {
+    if (ehAdminAP() && estadoAP.pedidos && estadoAP.ocupacao) return;
+    estadoAP.nuvem = 'verificando'; $('apStatusImport').innerHTML = infoBasesAP();
+    const m = estadoAP.meta || {};
+    const r = await carregarAnalisePedidosDaNuvem({ publicadoEm: m.publicadoEm, basesEm: m.basesEm, temBases: !!(estadoAP.pedidos && estadoAP.ocupacao) });
+    estadoAP.nuvem = r ? (r.vazio ? 'vazia' : 'ok') : 'erro';
+    if (r && r.atualizou) {
+        if (r.pedidos) { estadoAP.pedidos = r.pedidos; estadoAP.ocupacao = r.ocupacao; }
+        estadoAP.meta = r.meta; estadoAP.configNuvem = r.config || null;
+        await salvarBaseAnalisePedidos('meta', estadoAP.meta); await salvarBaseAnalisePedidos('configNuvem', estadoAP.configNuvem);
+        if (ehAdminAP() && r.config && !localStorage.getItem('configAnalisePedidos')) salvarConfigAnalisePedidos(r.config);
+        recalcularAnalisePedidos();
+    } else if (r && r.config && !estadoAP.configNuvem) { estadoAP.configNuvem = r.config; recalcularAnalisePedidos(); }
+    renderizarAnalisePedidos();
+}
+async function publicarAnalisePedidosAP(oQue) {
+    if (!ehAdminAP()) return;
+    estadoAP.nuvem = 'publicando'; $('apStatusImport').innerHTML = infoBasesAP();
+    const cfg = obterConfigAnalisePedidos();
+    const r = await publicarAnalisePedidosNuvem(oQue, estadoAP.meta, estadoAP.pedidos, estadoAP.ocupacao, cfg);
+    if (r.ok) { estadoAP.meta = r.meta; estadoAP.configNuvem = cfg; estadoAP.nuvem = 'ok'; await salvarBaseAnalisePedidos('meta', estadoAP.meta); await salvarBaseAnalisePedidos('configNuvem', cfg); }
+    else { estadoAP.nuvem = 'falhou'; showToast('<i class="fas fa-triangle-exclamation"></i> Salvo neste computador, mas a publicação na nuvem falhou — clique em PUBLICAR NA NUVEM para tentar de novo.', true, 7000); }
+    $('apStatusImport').innerHTML = infoBasesAP();
 }
 function recalcularAnalisePedidos() {
     estadoAP.resultado = null;
     if (!estadoAP.pedidos || !estadoAP.ocupacao) return;
-    const cfg = { ...obterConfigAnalisePedidos(), posicaoDe: estadoAP.posDe, posicaoAte: estadoAP.posAte };
+    const cfg = { ...configAP(), posicaoDe: estadoAP.posDe, posicaoAte: estadoAP.posAte };
     const t0 = performance.now();
     estadoAP.resultado = MotorAnalisePedidos.calcular(estadoAP.pedidos, estadoAP.ocupacao, cfg, hojeSerialAP());
     registrarLogDebug('log', [`Análise de pedidos recalculada em ${Math.round(performance.now() - t0)} ms`]);
@@ -99,10 +129,13 @@ async function importarAnalisePedidos(input) {
                 msgs.push(`"${arq.name}": não reconheci nenhuma das bases${falt.length ? ' — faltou a coluna ' + falt.join(', ') : ''}.`);
             }
         }
+        const importouAlgo = msgs.some(m => /linhas$/.test(m));
+        if (importouAlgo) estadoAP.meta.basesEm = agora;
         await salvarBaseAnalisePedidos('meta', estadoAP.meta);
         estadoAP.carregado = true;
         recalcularAnalisePedidos(); renderizarAnalisePedidos();
-        showToast('<i class="fas fa-check"></i> ' + escHtml(msgs.join(' · ')), !msgs.some(m => /linhas$/.test(m)), 6000);
+        showToast('<i class="fas fa-check"></i> ' + escHtml(msgs.join(' · ')), !importouAlgo, 6000);
+        if (importouAlgo && estadoAP.pedidos && estadoAP.ocupacao) publicarAnalisePedidosAP('tudo');
     } catch (e) {
         registrarLogDebug('error', ['Falha ao importar base da análise de pedidos: ' + e.message]);
         showToast('<i class="fas fa-triangle-exclamation"></i> Não consegui ler o arquivo: ' + escHtml(e.message), true, 6000);
@@ -112,7 +145,13 @@ async function importarAnalisePedidos(input) {
 // ---------- desenho ----------
 function infoBasesAP() {
     const m = estadoAP.meta || {}, f = x => x ? `${escHtml(x.arquivo)} · ${fmtNAP(x.linhas)} linhas · ${new Date(x.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : '<em>não importada</em>';
-    return `<div class="ap-bases"><span><strong>BASE PEDIDOS:</strong> ${f(m.pedidos)}</span><span><strong>BASE OCUPAÇÃO:</strong> ${f(m.ocupacao)}</span></div>`;
+    const quando = x => new Date(x).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const nuvem = { verificando: '<i class="fas fa-spinner fa-spin"></i> conferindo a nuvem…', publicando: '<i class="fas fa-spinner fa-spin"></i> publicando…',
+        erro: '<span style="color:var(--cor-alerta);">sem conexão com a nuvem — mostrando a última cópia deste computador</span>',
+        falhou: '<span style="color:var(--cor-alerta);">publicação falhou</span>', vazia: 'nada publicado ainda' }[estadoAP.nuvem]
+        || (m.publicadoEm ? `publicado ${quando(m.publicadoEm)}${m.publicadoPor ? ' por ' + escHtml(m.publicadoPor) : ''}` : 'não publicado');
+    const botaoPublicar = ehAdminAP() && estadoAP.pedidos && estadoAP.ocupacao ? ' <button class="btn" id="apBtnPublicar" style="padding:3px 9px; font-size:11px;"><i class="fas fa-cloud-arrow-up"></i> PUBLICAR NA NUVEM</button>' : '';
+    return `<div class="ap-bases"><span><strong>BASE PEDIDOS:</strong> ${f(m.pedidos)}</span><span><strong>BASE OCUPAÇÃO:</strong> ${f(m.ocupacao)}</span><span><strong>NUVEM:</strong> ${nuvem}${botaoPublicar}</span></div>`;
 }
 function renderizarAnalisePedidos() {
     const el = $('apConteudo'); if (!el) return;
@@ -121,13 +160,17 @@ function renderizarAnalisePedidos() {
     if (estadoAP.visao === 'config') { el.innerHTML = htmlConfigAP(); return; }
     const R = estadoAP.resultado;
     if (!R) {
-        el.innerHTML = `<div class="ap-vazio"><i class="fas fa-file-import" style="font-size:28px; color:var(--cor-roxo);"></i>
-            <p><strong>Importe as duas bases para começar.</strong></p>
-            <p>Pode ser a própria <strong>PLANILHA_ANALISE_PEDIDOS.xlsx</strong> (o sistema pega as abas BASE PEDIDOS e BASE OCUPAÇÃO) ou os dois relatórios separados — selecione os dois arquivos de uma vez.</p>
-            <p style="color:var(--texto-secundario); font-size:12px;">BASE PEDIDOS precisa das colunas Pedido, Situação, Referência, Cor, Tam, Pendente e Falta Estoque. BASE OCUPAÇÃO precisa de Ciclo, OP, Referência, Cor, Tam, Qt OP Local e Descrição Local.</p></div>`;
+        el.innerHTML = ehAdminAP()
+            ? `<div class="ap-vazio"><i class="fas fa-file-import" style="font-size:28px; color:var(--cor-roxo);"></i>
+                <p><strong>Importe as duas bases para começar.</strong></p>
+                <p>Pode ser a própria <strong>PLANILHA_ANALISE_PEDIDOS.xlsx</strong> (o sistema pega as abas BASE PEDIDOS e BASE OCUPAÇÃO) ou os dois relatórios separados — selecione os dois arquivos de uma vez. Ao importar, a análise é publicada na nuvem para quem tem acesso.</p>
+                <p style="color:var(--texto-secundario); font-size:12px;">BASE PEDIDOS precisa das colunas Pedido, Situação, Referência, Cor, Tam, Pendente e Falta Estoque. BASE OCUPAÇÃO precisa de Ciclo, OP, Referência, Cor, Tam, Qt OP Local e Descrição Local.</p></div>`
+            : `<div class="ap-vazio"><i class="fas fa-cloud" style="font-size:28px; color:var(--cor-roxo);"></i>
+                <p><strong>${estadoAP.nuvem === 'verificando' ? 'Buscando a análise publicada…' : (estadoAP.nuvem === 'erro' ? 'Não consegui buscar a análise na nuvem.' : 'O admin ainda não publicou a análise de pedidos.')}</strong></p>
+                <p style="color:var(--texto-secundario);">${estadoAP.nuvem === 'erro' ? 'Confira a internet e abra a aba de novo.' : 'Assim que ele importar as bases, ela aparece aqui.'}</p></div>`;
         return;
     }
-    const aviso = R.locaisSemEtapa.length ? `<div class="ap-alerta"><i class="fas fa-triangle-exclamation"></i> ${R.locaisSemEtapa.length} local(is) da BASE OCUPAÇÃO sem etapa cadastrada (contam como posição 0, gastos por último): ${escHtml(R.locaisSemEtapa.slice(0, 6).join(', '))}${R.locaisSemEtapa.length > 6 ? '…' : ''} — ajuste em <a href="#" data-ir-visao="config">CONFIGURAÇÃO</a>.</div>` : '';
+    const aviso = R.locaisSemEtapa.length && ehAdminAP() ? `<div class="ap-alerta"><i class="fas fa-triangle-exclamation"></i> ${R.locaisSemEtapa.length} local(is) da BASE OCUPAÇÃO sem etapa cadastrada (contam como posição 0, gastos por último): ${escHtml(R.locaisSemEtapa.slice(0, 6).join(', '))}${R.locaisSemEtapa.length > 6 ? '…' : ''} — ajuste em <a href="#" data-ir-visao="config">CONFIGURAÇÃO</a>.</div>` : '';
     const html = { painel: htmlPainelAP, alocacao: htmlAlocacaoAP, faltas: htmlFaltasAP, ops: htmlOPsAP, consulta: htmlConsultaAP }[estadoAP.visao] || htmlPainelAP;
     el.innerHTML = aviso + html(R);
     Object.keys(tabelasAP).forEach(id => { if ($('apTab-' + id)) desenharTabelaAP(id); });
@@ -158,11 +201,11 @@ function htmlPainelAP(R) {
                 <tbody>${R.top10.map(c => `<tr><td>${escHtml(c.cliente)}</td><td class="num">${fmtNAP(c.pedidos)}</td><td class="num">${fmtRSAP(c.rsFalta)}</td><td class="num">${fmtNAP(c.maiorAtraso)} d</td></tr>`).join('') || '<tr><td colspan="4" class="tabela-vazia">Nenhum pedido atrasado.</td></tr>'}</tbody></table></div></div>
         </div>
         ${blocoTabelaAP('painel', 'PEDIDOS ATRASADOS (do mais atrasado para o menos)', tabelasAP.painel.cols, R.painel, 'var(--cor-fila)')}
-        <p class="ap-nota">Atrasado = Necessidade Fat. (ou Prev. Fat.) vencida há ${fmtNAP(obterConfigAnalisePedidos().atrasoMinimo)}+ dia(s) e Fecha Físico menor que o Pendente. "Peças cobertas por OP" usa a alocação (sem contar a mesma peça duas vezes).</p>`;
+        <p class="ap-nota">Atrasado = Necessidade Fat. (ou Prev. Fat.) vencida há ${fmtNAP(configAP().atrasoMinimo)}+ dia(s) e Fecha Físico menor que o Pendente. "Peças cobertas por OP" usa a alocação (sem contar a mesma peça duas vezes).</p>`;
 }
 
 function htmlAlocacaoAP(R) {
-    const i = R.indicadores, cfg = obterConfigAnalisePedidos();
+    const i = R.indicadores, cfg = configAP();
     registrarTabelaAP('alocacao', [
         { t: 'Pedido', v: r => r.pedido, h: r => linkPedidoAP(r.pedido) }, { t: 'Cliente (Coligador)', v: r => r.cliente }, { t: 'Situação', v: r => r.situacao },
         { t: 'Nec. Fat. (ou Prev.)', v: r => r.prev, f: 'data' }, { t: 'Dias atraso', v: r => r.diasAtraso, f: 'n', num: 1 }, { t: 'Referência', v: r => r.ref },
@@ -221,7 +264,7 @@ function htmlOPsAP(R) {
 }
 
 function htmlConsultaAP() {
-    const c = estadoAP.consulta, cfg = obterConfigAnalisePedidos();
+    const c = estadoAP.consulta, cfg = configAP();
     if (c.ciclos === null) c.ciclos = cfg.ciclosPreferenciais;
     let res = '';
     if (c.pedido) {
@@ -326,6 +369,7 @@ function ligarEventosAnalisePedidos() {
         const lp = e.target.closest('.ap-link-pedido');
         if (lp) { e.preventDefault(); estadoAP.consulta.pedido = lp.dataset.pedido; estadoAP.visao = 'consulta'; renderizarAnalisePedidos(); window.scrollTo({ top: 0 }); return; }
         const xl = e.target.closest('.ap-excel'); if (xl) { baixarExcelTabelaAP(xl.dataset.tabela); return; }
+        if (e.target.closest('#apBtnPublicar')) { if (exigirAdmin('publicar a análise de pedidos')) publicarAnalisePedidosAP('tudo'); return; }
         if (e.target.closest('#apBtnConsultar')) { estadoAP.consulta.pedido = $('apConsultaPedido').value.trim(); estadoAP.consulta.ciclos = $('apConsultaCiclos').value; renderizarAnalisePedidos(); return; }
         const rem = e.target.closest('.ap-et-remover'); if (rem) { rem.closest('tr').remove(); return; }
         const add = e.target.closest('.ap-et-add');
@@ -337,12 +381,16 @@ function ligarEventosAnalisePedidos() {
         if (e.target.closest('#apCfgSalvar')) {
             if (!exigirAdmin('mudar a configuração da análise de pedidos')) return;
             salvarConfigAnalisePedidos(lerFormConfigAP()); recalcularAnalisePedidos(); renderizarAnalisePedidos();
-            showToast('<i class="fas fa-check"></i> Configuração salva — análise recalculada.'); return;
+            showToast('<i class="fas fa-check"></i> Configuração salva — análise recalculada.');
+            if (estadoAP.pedidos && estadoAP.ocupacao) publicarAnalisePedidosAP(estadoAP.meta.publicadoEm ? 'config' : 'tudo');
+            return;
         }
         if (e.target.closest('#apCfgPadrao')) {
             if (!exigirAdmin('mudar a configuração da análise de pedidos')) return;
             if (!confirm('Voltar toda a configuração ao padrão da planilha?')) return;
-            localStorage.removeItem('configAnalisePedidos'); recalcularAnalisePedidos(); renderizarAnalisePedidos(); return;
+            localStorage.removeItem('configAnalisePedidos'); recalcularAnalisePedidos(); renderizarAnalisePedidos();
+            if (estadoAP.pedidos && estadoAP.ocupacao) publicarAnalisePedidosAP(estadoAP.meta.publicadoEm ? 'config' : 'tudo');
+            return;
         }
     });
     const redesenhar = debounce(id => desenharTabelaAP(id), 200);

@@ -26,6 +26,7 @@ registrarLogDebug('log', ['[NUVEM v2] window.supabase = ' + (typeof window.supab
 
 let sessaoAdminAtual = null; // guarda a sessão do usuário logado (null = visitante)
 let papelUsuarioAtual = null; // 'admin', 'usuario', 'sequencia' ou 'tv' — só tem valor quando sessaoAdminAtual existe
+let veAnalisePedidosAtual = false; // liberação individual (coluna ve_analise_pedidos em papeis_usuario) — admin sempre vê
 
 // Converte uma OP do formato usado no sistema (bancoDadosOPs) pro formato de
 // colunas da tabela "ops" no Supabase (snake_case)
@@ -89,13 +90,14 @@ async function verificarSessaoSupabase() {
 // Antes virava admin — qualquer conta nova ganhava acesso total.
 const PAPEIS_CONHECIDOS = ['admin', 'usuario', 'sequencia', 'tv'];
 async function verificarPapelUsuario() {
-    papelUsuarioAtual = null;
+    papelUsuarioAtual = null; veAnalisePedidosAtual = false;
     if (!sessaoAdminAtual || !supabaseClient) return;
     try {
         const email = sessaoAdminAtual.user.email;
-        const { data, error } = await supabaseClient.from('papeis_usuario').select('papel').eq('email', email).maybeSingle();
+        const { data, error } = await supabaseClient.from('papeis_usuario').select('*').eq('email', email).maybeSingle();
         if (error) throw error;
         papelUsuarioAtual = data && PAPEIS_CONHECIDOS.includes(data.papel) ? data.papel : 'tv';
+        veAnalisePedidosAtual = papelUsuarioAtual === 'admin' || !!(data && data.ve_analise_pedidos);
         if (!data) registrarLogDebug('log', [`A conta ${email} não está cadastrada em papeis_usuario — entrou só com acesso ao modo TV.`]);
     } catch (e) {
         registrarLogDebug('error', ['Não consegui checar o papel do usuário, liberando só o modo TV: ' + e.message]);
@@ -157,6 +159,7 @@ const ABAS_LIBERADAS_PARA_TV = ['aba-fila'];   // papel 'tv' (e conta sem papel)
 function abaLiberadaAgora(idAba) {
     if (!sessaoAdminAtual) return false;   // sem login não vê nenhuma aba (fica na tela de login)
     if (papelUsuarioAtual === 'admin') return true;
+    if (idAba === 'aba-analise-pedidos') return veAnalisePedidosAtual && papelUsuarioAtual !== 'tv';   // liberação por pessoa, não por papel
     if (papelUsuarioAtual === 'usuario') return ABAS_LIBERADAS_PARA_USUARIO.includes(idAba);
     if (papelUsuarioAtual === 'sequencia') return ABAS_LIBERADAS_PARA_SEQUENCIA.includes(idAba);
     return ABAS_LIBERADAS_PARA_TV.includes(idAba);

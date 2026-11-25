@@ -106,8 +106,8 @@ async function lerBaseAnalisePedidos(chave) {
 }
 
 // ---------- configuração ----------
-function obterConfigAnalisePedidos() {
-    const salvo = lerJSONLocal('configAnalisePedidos', {});
+function obterConfigAnalisePedidos(salvoEntrada) {
+    const salvo = salvoEntrada || lerJSONLocal('configAnalisePedidos', {});
     const p = MotorAnalisePedidos.CONFIG_PADRAO;
     return {
         ...p, ...salvo,
@@ -117,3 +117,56 @@ function obterConfigAnalisePedidos() {
     };
 }
 function salvarConfigAnalisePedidos(cfg) { localStorage.setItem('configAnalisePedidos', JSON.stringify(cfg)); }
+
+// ---------- ☁️ NUVEM (tabela analise_pedidos, linha 'atual') ----------
+// Só o ADMIN publica (as duas bases compactadas + a configuração). Quem tem a liberação individual
+// (papeis_usuario.ve_analise_pedidos — hoje Luis e Raquel) só lê; a regra está no banco (RLS), não só na tela.
+// As bases vão em formato enxuto (lista de campos + linhas) e compactadas com gzip: ~0,5 MB no total.
+const CAMPOS_NUVEM_PEDIDOS_AP = Object.keys(COLUNAS_PEDIDOS_AP), CAMPOS_NUVEM_OCUPACAO_AP = Object.keys(COLUNAS_OCUPACAO_AP);
+async function compactarBaseAP(linhas, campos) {
+    return comprimirTextoBackup(JSON.stringify({ campos, linhas: linhas.map(l => campos.map(c => l[c] === undefined ? null : l[c])) }));
+}
+async function descompactarBaseAP(texto) {
+    const { campos, linhas } = JSON.parse(await descomprimirTextoBackup(texto));
+    return linhas.map(v => { const o = {}; campos.forEach((c, i) => { if (v[i] !== null) o[c] = v[i]; }); return o; });
+}
+// oQue: 'tudo' (bases + config) ou 'config'
+async function publicarAnalisePedidosNuvem(oQue, meta, pedidos, ocupacao, config) {
+    if (!supabaseClient || !sessaoAdminAtual || papelUsuarioAtual !== 'admin') return { ok: false, motivo: 'só o admin publica' };
+    try {
+        const agora = new Date().toISOString(), por = String((sessaoAdminAtual.user && sessaoAdminAtual.user.email) || '').split('@')[0];
+        const linha = { id: 'atual', config, publicado_em: agora, publicado_por: por, meta: { ...meta, publicadoEm: agora } };
+        if (oQue === 'tudo') { linha.pedidos = await compactarBaseAP(pedidos, CAMPOS_NUVEM_PEDIDOS_AP); linha.ocupacao = await compactarBaseAP(ocupacao, CAMPOS_NUVEM_OCUPACAO_AP); }
+        const { error } = oQue === 'tudo'
+            ? await supabaseClient.from('analise_pedidos').upsert(linha)
+            : await supabaseClient.from('analise_pedidos').update({ config, publicado_em: agora, publicado_por: por, meta: linha.meta }).eq('id', 'atual');
+        if (error) throw error;
+        return { ok: true, publicadoEm: agora, meta: linha.meta };
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao publicar a análise de pedidos na nuvem: ' + e.message]);
+        return { ok: false, motivo: e.message };
+    }
+}
+// Baixa da nuvem se lá estiver mais novo que a cópia deste navegador. Só baixa as bases (a parte pesada) se elas
+// mudaram (meta.basesEm diferente) — se só a configuração mudou, aproveita as bases que já estão aqui.
+// local: { publicadoEm, basesEm, temBases }. Devolve { atualizou, pedidos?, ocupacao?, config, meta } ou null se falhou.
+async function carregarAnalisePedidosDaNuvem(local) {
+    if (!supabaseClient || !sessaoAdminAtual) return null;
+    try {
+        const { data: cab, error: e1 } = await supabaseClient.from('analise_pedidos').select('publicado_em, publicado_por, meta, config').eq('id', 'atual').maybeSingle();
+        if (e1) throw e1;
+        if (!cab) return { atualizou: false, vazio: true };
+        const meta = { ...(cab.meta || {}), publicadoEm: cab.publicado_em, publicadoPor: cab.publicado_por };
+        if (local.publicadoEm && new Date(local.publicadoEm) >= new Date(cab.publicado_em)) return { atualizou: false, config: cab.config, meta };
+        if (local.temBases && meta.basesEm && local.basesEm === meta.basesEm) return { atualizou: true, config: cab.config, meta };
+        const { data, error } = await supabaseClient.from('analise_pedidos').select('pedidos, ocupacao').eq('id', 'atual').single();
+        if (error) throw error;
+        if (!data.pedidos || !data.ocupacao) return { atualizou: false, config: cab.config, meta };
+        const pedidos = await descompactarBaseAP(data.pedidos), ocupacao = await descompactarBaseAP(data.ocupacao);
+        await salvarBaseAnalisePedidos('pedidos', pedidos); await salvarBaseAnalisePedidos('ocupacao', ocupacao);
+        return { atualizou: true, pedidos, ocupacao, config: cab.config, meta };
+    } catch (e) {
+        registrarLogDebug('error', ['Falha ao carregar a análise de pedidos da nuvem: ' + e.message]);
+        return null;
+    }
+}
