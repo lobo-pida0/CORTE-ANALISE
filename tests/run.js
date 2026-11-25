@@ -28,7 +28,7 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
   await p.addInitScript(fs.readFileSync(path.join(__dirname, 'node_modules', 'exceljs', 'dist', 'exceljs.min.js'), 'utf8'));
   await p.goto('file://' + path.join(RAIZ, 'index.html'));
   await p.waitForTimeout(1500);
-  await p.evaluate(() => { papelUsuarioAtual = 'admin'; sessaoAdminAtual = {}; aplicarRestricaoDeAbaVisitante(); abrirAba(null, 'aba-kpi'); });
+  await p.evaluate(() => { papelUsuarioAtual = 'admin'; sessaoAdminAtual = {}; aplicarRestricaoDeAbaVisitante(); aplicarTelaDeLogin(); abrirAba(null, 'aba-kpi'); });
 
   const reset = () => p.evaluate(() => { ['movimentacoesPorSetorKPI', 'kpiVisaoExterno', 'oficinasKPIClassificacao', 'bancoOPs'].forEach(k => localStorage.removeItem(k)); bancoDadosOPs = []; });
   const importar = async (seletor, csv) => { const f = path.join(os.tmpdir(), 'corte-pro-teste.csv'); fs.writeFileSync(f, CAB + csv); await p.setInputFiles(seletor, f); await p.waitForTimeout(500); };
@@ -677,6 +677,53 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     igual('TIRAR no plano do acabamento tira só dele', await p.evaluate(() => obterPlanosCostura('acabamento')[hojeISOLocalPlanoCostura()].ops.map(o => o.op)), ['802']);
     await p.evaluate(() => { if (window.__bakPOC) localStorage.setItem('porOPCosturaDetalhado', window.__bakPOC); else localStorage.removeItem('porOPCosturaDetalhado'); localStorage.removeItem('planoAcabamento'); $('seqCostGrupo').value = 'CALCA'; });
   }
+
+  // ---------- 10b. Texto da planilha com aspas/< não quebra o HTML ----------
+  igual('escHtml escapa aspas e tags', await p.evaluate(() => escHtml('TECIDO 1,50" <LISO> & \'X\'')), 'TECIDO 1,50&quot; &lt;LISO&gt; &amp; &#39;X&#39;');
+  igual('escHtml com vazio/null', await p.evaluate(() => [escHtml(null), escHtml(undefined), escHtml(0)]), ['', '', '0']);
+
+  // ---------- 10c. Estabilidade: dado corrompido e espaço cheio ----------
+  igual('lerJSONLocal: corrompido devolve o padrão e NÃO apaga o valor', await p.evaluate(() => {
+    localStorage.setItem('__testeCorrompido', '{quebrado'); const v = lerJSONLocal('__testeCorrompido', []);
+    const r = [v, localStorage.getItem('__testeCorrompido'), lerJSONLocal('__naoExiste', { a: 1 }), lerJSONLocal('__testeCorrompido2', 5)];
+    localStorage.removeItem('__testeCorrompido'); return r;
+  }), [[], '{quebrado', { a: 1 }, 5]);
+  igual('espaço cheio: avisa na tela e continua lançando o erro', await p.evaluate(() => {
+    const orig = Object.getPrototypeOf(localStorage).setItem; let avisou = false; const velhoToast = showToast;
+    showToast = (h, err) => { avisou = /cheio/i.test(h) && err; }; ultimoAvisoEspacoCheio = 0;
+    let lancou = false;
+    try { localStorage.setItem('__grande', 'x'.repeat(12 * 1024 * 1024)); } catch (e) { lancou = ehErroDeEspacoCheio(e); }
+    showToast = velhoToast; localStorage.removeItem('__grande'); return [lancou, avisou, Object.getPrototypeOf(localStorage).setItem === orig];
+  }), [true, true, true]);
+  igual('ExcelJS sob demanda: já carregado devolve true', await p.evaluate(() => garantirExcelJS()), true);
+
+  // ---------- 10d. Login obrigatório e papel TV ----------
+  {
+    const p2 = await b.newPage({ viewport: { width: 1400, height: 1000 } });
+    await p2.goto('file://' + path.join(RAIZ, 'index.html')); await p2.waitForTimeout(1200);
+    igual('sem login: só a tela de login aparece, nenhuma aba liberada', await p2.evaluate(() => [
+      document.body.classList.contains('sem-login'), getComputedStyle($('telaLogin')).display, getComputedStyle(document.querySelector('.header-main')).display,
+      abaLiberadaAgora('aba-prioridades'), abaLiberadaAgora('aba-fila')]), [true, 'flex', 'none', false, false]);
+    verdade('sem a biblioteca da nuvem, a tela de login explica o problema', await p2.evaluate(() => /conectar/i.test($('telaLoginErro').textContent)));
+    await p2.close();
+  }
+  igual('papel vem da tabela; sem cadastro ou com erro vira TV (antes virava admin)', await p.evaluate(async () => {
+    const velho = supabaseClient, velhaS = sessaoAdminAtual, r = [];
+    const fake = resp => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => resp }) }) }) });
+    sessaoAdminAtual = { user: { email: 'x@y.com' } };
+    for (const resp of [{ data: { papel: 'admin' } }, { data: { papel: 'usuario' } }, { data: null }, { data: { papel: 'qualquer' } }, { error: { message: 'falhou' } }]) {
+      supabaseClient = fake(resp); try { await verificarPapelUsuario(); } catch (e) { /* loaders da nuvem não existem no fake */ } r.push(papelUsuarioAtual);
+    }
+    supabaseClient = velho; sessaoAdminAtual = velhaS; papelUsuarioAtual = 'admin'; return r;
+  }), ['admin', 'usuario', 'tv', 'tv', 'tv']);
+  igual('papel TV: entra direto no modo TV fixo e não abre outras abas', await p.evaluate(() => {
+    papelUsuarioAtual = 'tv'; aplicarRestricaoDeAbaVisitante(); aplicarTelaDeLogin();
+    abrirAba(null, 'aba-kpi');
+    const r = [document.body.classList.contains('modo-tv'), document.body.classList.contains('modo-tv-fixo'), document.querySelector('.aba-conteudo.ativa').id,
+      getComputedStyle($('controles-tv')).display, abaLiberadaAgora('aba-prioridades')];
+    clearInterval(scInt); clearInterval(relogioTVInt); document.body.classList.remove('modo-tv', 'modo-tv-fixo');
+    papelUsuarioAtual = 'admin'; aplicarRestricaoDeAbaVisitante(); return r;
+  }), [true, true, 'aba-fila', 'flex', false]);
 
   // ---------- 11. Fumaça: todas as abas abrem sem erro ----------
   const abas = await p.evaluate(() => [...document.querySelectorAll('[id^=aba-]')].map(e => e.id));

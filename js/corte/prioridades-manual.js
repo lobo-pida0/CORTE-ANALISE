@@ -125,7 +125,7 @@ function conferirOPManualExistente() {
     // campos redundantes (mesmo comportamento de antes).
     const opExistente = acharOPNaSincronizacao(numero, cicloDigitado);
     if (opExistente) {
-        statusDiv.innerHTML = `<span style="color:var(--cor-despacho);"><i class="fas fa-check-circle"></i> Essa OP já existe no sistema (${opExistente.desc}) — Descrição/Etapa/Peças/Dias Parado vêm de lá automaticamente.</span>`;
+        statusDiv.innerHTML = `<span style="color:var(--cor-despacho);"><i class="fas fa-check-circle"></i> Essa OP já existe no sistema (${escHtml(opExistente.desc)}) — Descrição/Etapa/Peças/Dias Parado vêm de lá automaticamente.</span>`;
         camposDiv.style.display = 'none';
         $('inputOPManualNumPrioridade').value = opExistente.numeroPrioridade || '';
         $('inputOPManualMes').value = opExistente.mesDestino || '';
@@ -138,7 +138,7 @@ function conferirOPManualExistente() {
     // sobrescrever sem avisar).
     const itemManual = obterOpsManuaisPrioridade().find(o => chaveDaOP(o) === (opExistente ? chaveDaOP(opExistente) : chave));
     if (itemManual) {
-        statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Essa OP já tem um cadastro manual (${itemManual.desc}) — os campos já vêm preenchidos com o que existe. Salvar vai ATUALIZAR esse cadastro, não criar um novo.</span>`;
+        statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Essa OP já tem um cadastro manual (${escHtml(itemManual.desc)}) — os campos já vêm preenchidos com o que existe. Salvar vai ATUALIZAR esse cadastro, não criar um novo.</span>`;
         camposDiv.style.display = 'flex';
         $('inputOPManualDesc').value = itemManual.desc || '';
         $('inputOPManualEtapa').value = itemManual.localDestinoDetalhado ? `local:${itemManual.localDestinoDetalhado}` : String(itemManual.etapa);
@@ -153,7 +153,7 @@ function conferirOPManualExistente() {
     // costura, montada sozinha) — mesma ideia do caso 2.
     const itemAutomatico = obterOpsDestinoAutomaticas()[chave] || obterOpsDestinoAutomaticas()[numero];
     if (itemAutomatico) {
-        statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Essa OP já foi importada automaticamente do relatório de Destino (${itemAutomatico.desc}) — os campos já vêm preenchidos com o que existe. Salvar vai ATUALIZAR essa entrada.</span>`;
+        statusDiv.innerHTML = `<span style="color:#B8862A;"><i class="fas fa-triangle-exclamation"></i> Essa OP já foi importada automaticamente do relatório de Destino (${escHtml(itemAutomatico.desc)}) — os campos já vêm preenchidos com o que existe. Salvar vai ATUALIZAR essa entrada.</span>`;
         camposDiv.style.display = 'flex';
         $('inputOPManualDesc').value = itemAutomatico.desc || '';
         $('inputOPManualEtapa').value = itemAutomatico.localDestinoDetalhado ? `local:${itemAutomatico.localDestinoDetalhado}` : '0';

@@ -307,7 +307,7 @@ function renderizarTudoImediato() {
             htmlTabela += `
                 <tr class="linha-lote-mp" style="background-color: var(--cor-sugestao); color: white;">
                     <td colspan="15" style="text-align: left; font-weight: bold; padding: 10px 15px; border-radius: 4px;">
-                        <i class="fas fa-layer-group" style="margin-right: 8px;"></i> LOTE MATÉRIA-PRIMA: ${mpOP} <span style="font-weight: normal; font-size: 0.9em; opacity: 0.9;">${descTexto}</span>
+                        <i class="fas fa-layer-group" style="margin-right: 8px;"></i> LOTE MATÉRIA-PRIMA: ${escHtml(mpOP)} <span style="font-weight: normal; font-size: 0.9em; opacity: 0.9;">${escHtml(descTexto)}</span>
                     </td>
                 </tr>
             `;
@@ -319,7 +319,7 @@ function renderizarTudoImediato() {
         const pedidoVinc = pedidoVinculadoPorOP.get(o.id);
         const tintaPedido = pedidoVinc ? (pedidoVinc.prior !== 99 ? 'background:rgba(107, 76, 122,0.12);' : 'background:rgba(107, 76, 122,0.06);') : '';
         const badgePedido = pedidoVinc
-            ? `<span class="selo-icone" style="background:var(--cor-roxo);" title="Pedido ${pedidoVinc.pedido} de ${pedidoVinc.cliente} — falta ${pedidoVinc.faltaProduzir} pçs (tam ${pedidoVinc.tam})${pedidoVinc.chegada ? ' — chegada ' + new Date(pedidoVinc.chegada).toLocaleDateString('pt-BR') : ''}"><i class="fas fa-user-clock"></i></span>`
+            ? `<span class="selo-icone" style="background:var(--cor-roxo);" title="Pedido ${escHtml(pedidoVinc.pedido)} de ${escHtml(pedidoVinc.cliente)} — falta ${pedidoVinc.faltaProduzir} pçs (tam ${pedidoVinc.tam})${pedidoVinc.chegada ? ' — chegada ' + new Date(pedidoVinc.chegada).toLocaleDateString('pt-BR') : ''}"><i class="fas fa-user-clock"></i></span>`
             : '';
         const entrouPorMP = bOP !== "" && !o.id.toLowerCase().includes(bOP);
         const badgeMP = entrouPorMP
@@ -338,10 +338,10 @@ function renderizarTudoImediato() {
                 <td><strong>${o.id}</strong>${badgePedido}${badgeMP}${badgeAgrupamento}</td>
                 <td><span class="pill selo-etapa">${nomesEtapas[o.etapa]}</span>${o.laser ? ' <span class="pill selo-laser" title="Vai pra máquina de corte a laser"><i class="fas fa-bolt"></i> LASER</span>' : ''}</td>
                 <td>${o.tipoOP ? `<span class="pill" style="background:${/REPOS/.test(o.tipoOP) ? 'var(--cor-alerta)' : 'var(--cor-primaria)'}; color:white;">${o.tipoOP}</span>` : '—'}</td>
-                <td title="${o.descMP}"><span style="background: #eee; color: #333; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: help;">${mpOP}</span></td>
+                <td title="${escHtml(o.descMP)}"><span style="background: #eee; color: #333; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; cursor: help;">${mpOP}</span></td>
                 
-                <td>${o.localDestino}</td>
-                <td>${o.desc}</td>
+                <td>${escHtml(o.localDestino)}</td>
+                <td>${escHtml(o.desc)}</td>
                 <td class="num" style="color:${(o.diasLocal || 0) >= 3 ? 'var(--cor-alerta)' : 'var(--texto-cor)'};">${o.diasLocal || 0}</td>
                 <td>${o.prioridade && o.mesDestino ? `<span class="pill selo-mes">${o.mesDestino}</span>` : '—'}</td>
                 <td class="num">${o.qtd}</td>

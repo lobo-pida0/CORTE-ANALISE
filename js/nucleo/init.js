@@ -23,7 +23,6 @@ function inicializarEventosUI() {
         wireEvento('abrirGuiaSequenciamento-pedidos', 'click', () => { abrirGuiaSequenciamento(); });
         wireEvento('abrirGuiaSequenciamento-menu', 'click', () => { abrirGuiaSequenciamento(); });
         wireEvento('abrirAgrupamentoReferencia', 'click', () => { abrirAgrupamentoReferencia(); });
-        wireEvento('abrirModalPerguntarIA', 'click', () => { abrirModalPerguntarIA(); });
         wireEvento('abrirModalPrioridadeManual', 'click', () => { abrirModalPrioridadeManual(); });
         wireEvento('alcaConsoleDebug', 'click', () => { toggleConsoleDebug(); });
         wireEvento('btnCopiarConsoleDebug', 'click', () => { copiarLogsConsoleDebug(); });
@@ -51,7 +50,10 @@ function inicializarEventosUI() {
         wireEvento('btnMenuMaisOpcoes', 'click', () => { toggleDropdown('menuMaisOpcoes'); });
         wireEvento('analisarGargalo', 'click', () => { analisarGargalo(); });
         wireEvento('verificarEspacoNuvemBtn', 'click', () => { verificarEspacoNuvem(true); });
-        wireEvento('ativarModoTV', 'click', () => { ativarModoTV(); });
+        wireEvento('ativarModoTV', 'click', () => { ativarModoTV(false); });
+        wireEvento('btnSairTV', 'click', () => { desativarModoTV(); });
+        wireEvento('btnTelaCheiaTV', 'click', () => { alternarTelaCheiaTV(); });
+        wireEvento('telaLoginForm', 'submit', (e) => { e.preventDefault(); enviarTelaLogin(); });
         wireEvento('toggleTema', 'click', () => { toggleTema(); });
         wireEvento('toggleDensidade', 'click', () => { toggleDensidadeTabelas(); });
         wireEvento('abrirBuscaGlobal', 'click', () => { abrirBuscaGlobal(); });
@@ -319,19 +321,21 @@ window.onload = function () {
     // entre visitas); se não tiver, carrega as OPs direto da nuvem pra quem
     // só visualiza — em vez de depender do que esse navegador já tinha salvo
     verificarSessaoSupabase().then(() => {
-        carregarTudoDaNuvemParaVisitante();
+        if (!supabaseClient) { mostrarErroTelaLogin('Não foi possível conectar à nuvem (biblioteca não carregou). Confira a internet e recarregue a página (F5).'); return; }
+        if (!sessaoAdminAtual) { aplicarTelaDeLogin(); }   // sem login: só a tela de login, nada é carregado da nuvem
+        else carregarTudoDaNuvemParaVisitante();
         // Visitante atualiza sozinho a cada 3 minutos — sem precisar recarregar
         // a página na mão pra ver publicação nova. Admin não precisa disso (usa
         // o dado local, ao vivo).
-        setInterval(() => { if (papelUsuarioAtual !== 'admin') carregarTudoDaNuvemParaVisitante(); }, 3 * 60 * 1000);
+        setInterval(() => { if (sessaoAdminAtual && papelUsuarioAtual !== 'admin') carregarTudoDaNuvemParaVisitante(); }, 3 * 60 * 1000);
         // Remoções do Seq. Costura são diferentes — precisam ficar iguais em
         // QUALQUER computador, admin incluído, já que o objetivo é o admin
         // conseguir ver o que outra pessoa removeu de outro lugar.
-        carregarOpsRemovidasSeqCosturaDaNuvem();
-        setInterval(carregarOpsRemovidasSeqCosturaDaNuvem, 3 * 60 * 1000);
+        if (sessaoAdminAtual) carregarOpsRemovidasSeqCosturaDaNuvem();
+        setInterval(() => { if (sessaoAdminAtual) carregarOpsRemovidasSeqCosturaDaNuvem(); }, 3 * 60 * 1000);
         // Mesma lógica pra ordem manual do Enfesto — todo mundo carrega.
-        carregarOrdemManualEnfestoDaNuvem();
-        setInterval(carregarOrdemManualEnfestoDaNuvem, 3 * 60 * 1000);
+        if (sessaoAdminAtual) carregarOrdemManualEnfestoDaNuvem();
+        setInterval(() => { if (sessaoAdminAtual) carregarOrdemManualEnfestoDaNuvem(); }, 3 * 60 * 1000);
     });
     atualizarBadgeConsoleDebug();
 };
@@ -361,8 +365,8 @@ function verificarBackupSexta() {
 function executarDownloadBackup(dataHoje) {
     // 1. Pega os dados vitais do seu sistema no localStorage
     const dadosBackup = {
-        bancoOPs: JSON.parse(localStorage.getItem('bancoOPs')) || [],
-        historicoLotes: JSON.parse(localStorage.getItem('historicoLotes')) || []
+        bancoOPs: lerJSONLocal('bancoOPs', []),
+        historicoLotes: lerJSONLocal('historicoLotes', [])
     };
 
     // 2. Transforma tudo num arquivo JSON legível
@@ -386,7 +390,7 @@ function executarDownloadBackup(dataHoje) {
 }
 
 // Dispara o verificador invisível assim que o sistema terminar de carregar a tela
-// Download automático de sexta DESLIGADO: agora o backup é feito sozinho na nuvem (backup-nuvem.js). Os botões BAIXAR BACKUP / BAIXAR BACKUP DA NUVEM continuam no menu Sistema, pra baixar na mão quando quiser.
+// Download automático de sexta DESLIGADO: agora o backup é feito sozinho na nuvem (js/nuvem/backup-automatico.js). Os botões BAIXAR BACKUP / BAIXAR BACKUP DA NUVEM continuam no menu Sistema, pra baixar na mão quando quiser.
 // setTimeout(verificarBackupSexta, 3000);
 // =========================================================
 

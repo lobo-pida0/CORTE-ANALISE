@@ -471,7 +471,7 @@ async function baixarMesKPIExcel() {
         ['MOVIMENTAÇÕES', dados.movimentacoes, [26, 10, 8, 12, 24, 12, 34, 22, 50], 1],
     ];
 
-    if (typeof ExcelJS !== 'undefined' && typeof Chart !== 'undefined') {
+    if (typeof Chart !== 'undefined' && await garantirExcelJS()) {
         try {
             const wb = new ExcelJS.Workbook();
             const preencher = (nome, linhas, larguras, linhaCab) => {

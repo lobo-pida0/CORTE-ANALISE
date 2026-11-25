@@ -563,7 +563,7 @@ async function baixarMesEfCosturaExcel() {
         ['PEÇAS POR DIA', dados.pecasPorDia, [14, ...dados.nomes.map(() => 12), 12], 1],
         ...(dados.temGrupos ? [['PRODUÇÃO POR GRUPO', dados.producaoGrupo, [26, 16, 12, 18, ...dados.dias.map(() => 8)], 1]] : []),
     ];
-    if (typeof ExcelJS !== 'undefined' && typeof Chart !== 'undefined') {
+    if (typeof Chart !== 'undefined' && await garantirExcelJS()) {
         try {
             const wb = new ExcelJS.Workbook();
             const preencher = (nome, linhas, larguras, linhaCab) => {
