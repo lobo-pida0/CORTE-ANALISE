@@ -468,23 +468,54 @@ async function atualizarIndicadorUltimaPublicacao() {
     }
 }
 
+// 📉 TRÁFEGO: antes, todo navegador não-admin baixava TODAS as tabelas a cada 3 min (só movimentacoes_kpi são ~14
+// páginas) — estourou a cota de tráfego do plano gratuito do Supabase. Agora a cada ciclo lê só os carimbos de
+// metadados_sistema ('global' = PUBLICAR do admin; 'kpi' = importação do KPI, que publica por fora) e baixa as
+// tabelas grandes de novo só se o carimbo mudou desde a última vez NESTA página (abrir/recarregar sempre baixa).
+const versaoNuvemBaixada = { global: undefined, kpi: undefined };
+async function lerVersoesNuvem() {
+    try {
+        const { data, error } = await supabaseClient.from('metadados_sistema').select('id, ultima_publicacao').in('id', ['global', 'kpi']);
+        if (error) throw error;
+        const v = { global: null, kpi: null }; (data || []).forEach(l => { v[l.id] = l.ultima_publicacao || null; });
+        return v;
+    } catch (e) { registrarLogDebug('error', ['Falha ao ler a versão publicada na nuvem: ' + e.message]); return null; }
+}
+async function marcarVersaoKPINuvem() {
+    try { await supabaseClient.from('metadados_sistema').upsert({ id: 'kpi', ultima_publicacao: new Date().toISOString() }); }
+    catch (e) { registrarLogDebug('error', ['Falha ao marcar a versão do KPI na nuvem: ' + e.message]); }
+}
 // Junta todo o carregamento de nuvem do visitante num lugar só — usado tanto
 // na abertura da página quanto na atualização automática periódica.
 async function carregarTudoDaNuvemParaVisitante() {
+    if (!supabaseClient) return;
+    const v = await lerVersoesNuvem();   // null = não deu pra conferir → baixa tudo (mais seguro)
+    const mudouGeral = !v || v.global !== versaoNuvemBaixada.global;
+    const mudouKPI = mudouGeral || v.kpi !== versaoNuvemBaixada.kpi;
     await Promise.all([
-        carregarOPsDaNuvemParaVisitante(),
-        carregarPedidosDaNuvemParaVisitante(),
-        carregarGradeDaNuvemParaVisitante(),
-        carregarPrioridadeClientesDaNuvemParaVisitante(),
-        carregarLocalizacaoCompletaDaNuvemParaVisitante(),
-        carregarTodosPedidosDaNuvemParaVisitante(),
-        carregarOpsManuaisDaNuvemParaVisitante(),
-        carregarLocalProducaoDaNuvemParaVisitante(),
-        carregarMovimentacoesKPIDaNuvemParaVisitante(),
-        carregarPorOPCosturaDaNuvemParaVisitante(),
-        carregarDestinoDaNuvem(),
+        ...(mudouGeral ? [
+            carregarOPsDaNuvemParaVisitante(),
+            carregarPedidosDaNuvemParaVisitante(),
+            carregarGradeDaNuvemParaVisitante(),
+            carregarPrioridadeClientesDaNuvemParaVisitante(),
+            carregarLocalizacaoCompletaDaNuvemParaVisitante(),
+            carregarTodosPedidosDaNuvemParaVisitante(),
+            carregarOpsManuaisDaNuvemParaVisitante(),
+            carregarLocalProducaoDaNuvemParaVisitante(),
+            carregarPorOPCosturaDaNuvemParaVisitante(),
+        ] : []),
+        ...(mudouKPI ? [carregarMovimentacoesKPIDaNuvemParaVisitante()] : []),
+        carregarDestinoDaNuvem(),               // estes três conferem a data de atualização antes de baixar
         carregarUrgentesPreparacaoDaNuvem(),
         carregarCalendarioProducaoDaNuvem(),
     ]);
+    if (v) { versaoNuvemBaixada.global = v.global; versaoNuvemBaixada.kpi = v.kpi; }
+    if (mudouGeral || mudouKPI) registrarLogDebug('log', [`[NUVEM] Dados baixados (${mudouGeral ? 'publicação geral' : 'só o KPI'}).`]);
     atualizarIndicadorUltimaPublicacao();
+}
+// Só baixa o conteúdo de uma linha de destino_producao se a data de atualização mudou (o conteúdo pode ter 150 KB).
+async function linhaDestinoMudou(id, chaveLocal) {
+    const { data, error } = await supabaseClient.from('destino_producao').select('atualizado_em').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data ? { existe: true, em: data.atualizado_em, mudou: data.atualizado_em !== localStorage.getItem(chaveLocal) } : { existe: false };
 }

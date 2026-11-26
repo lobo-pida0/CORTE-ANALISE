@@ -290,6 +290,7 @@ async function publicarMovimentacoesImportadasNaNuvem(movimentos) {
     }
     try {
         const r = await publicarMovimentacoesKPILinhas(movimentos.map(({ setor, m }) => linhaSupabaseDeMovimentoKPI(setor, m)));
+        await marcarVersaoKPINuvem();   // avisa quem só vê que tem movimentação nova (sem mexer no "dados de" da publicação geral)
         showToast(`<i class="fas fa-cloud-upload-alt"></i> KPI publicado na nuvem (${r.publicados.toLocaleString('pt-BR')} movimentações).`, false, 4000);
     } catch (e) {
         registrarLogDebug('error', ['Falha ao publicar o KPI importado: ' + e.message]);
