@@ -52,9 +52,10 @@ function registrarTabelaAP(id, cols, linhas, nome) { tabelasAP[id] = { cols, lin
 function desenharTabelaAP(id) {
     const t = tabelasAP[id], el = $('apTab-' + id); if (!t || !el) return;
     const f = filtrarAP(id, t.cols, t.linhas), mostra = f.slice(0, LIMITE_LINHAS_AP);
-    el.innerHTML = `<table class="tabela-dados ap-tabela"><thead><tr>${t.cols.map(c => `<th${c.num ? ' class="num"' : ''}>${escHtml(c.t)}</th>`).join('')}</tr></thead>
-        <tbody>${mostra.length ? mostra.map(r => `<tr>${t.cols.map(c => `<td${c.num ? ' class="num"' : ''}>${celulaAP(c, r)}</td>`).join('')}</tr>`).join('')
-            : `<tr><td colspan="${t.cols.length}" class="tabela-vazia">Nada encontrado.</td></tr>`}</tbody></table>
+    const vis = t.cols.filter(c => !c.soExcel), cl = c => { const k = [c.num ? 'num' : '', c.cls || ''].filter(Boolean).join(' '); return k ? ` class="${k}"` : ''; };
+    el.innerHTML = `<table class="tabela-dados ap-tabela"><thead><tr>${vis.map(c => `<th${cl(c)}>${escHtml(c.tTela || c.t)}</th>`).join('')}</tr></thead>
+        <tbody>${mostra.length ? mostra.map(r => `<tr>${vis.map(c => `<td${cl(c)}>${celulaAP(c, r)}</td>`).join('')}</tr>`).join('')
+            : `<tr><td colspan="${vis.length}" class="tabela-vazia">Nada encontrado.</td></tr>`}</tbody></table>
         ${f.length > mostra.length ? `<div class="ap-aviso-limite">Mostrando ${fmtNAP(mostra.length)} de ${fmtNAP(f.length)} linhas — use a busca para achar o que precisa, ou BAIXAR EXCEL para ver todas.</div>` : ''}`;
     const cont = $('apCont-' + id); if (cont) cont.textContent = (f.length === t.linhas.length ? fmtNAP(f.length) : `${fmtNAP(f.length)} de ${fmtNAP(t.linhas.length)}`) + ' linhas';
 }
@@ -65,6 +66,22 @@ function baixarExcelTabelaAP(id) {
     const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true }); ws['!cols'] = t.cols.map(c => ({ wch: Math.min(60, Math.max(8, c.t.length + 2)) }));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, t.nome.slice(0, 31));
     XLSX.writeFile(wb, `analise-pedidos-${t.nome.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+// OPs usadas numa linha de pedido: uma OP por linha — número, peças, local e etapa alinhados.
+// opsUsadas = "111-3415-3, 111-4489-5"; locaisOps = "111-3415: SLV ACABAMENTO [E18] | 111-4489: SLV AGUARD ... [E16]"
+function htmlListaOPsAP(opsUsadas, locaisOps) {
+    if (!opsUsadas) return '<span class="ap-op-vazio">—</span>';
+    const locais = new Map();
+    String(locaisOps || '').split(' | ').forEach(s => {
+        const m = s.match(/^(.+?): (.*) \[E(\d+)\]$/);
+        if (m) { if (!locais.has(m[1])) locais.set(m[1], []); locais.get(m[1]).push({ local: m[2], et: m[3] }); }
+    });
+    return '<div class="ap-ops">' + String(opsUsadas).split(', ').map(parte => {
+        const m = parte.match(/^(.*)-(\d+(?:\.\d+)?)$/), rot = m ? m[1] : parte, q = m ? Number(m[2]) : '';
+        return (locais.get(rot) || [{ local: '', et: '' }]).map((l, i) => `<div class="ap-op-linha">
+            <span class="ap-op-num">${i ? '' : escHtml(rot)}</span><span class="ap-op-qtd">${i || q === '' ? '' : fmtNAP(q) + ' pç'}</span>
+            <span class="ap-op-local">${escHtml(l.local)}</span>${l.et !== '' ? `<span class="ap-op-etapa" title="Etapa ${l.et}: ${escHtml(MotorAnalisePedidos.NOMES_POSICAO[l.et] || '')}">E${l.et}</span>` : '<span></span>'}</div>`).join('');
+    }).join('') + '</div>';
 }
 const cartaoAP = (rotulo, numero, detalhe, cor) => `<div class="card-resumo" style="border-top:4px solid ${cor}; cursor:default;"><div class="cr-rotulo">${rotulo}</div><div class="cr-numero">${numero}</div><div class="cr-detalhe">${detalhe || ''}</div></div>`;
 
@@ -200,7 +217,7 @@ function htmlPainelAP(R) {
         { t: 'Prior', v: r => r.prior, num: 1 }, { t: 'Chegada', v: r => r.chegada, f: 'data' }, { t: 'Nec. Fat. (ou Prev.)', v: r => r.prev, f: 'data' },
         { t: 'Dias atraso', v: r => r.dias, f: 'n', num: 1 }, { t: 'Faixa', v: r => r.faixa }, { t: 'Peças pendentes', v: r => r.pendentes, f: 'n', num: 1 },
         { t: 'Fecha físico', v: r => r.fechaFisico, f: 'n', num: 1 }, { t: '% atendido', v: r => r.pctAtendido, f: 'pct', num: 1 }, { t: 'Peças em falta', v: r => r.falta, f: 'n', num: 1 },
-        { t: 'R$ total do pedido', v: r => r.rsTotal, f: 'rs', num: 1 }, { t: 'Restrição faturamento', v: r => r.restricao }, { t: 'Peças cobertas por OP', v: r => r.cobertoOP, f: 'n', num: 1 },
+        { t: 'R$ total do pedido', v: r => r.rsTotal, f: 'rs', num: 1 }, { t: 'Restrição faturamento', v: r => r.restricao, cls: 'ap-col-texto' }, { t: 'Peças cobertas por OP', v: r => r.cobertoOP, f: 'n', num: 1 },
         { t: '% fecha c/ OPs', v: r => r.pctComOPs, f: 'pct', num: 1 }, { t: 'Status OPs', v: r => r.statusOPs, h: r => pillAP(r.statusOPs) }, { t: 'R$ em falta', v: r => r.rsFalta, f: 'rs', num: 1 }
     ], R.painel, 'Pedidos atrasados');
     return `<div class="ap-cartoes">
@@ -228,11 +245,12 @@ function htmlAlocacaoAP(R) {
         { t: 'Nec. Fat. (ou Prev.)', v: r => r.prev, f: 'data' }, { t: 'Dias atraso', v: r => r.diasAtraso, f: 'n', num: 1 }, { t: 'Referência', v: r => r.ref },
         { t: 'Descrição do produto', v: r => r.desc }, { t: 'Cor', v: r => r.cor }, { t: 'Tam', v: r => r.tam }, { t: 'Falta', v: r => r.falta, f: 'n', num: 1 },
         { t: 'Alocado OP', v: r => r.alocado, f: 'n', num: 1 }, { t: 'Descoberto', v: r => r.descoberto, f: 'n', num: 1 }, { t: 'Status', v: r => r.status, h: r => pillAP(r.status) },
-        { t: 'OPs usadas (ciclo-OP-peças)', v: r => r.opsUsadas }, { t: 'Local das OPs [etapa]', v: r => r.locaisOps }
+        { t: 'OPs usadas (ciclo-OP-peças)', tTela: 'OPs usadas — peças · local · etapa', v: r => r.opsUsadas, h: r => htmlListaOPsAP(r.opsUsadas, r.locaisOps), cls: 'ap-col-ops' },
+        { t: 'Local das OPs [etapa]', v: r => r.locaisOps, soExcel: true }
     ], R.alocacao, 'Alocação por linha');
     registrarTabelaAP('resumoOP', [
         { t: 'Ciclo', v: r => r.ciclo }, { t: 'OP', v: r => r.op }, { t: 'Situação OP', v: r => r.situacao }, { t: 'Peças na OP', v: r => r.qtd, f: 'n', num: 1 },
-        { t: 'Alocadas', v: r => r.alocado, f: 'n', num: 1 }, { t: 'Sobra', v: r => r.sobra, f: 'n', num: 1 }, { t: 'Linhas atendidas', v: r => r.linhas, f: 'n', num: 1 }, { t: 'Local', v: r => r.locais }
+        { t: 'Alocadas', v: r => r.alocado, f: 'n', num: 1 }, { t: 'Sobra', v: r => r.sobra, f: 'n', num: 1 }, { t: 'Linhas atendidas', v: r => r.linhas, f: 'n', num: 1 }, { t: 'Local', v: r => r.locais, cls: 'ap-col-texto' }
     ], R.resumoOP, 'Resumo por OP');
     return `<div class="ap-cartoes">
             ${cartaoAP('LINHAS DE PEDIDO EM FALTA', fmtNAP(i.linhasEmFalta), fmtNAP(i.pecasEmFalta) + ' peças em falta', 'var(--cor-fila)')}
@@ -269,7 +287,7 @@ function htmlOPsAP(R) {
         { t: 'Prior.', v: r => r.prioridade, num: 1 }, { t: 'Ciclo', v: r => r.ciclo }, { t: 'OP', v: r => r.op }, { t: 'Situação OP', v: r => r.situacao },
         { t: 'Local', v: r => r.local }, { t: 'Posição', v: r => r.posicao, num: 1 }, { t: 'Ref', v: r => r.ref }, { t: 'Descrição', v: r => r.desc }, { t: 'Cor', v: r => r.cor }, { t: 'Tam', v: r => r.tam },
         { t: 'Qtd OP', v: r => r.qtd, f: 'n', num: 1 }, { t: 'Alocado p/ pedidos', v: r => r.alocado, f: 'n', num: 1 }, { t: 'Sobra', v: r => r.sobra, f: 'n', num: 1 },
-        { t: 'Linhas atendidas', v: r => r.linhas, f: 'n', num: 1 }, { t: 'Pedidos atendidos', v: r => r.pedidos }, { t: 'Prev. Fat. mais antiga', v: r => r.prevMaisAntiga, f: 'data' },
+        { t: 'Linhas atendidas', v: r => r.linhas, f: 'n', num: 1 }, { t: 'Pedidos atendidos', v: r => r.pedidos, cls: 'ap-col-texto' }, { t: 'Prev. Fat. mais antiga', v: r => r.prevMaisAntiga, f: 'data' },
         { t: 'Dias atraso', v: r => r.diasAtraso, f: 'n', num: 1 }
     ], R.opsAProgramar, 'OPs a programar');
     return `<div class="ap-filtros">
@@ -338,7 +356,7 @@ function htmlFechadosAP(R) {
         { t: 'R$ pendente', v: p => p.rsPendente, f: 'rs', num: 1 }
     ];
     if (sim) cols.push({ t: 'Fecha no ERP?', v: p => p.fechaNoERP ? 'Sim' : 'Não', h: p => p.fechaNoERP ? 'Sim' : '<strong style="color:var(--cor-despacho);">Não — só na simulação</strong>' });
-    cols.push({ t: 'OPs que completam (ciclo-OP)', v: p => p.ops });
+    cols.push({ t: 'OPs que completam (ciclo-OP)', v: p => p.ops, cls: 'ap-col-texto' });
     registrarTabelaAP('fechados', cols, mostrar, 'Pedidos 100%');
     const chip = (v, t) => `<button class="ap-chip${filtro === v ? ' ativo' : ''}" data-filtro-fechados="${v}">${t}</button>`;
     return `<div class="ap-cartoes">

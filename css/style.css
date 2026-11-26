@@ -1432,7 +1432,16 @@ body.modo-sequencia #aba-kpi > .secao:not(#secaoEficienciaCostura):not(#secaoEfi
 .ap-busca { flex: 1 1 260px; max-width: 460px; padding: 8px 10px; border: 1px solid var(--borda-cor); border-radius: 6px; background: var(--bg-card); color: var(--texto-cor); }
 .ap-tabela-wrap { max-height: 620px; }
 .ap-tabela td { white-space: nowrap; }
-.ap-tabela td:nth-last-child(-n+2) { white-space: normal; min-width: 220px; }
+.ap-tabela .ap-col-texto { white-space: normal; min-width: 220px; }
+.ap-tabela td.ap-col-ops { white-space: normal; min-width: 420px; padding-top: 6px; padding-bottom: 6px; }
+.ap-ops { display: flex; flex-direction: column; gap: 3px; }
+.ap-op-linha { display: grid; grid-template-columns: 74px 48px 1fr auto; gap: 8px; align-items: center; font-size: 12px; line-height: 1.3; }
+.ap-op-linha + .ap-op-linha { border-top: 1px dashed var(--borda-cor); padding-top: 3px; }
+.ap-op-num { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--texto-cor); }
+.ap-op-qtd { font-variant-numeric: tabular-nums; color: var(--cor-despacho); font-weight: 700; text-align: right; }
+.ap-op-local { color: var(--texto-secundario); }
+.ap-op-etapa { font-size: 10px; font-weight: 800; color: white; background: var(--cor-fila); border-radius: 10px; padding: 1px 7px; cursor: help; }
+.ap-op-vazio { color: var(--texto-secundario); }
 .ap-aviso-limite { padding: 10px 14px; font-size: 12px; color: var(--texto-secundario); background: var(--bg-painel); }
 .ap-nota { font-size: 12px; color: var(--texto-secundario); margin: 0 0 12px; line-height: 1.5; }
 .ap-alerta { padding: 10px 14px; margin-bottom: 12px; border-radius: 8px; background: rgba(184, 134, 42, 0.14); color: var(--texto-cor); font-size: 13px; }
