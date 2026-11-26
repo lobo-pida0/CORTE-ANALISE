@@ -21,6 +21,10 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
 (async () => {
   const b = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   const p = await b.newPage({ viewport: { width: 1400, height: 1000 } });
+  // Os testes NUNCA falam com a internet (Supabase/CDN de verdade): as bibliotecas vêm do node_modules e a nuvem é simulada.
+  // Sem isso, num ambiente com internet o resultado dependeria da rede (e o teste mexeria na nuvem real).
+  const semInternet = pg => pg.route(/^https?:\/\//, r => r.abort());
+  await semInternet(p);
   const errosPagina = [];
   p.on('pageerror', e => errosPagina.push(e.message.slice(0, 160)));
   p.on('dialog', d => d.accept());
@@ -784,9 +788,25 @@ function verdade(nome, cond, detalhe) { if (cond) ok++; else falhas.push(`${nome
     }), [['ok', true, 'admin', true], true, true, true]);
   }
 
+  // ---------- 10f. Tráfego da nuvem: só baixa de novo o que mudou ----------
+  igual('nuvem: a cada 3 min só confere o carimbo; baixa as tabelas grandes só quando o admin publica', await p.evaluate(async () => {
+    const velho = supabaseClient, versoes = { global: '2026-11-26T10:00:00Z', kpi: null }, chamadas = [];
+    const pesadas = ['carregarOPsDaNuvemParaVisitante', 'carregarGradeDaNuvemParaVisitante', 'carregarTodosPedidosDaNuvemParaVisitante', 'carregarMovimentacoesKPIDaNuvemParaVisitante'];
+    const leves = ['carregarDestinoDaNuvem', 'carregarUrgentesPreparacaoDaNuvem', 'carregarCalendarioProducaoDaNuvem', 'carregarPedidosDaNuvemParaVisitante', 'carregarPrioridadeClientesDaNuvemParaVisitante', 'carregarLocalizacaoCompletaDaNuvemParaVisitante', 'carregarOpsManuaisDaNuvemParaVisitante', 'carregarLocalProducaoDaNuvemParaVisitante', 'carregarPorOPCosturaDaNuvemParaVisitante', 'atualizarIndicadorUltimaPublicacao'];
+    const guardadas = {}; [...pesadas, ...leves].forEach(n => { guardadas[n] = window[n]; window[n] = async () => { if (pesadas.includes(n)) chamadas.push(n.replace(/carregar|DaNuvemParaVisitante/g, '')); }; });
+    supabaseClient = { from: () => ({ select: () => ({ in: async () => ({ data: Object.entries(versoes).map(([id, u]) => ({ id, ultima_publicacao: u })), error: null }) }) }) };
+    versaoNuvemBaixada.global = undefined; versaoNuvemBaixada.kpi = undefined;
+    const ciclo = async () => { chamadas.length = 0; await carregarTudoDaNuvemParaVisitante(); return [...chamadas]; };
+    const r = [await ciclo(), await ciclo()];
+    versoes.kpi = '2026-11-26T11:00:00Z'; r.push(await ciclo());
+    versoes.global = '2026-11-26T12:00:00Z'; r.push(await ciclo(), await ciclo());
+    Object.assign(window, guardadas); supabaseClient = velho; return r;
+  }), [['OPs', 'Grade', 'TodosPedidos', 'MovimentacoesKPI'], [], ['MovimentacoesKPI'], ['OPs', 'Grade', 'TodosPedidos', 'MovimentacoesKPI'], []]);
+
   // ---------- 10d. Login obrigatório e papel TV ----------
   {
     const p2 = await b.newPage({ viewport: { width: 1400, height: 1000 } });
+    await semInternet(p2);
     await p2.goto('file://' + path.join(RAIZ, 'index.html')); await p2.waitForTimeout(1200);
     igual('sem login: só a tela de login aparece, nenhuma aba liberada', await p2.evaluate(() => [
       document.body.classList.contains('sem-login'), getComputedStyle($('telaLogin')).display, getComputedStyle(document.querySelector('.header-main')).display,

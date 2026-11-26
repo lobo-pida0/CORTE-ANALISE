@@ -201,6 +201,7 @@ async function carregarUrgentesPreparacaoDaNuvem() {
     carregarObsPreparacaoDaNuvem(); carregarOrdemPreparacaoDaNuvem();
     try {
         if (localStorage.getItem('urgentesPendentePublicar') === '1') { if (sessaoAdminAtual) await publicarUrgentesPreparacao(); return; }
+        const v = await linhaDestinoMudou('urgentes_preparacao', 'urgentesNuvemEm'); if (v.existe && !v.mudou) return;
         const { data, error } = await supabaseClient.from('destino_producao').select('dados, atualizado_em').eq('id', 'urgentes_preparacao').maybeSingle();
         if (error) throw error;
         if (!data || data.atualizado_em === localStorage.getItem('urgentesNuvemEm')) return;
@@ -244,12 +245,13 @@ async function salvarObsPreparacao(chave, texto) {
 async function carregarObsPreparacaoDaNuvem() {
     if (!supabaseClient) return;
     try {
+        const v = await linhaDestinoMudou('obs_preparacao', 'obsNuvemEm'); if (v.existe && !v.mudou) return;
         const { data, error } = await supabaseClient.from('destino_producao').select('dados').eq('id', 'obs_preparacao').maybeSingle();
         if (error) throw error;
         if (!data || !data.dados || !data.dados.obs) return;
-        const novo = JSON.stringify(data.dados.obs); if (novo === localStorage.getItem('obsPreparacao')) return;
-        if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('prep-obs')) return;   // não tira o foco de quem está digitando
-        localStorage.setItem('obsPreparacao', novo); renderizarPreparacao();
+        const novo = JSON.stringify(data.dados.obs); if (novo === localStorage.getItem('obsPreparacao')) { localStorage.setItem('obsNuvemEm', v.em || ''); return; }
+        if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('prep-obs')) return;   // não tira o foco de quem está digitando (tenta de novo no próximo ciclo)
+        localStorage.setItem('obsPreparacao', novo); localStorage.setItem('obsNuvemEm', v.em || ''); renderizarPreparacao();
     } catch (e) { registrarLogDebug('error', ['Falha ao carregar as observações da preparação: ' + e.message]); }
 }
 
@@ -316,9 +318,11 @@ async function publicarOrdemPrepNaNuvem(locais) {   // lê a linha da nuvem, tro
 async function carregarOrdemPreparacaoDaNuvem() {
     if (!supabaseClient) return;
     try {
+        const v = await linhaDestinoMudou('ordem_preparacao', 'ordemPrepNuvemEm'); if (v.existe && !v.mudou) return;
         const { data, error } = await supabaseClient.from('destino_producao').select('dados').eq('id', 'ordem_preparacao').maybeSingle();
         if (error) throw error;
         if (!data || !data.dados || !data.dados.ordem) return;
+        localStorage.setItem('ordemPrepNuvemEm', v.em || '');
         const novo = JSON.stringify(data.dados.ordem); if (novo === JSON.stringify(obterOrdemPrep())) return;
         salvarOrdemPrepLocal(data.dados.ordem); renderizarPreparacao();
     } catch (e) { registrarLogDebug('error', ['Falha ao carregar a ordem da preparação: ' + e.message]); }

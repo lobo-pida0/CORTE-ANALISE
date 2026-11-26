@@ -171,6 +171,7 @@ async function carregarDestinoDaNuvem() {
     if (!supabaseClient) return;
     try {
         if (localStorage.getItem('destinoPendentePublicar') === '1') { if (sessaoAdminAtual) await publicarDestinoNuvem(); return; }
+        const v = await linhaDestinoMudou('global', 'destinoNuvemEm'); if (v.existe && !v.mudou) return;   // nada novo: não baixa os ~150 KB
         const { data, error } = await supabaseClient.from('destino_producao').select('dados, atualizado_em').eq('id', 'global').maybeSingle();
         if (error) throw error;
         if (!data) { if (sessaoAdminAtual && Object.keys(obterOpsMesDestino()).length) await publicarDestinoNuvem(); return; }   // nuvem vazia: sobe o que já existe aqui
